@@ -1,0 +1,10 @@
+Lightdeck
+Copyright 2026 Jeroen Peeters
+
+Licensed under the Apache License, Version 2.0. See the file LICENSE.
+
+This product includes the Barlow font files in src/server/public/fonts/,
+Copyright 2017 The Barlow Project Authors, under the SIL Open Font License,
+Version 1.1. See src/server/public/fonts/LICENSE.txt.
+
+Lightdeck was developed with Claude Code, the AI coding agent of Anthropic.
