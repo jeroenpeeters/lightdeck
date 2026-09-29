@@ -70,7 +70,7 @@ final class BridgeCore {
     private File logFile;
 
     private XHL x;
-    private BridgeServer server;
+    private volatile BridgeServer server; // null until the vendor library is up
     private volatile XHL_Device device;   // the open, attached device, or null
     private volatile XHL_Device arrived;  // last device reported by the arrival callback
     private volatile boolean kick = true; // scan before opening anything
@@ -305,6 +305,11 @@ final class BridgeCore {
     }
 
     boolean isDeviceOpen() { return device != null; }
+
+    boolean isEngineConnected() {
+        BridgeServer s = server;
+        return s != null && s.isClientConnected();
+    }
 
     // --- logging ---
 

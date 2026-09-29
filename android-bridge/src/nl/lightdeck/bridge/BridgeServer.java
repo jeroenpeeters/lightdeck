@@ -159,6 +159,9 @@ final class BridgeServer {
 
     boolean isAttached() { return binding != null; }
 
+    /** True while an engine has completed the WebSocket handshake and is still connected. */
+    boolean isClientConnected() { return clientOut != null; }
+
     // --- DMX pump: fixed cadence, latest-wins, idle refresh ---
     private void pumpLoop() {
         log.log("Bridge: DMX pump running at ~" + (1000 / PUMP_INTERVAL_MS) + " Hz, idle refresh every "

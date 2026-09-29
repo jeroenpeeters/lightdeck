@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build the LR512 open()-gate APK by repackaging the original Light Rider APK.
+# Build the LR512 bridge APK by repackaging the original Light Rider APK.
 #
 # Why repackage instead of a fresh Gradle app: the native library binds to the
 # exact JNI classes `com.lightingsoft.xhl.declaration.Native*`, and the library
@@ -9,9 +9,9 @@
 # the original smali), so a failing open() means the device/licensing refused it,
 # not that we broke the bindings.
 #
-# We only ADD one activity (nl.lightdeck.bridge.OpenGateActivity) and make it the
-# launcher. dex2jar is used ONLY to give javac a compile classpath; its output is
-# never packaged.
+# We only ADD our own classes (nl.lightdeck.bridge.*) and make OpenGateActivity the
+# launcher, shown on the phone as "Lightdeck LR512 Bridge". dex2jar is used ONLY to
+# give javac a compile classpath; its output is never packaged.
 #
 # Prerequisites (install yourself):
 #   - apktool            (https://apktool.org)               -> `apktool`
@@ -33,6 +33,7 @@ TOOLS="$HERE/tools"
 OUT="$HERE/bridge-gate.apk"
 PKG_DIR="nl/lightdeck/bridge"
 ACTIVITY="nl.lightdeck.bridge.OpenGateActivity"
+LABEL="Lightdeck LR512 Bridge"
 
 log(){ printf '\n=== %s\n' "$*"; }
 die(){ printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -108,8 +109,8 @@ for dex in "$WORK"/dex/classes*.dex; do
 done
 log "compile classpath: $CP"
 
-# --- 3. compile our single added class ---
-log "3/7 javac OpenGateActivity"
+# --- 3. compile our added classes ---
+log "3/7 javac our classes"
 mkdir -p "$WORK/classes"
 javac -source 8 -target 8 -bootclasspath "$ANDROID_JAR" -cp "$CP" \
   -d "$WORK/classes" $(find "$HERE/src" -name '*.java') \
@@ -145,9 +146,9 @@ cp -r "$WORK/mysmali/$PKG_DIR/." "$DEST/$PKG_DIR/"
 
 # --- 6. patch the manifest: add our launcher activity ---
 log "6/7 patch AndroidManifest"
-python3 - "$WORK/decoded/AndroidManifest.xml" "$ACTIVITY" <<'PY'
+python3 - "$WORK/decoded/AndroidManifest.xml" "$ACTIVITY" "$LABEL" <<'PY'
 import sys, re
-path, activity = sys.argv[1], sys.argv[2]
+path, activity, label = sys.argv[1], sys.argv[2], sys.argv[3]
 xml = open(path, encoding='utf-8').read()
 
 # 0. Ensure WAKE_LOCK permission (the bridge holds a partial wake lock).
@@ -160,22 +161,28 @@ if 'android.permission.WAKE_LOCK' not in xml:
 before = xml.count('android.intent.category.LAUNCHER')
 xml = re.sub(r'\s*<category android:name="android\.intent\.category\.LAUNCHER"\s*/>', '', xml)
 
-# 2. Add our activity as the sole launcher, with a distinct label so it does not
-#    read as "Light Rider".
+# 2. Name the app itself, so Settings and the app list do not say "Light Rider Classic".
+xml, named = re.subn(r'(<application\b[^>]*?\sandroid:label=")[^"]*(")',
+                     lambda m: m.group(1) + label + m.group(2), xml, count=1)
+if not named:
+    sys.exit("no android:label on <application>; the manifest is not what this script expects")
+
+# 3. Add our activity as the sole launcher. The dark theme without action bar keeps
+#    the screen from flashing white while the app starts.
 snippet = (
   '<activity android:name="%s" android:exported="true" '
-  'android:label="LR512 Gate" '
-  'android:theme="@android:style/Theme.Material.Light">'
+  'android:label="%s" '
+  'android:theme="@android:style/Theme.Material.NoActionBar">'
   '<intent-filter>'
   '<action android:name="android.intent.action.MAIN"/>'
   '<category android:name="android.intent.category.LAUNCHER"/>'
   '</intent-filter>'
-  '</activity>' % activity
+  '</activity>' % (activity, label)
 )
 if activity not in xml:
     xml = xml.replace('</application>', snippet + '</application>', 1)
 open(path, 'w', encoding='utf-8').write(xml)
-print("  removed %d original launcher entr(y/ies); added 'LR512 Gate' as the sole launcher" % before)
+print("  removed %d original launcher entr(y/ies); added '%s' as the sole launcher" % (before, label))
 PY
 
 # --- 7. build, align, sign ---
@@ -192,14 +199,21 @@ fi
 "$BUILD_TOOLS/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
   --out "$OUT" "$WORK/aligned.apk"
 
+# The phone shows the app only when the APK really carries a launcher entry.
+LAUNCHER="$("$BUILD_TOOLS/aapt2" dump badging "$OUT" 2>/dev/null | grep '^launchable-activity' || true)"
+case "$LAUNCHER" in
+  *"name='$ACTIVITY'"*"label='$LABEL'"*) echo "  launcher entry: $LAUNCHER" ;;
+  *) die "the built APK has no launcher entry '$LABEL' for $ACTIVITY (found: ${LAUNCHER:-none})" ;;
+esac
+
 log "DONE"
 echo "Built: $OUT"
 echo
 echo "Install and run:"
 echo "  adb install -r \"$OUT\""
 echo "  adb logcat -c && adb logcat -s LR512GATE"
-echo "On the device open the single 'LR512 Gate' icon; it runs the gate automatically"
-echo "(scan -> auto-open first DasNet device). Read the on-screen log or logcat."
+echo "On the device open '$LABEL'; it starts the bridge by itself"
+echo "(scan -> open the first DasNet device). Read the on-screen log or logcat."
 echo "Launch from a terminal instead:"
 echo "  adb shell am start -n com.lightingsoft.djapp/nl.lightdeck.bridge.OpenGateActivity"
 echo "Pull the log file (package is com.lightingsoft.djapp):"

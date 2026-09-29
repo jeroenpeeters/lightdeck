@@ -36,6 +36,13 @@ not yet been seen recovering a real device drop.
   and nothing leaves the DMX port.
 - **The screen stays on** while the app is visible, and the app holds Wi-Fi and
   CPU wake locks.
+- **The screen is dark**, in the colours of the Lightdeck page, because the
+  phone lies next to the lights. Two lamps beside the title show the two
+  connections: **LR512** is green while the device is open, **Lightdeck** is
+  green while an engine is connected to the WebSocket. Red means not connected.
+- **The log follows the newest line.** Scrolling back by hand holds it still;
+  it follows again once you scroll to the end, or 15 seconds after the last
+  touch.
 
 The core lives in the process, not in the Activity. Rotating the phone or
 reopening the screen does not start a second copy.
@@ -89,6 +96,9 @@ cd android-bridge
 
 Output: `bridge-gate.apk`, debug-signed, about 69 MB.
 
+The class, the APK, the logcat tag and the log file still carry the name
+"gate", from the first test of `open()`. Only the name on the phone changed.
+
 ### How the build works
 
 The original Light Rider APK is repackaged with our classes added. That keeps
@@ -101,7 +111,9 @@ Three things the build has to get right:
 - Our classes go into the **next contiguous dex** (`classes2.dex`). Android
   skips a dex that leaves a gap in the numbering, and the class is then missing
   at runtime.
-- The original launcher is removed, so the app shows one icon, **LR512 Gate**.
+- The original launcher is removed, so the app shows one icon, **Lightdeck
+  LR512 Bridge**. The app itself carries the same name, in Settings for
+  example. The build stops when the finished APK has no such launcher entry.
 - `WAKE_LOCK` is added to the manifest.
 
 The package name stays `com.lightingsoft.djapp`, so the app cannot be installed
@@ -178,6 +190,7 @@ path that is known to work.
 - `src/nl/lightdeck/bridge/BridgeCore.java`: vendor startup, supervisor,
   reconnect, logging.
 - `src/nl/lightdeck/bridge/BridgeServer.java`: WebSocket server and DMX pump.
-- `src/nl/lightdeck/bridge/OpenGateActivity.java`: the screen with the log.
+- `src/nl/lightdeck/bridge/OpenGateActivity.java`: the screen with the lamps
+  and the log.
 - `build.sh`: repackaging pipeline.
 - `tools/`, `work/`: downloaded tools and build scratch, both ignored by git.
