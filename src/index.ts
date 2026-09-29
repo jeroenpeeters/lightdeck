@@ -73,7 +73,7 @@ const fixtures: FixtureDefinition[] = [
 if (laserAddress !== undefined) {
   fixtures.push({
     id: 'laser',
-    kind: 'laser',
+    kind: 'laser'
     label: 'Laser',
     universe: laserUniverse,
     address: laserAddress,

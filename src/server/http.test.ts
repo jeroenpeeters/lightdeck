@@ -117,7 +117,15 @@ describe('HTTP server', () => {
     expect(second.address).toBe(101);
 
     expect(laser).toEqual(expect.objectContaining({ kind: 'laser', footprint: 10, address: 44 }));
-    expect(laser.details).toEqual({ gate: 'mode' });
+    expect(laser.details).toEqual(expect.objectContaining({ gate: 'mode', effectsIn: 'manual' }));
+    expect(laser.details.effects.map((e: { id: string }) => e.id)).toEqual([
+      'patterns',
+      'colours',
+      'pulse',
+      'sweep',
+      'twist',
+    ]);
+    expect(laser.state.effect).toEqual({ id: null });
     expect(laser.controls[0].ranges[1]).toEqual(
       expect.objectContaining({ from: 64, to: 127, key: 'manual', name: 'Manual' }),
     );

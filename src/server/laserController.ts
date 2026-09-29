@@ -8,25 +8,49 @@
  * while it rests at its idle value, and the blackout of the console holds it there
  * whatever the state says. It starts closed, and `darken` closes it for good when
  * lightdeck stops.
+ *
+ * While an effect is chosen and the laser is in the mode the effects count in, a ticker
+ * renders the effect 40 times per second, on the beat of the console's tempo. The effect
+ * sets the channels it drives, the others stay with the operator. An effect never opens
+ * the laser: the gate is not for effects to drive. Rendered frames are not state:
+ * browsers get them as `frame` events, at a lower rate, to draw what is being sent.
  */
 
 import { EventEmitter } from 'node:events';
+import type { LaserEffect } from '../engine/laserEffects.js';
 import {
   encodeFixture,
   type FixtureProfile,
+  findControl,
+  rangeAt,
   UNIVERSE_SIZE,
   writeFixture,
 } from '../fixtures/profile.js';
 import type { UniverseOutput } from '../outputs/patch.js';
 import { type FixtureController, PatchError, readObject } from './fixture.js';
+import type { Tempo } from './tempo.js';
+
+export interface LaserEffectSettings {
+  /** Id of the chosen effect, or null when the operator sets every channel. */
+  id: string | null;
+}
 
 export interface LaserState {
   /** Raw bytes by control name. */
   raw: Record<string, number>;
+  effect: LaserEffectSettings;
 }
 
 export interface LaserPatch {
   raw?: unknown;
+  effect?: unknown;
+}
+
+/** The effects of a laser, and the range of the gate in which they count. */
+export interface LaserEffects {
+  list: readonly LaserEffect[];
+  /** Key of a range of the gate, such as `manual`. */
+  mode: string;
 }
 
 export interface LaserOptions {
@@ -34,11 +58,20 @@ export interface LaserOptions {
   /** Name of the control that keeps the laser closed while it is at its idle value. */
   gate: string;
   output: UniverseOutput;
+  /** The tempo of the console, which the effects run on. */
+  tempo: Tempo;
+  /** Without effects the laser is set by hand only. */
+  effects?: LaserEffects;
   /** 0-based universe index on the bridge. */
   universe: number;
   /** 1-based DMX start address of the fixture. */
   address: number;
 }
+
+/** Effect frames per second sent to the fixture. */
+const TICK_MS = 25;
+/** Effect frames per second shown to browsers. */
+const FRAME_EVENT_MS = 50;
 
 export class LaserController extends EventEmitter implements FixtureController {
   readonly profile: FixtureProfile;
@@ -47,8 +80,13 @@ export class LaserController extends EventEmitter implements FixtureController {
   readonly address: number;
 
   private readonly output: UniverseOutput;
+  private readonly tempo: Tempo;
+  private readonly effects: readonly LaserEffect[];
+  private readonly effectsMode: string | undefined;
   private readonly frame = new Uint8Array(UNIVERSE_SIZE);
   private readonly closed: number;
+  private ticker: ReturnType<typeof setInterval> | undefined;
+  private lastFrameEvent = 0;
   private state: LaserState;
   /** The blackout of the console. It is not part of the state of the fixture. */
   private blackout = false;
@@ -58,6 +96,9 @@ export class LaserController extends EventEmitter implements FixtureController {
     this.profile = options.profile;
     this.gate = options.gate;
     this.output = options.output;
+    this.tempo = options.tempo;
+    this.effects = options.effects?.list ?? [];
+    this.effectsMode = options.effects?.mode;
     this.universe = options.universe;
     this.address = options.address;
 
@@ -73,19 +114,32 @@ export class LaserController extends EventEmitter implements FixtureController {
       throw new Error(`${this.profile.id} has no control "${this.gate}" to close the laser with`);
     }
     this.closed = closed;
-    this.state = { raw };
+    this.checkEffects();
+    this.state = { raw, effect: { id: null } };
 
     // Fails here, at startup, when the fixture does not fit at this address.
     this.send();
   }
 
   getState(): LaserState {
-    return { raw: { ...this.state.raw } };
+    return { raw: { ...this.state.raw }, effect: { ...this.state.effect } };
   }
 
-  /** The control that opens and closes the laser. */
+  /**
+   * The control that opens and closes the laser, the effects there are to choose from,
+   * and the range of the gate in which they count.
+   */
   describe(): Record<string, unknown> {
-    return { gate: this.gate };
+    return {
+      gate: this.gate,
+      effects: this.effects.map(({ id, name, description, drives }) => ({
+        id,
+        name,
+        description,
+        drives,
+      })),
+      effectsIn: this.effectsMode ?? null,
+    };
   }
 
   /** The fixture's bytes as they are being sent, channel 1 first. */
@@ -98,7 +152,7 @@ export class LaserController extends EventEmitter implements FixtureController {
    * invalid. `origin` is passed on with the event so a browser can skip its own echo.
    */
   update(change: unknown, origin?: string): void {
-    const patch = readObject(change, 'a change of the laser', ['raw']) as LaserPatch;
+    const patch = readObject(change, 'a change of the laser', ['raw', 'effect']) as LaserPatch;
     const raw = { ...this.state.raw };
     const newRaw = patch.raw === undefined ? {} : readObject(patch.raw, 'raw');
     for (const [name, value] of Object.entries(newRaw)) {
@@ -109,7 +163,10 @@ export class LaserController extends EventEmitter implements FixtureController {
       }
       raw[name] = value;
     }
-    this.state = { ...this.state, raw };
+    const effect = this.readEffect(patch.effect);
+
+    this.state = { ...this.state, raw, effect };
+    this.runTicker();
     this.push(origin);
   }
 
@@ -127,16 +184,94 @@ export class LaserController extends EventEmitter implements FixtureController {
   /** Closes the laser and forgets the mode, so that nothing opens it again by itself. */
   darken(): void {
     this.state = { ...this.state, raw: { ...this.state.raw, [this.gate]: this.closed } };
+    this.runTicker();
     this.push();
   }
 
   close(): void {
+    if (this.ticker) clearInterval(this.ticker);
+    this.ticker = undefined;
     this.removeAllListeners();
   }
 
+  /** An effect may drive any control of the laser but the one that opens it. */
+  private checkEffects(): void {
+    if (this.effects.length === 0) return;
+    const gate = findControl(this.profile, this.gate);
+    const mode = this.effectsMode;
+    const open = gate?.kind === 'function' ? gate.ranges.find((r) => r.key === mode) : undefined;
+    if (!open || (this.closed >= open.from && this.closed <= open.to)) {
+      throw new Error(
+        `${this.profile.id}: effects need a range "${mode}" of "${this.gate}" that opens the laser`,
+      );
+    }
+    for (const effect of this.effects) {
+      for (const name of effect.drives) {
+        if (name === this.gate || !findControl(this.profile, name)) {
+          throw new Error(`${this.profile.id}: the effect "${effect.id}" cannot drive "${name}"`);
+        }
+      }
+    }
+  }
+
+  private readEffect(change: unknown): LaserEffectSettings {
+    if (change === undefined) return this.state.effect;
+    const { id } = readObject(change, 'effect', ['id']);
+    if (id === undefined) return this.state.effect;
+    if (id !== null && !this.effects.some((effect) => effect.id === id)) {
+      throw new PatchError(
+        `unknown effect "${String(id)}", choose one of ${this.effects.map((e) => e.id).join(', ')}`,
+      );
+    }
+    return { id: id as string | null };
+  }
+
+  /** The chosen effect, when the laser is in the mode in which effects count. */
+  private showing(): LaserEffect | undefined {
+    const { id } = this.state.effect;
+    if (id === null) return undefined;
+    const gate = findControl(this.profile, this.gate);
+    if (gate?.kind !== 'function') return undefined;
+    if (rangeAt(this.profile, gate, this.state.raw)?.key !== this.effectsMode) return undefined;
+    return this.effects.find((effect) => effect.id === id);
+  }
+
   private outputValues() {
-    const raw = this.blackout ? { ...this.state.raw, [this.gate]: this.closed } : this.state.raw;
+    const raw = { ...this.state.raw };
+    const effect = this.showing();
+    if (effect) {
+      const { bpm, rate } = this.tempo.getState();
+      const rendered = effect.render({
+        beat: this.tempo.getBeat() * rate,
+        bpm: bpm * rate,
+        raw: this.state.raw,
+      });
+      for (const name of effect.drives) {
+        const byte = rendered[name];
+        if (byte !== undefined) raw[name] = byte;
+      }
+    }
+    if (this.blackout) raw[this.gate] = this.closed;
     return { raw };
+  }
+
+  private runTicker(): void {
+    const wanted = this.showing() !== undefined;
+    if (wanted && !this.ticker) {
+      this.ticker = setInterval(() => this.tick(), TICK_MS);
+    } else if (!wanted && this.ticker) {
+      clearInterval(this.ticker);
+      this.ticker = undefined;
+    }
+  }
+
+  private tick(): void {
+    this.send();
+    const now = this.tempo.now();
+    if (now - this.lastFrameEvent >= FRAME_EVENT_MS) {
+      this.lastFrameEvent = now;
+      this.emit('frame', this.getDmx(), this.tempo.getBeat());
+    }
   }
 
   private send(): void {

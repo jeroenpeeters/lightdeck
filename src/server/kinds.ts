@@ -6,6 +6,7 @@
  * `FixtureController`, an entry here, and its page.
  */
 
+import { LASER_EFFECTS, LASER_EFFECTS_MODE } from '../engine/laserEffects.js';
 import { ALIEN_LASER_10CH, LASER_GATE } from '../fixtures/laser.js';
 import type { FixtureProfile } from '../fixtures/profile.js';
 import { SPIDER_43CH, SPIDER_LAYOUT } from '../fixtures/spider.js';
@@ -36,13 +37,12 @@ export const FIXTURE_KINDS: Readonly<Record<string, FixtureKind>> = {
   },
   laser: {
     profile: ALIEN_LASER_10CH,
-    create: ({ output, universe, address }) =>
+    create: (options) =>
       new LaserController({
         profile: ALIEN_LASER_10CH,
         gate: LASER_GATE,
-        output,
-        universe,
-        address,
+        effects: { list: LASER_EFFECTS, mode: LASER_EFFECTS_MODE },
+        ...options,
       }),
   },
 };

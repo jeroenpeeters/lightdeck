@@ -287,6 +287,20 @@ legend {
   font-weight: 500;
   line-height: 1.15;
 }
+/* The effects of a fixture to choose from, and the key that stops them. */
+.effect-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 0.5rem;
+}
+.effect {
+  min-height: 3.5rem;
+  text-align: left;
+}
+.stop {
+  width: 100%;
+  margin-top: 0.5rem;
+}
 .key:active,
 .pick:active,
 .effect:active,
@@ -294,6 +308,7 @@ legend {
   background: var(--key-down);
 }
 .key:disabled,
+.pick:disabled,
 .swatch:disabled {
   opacity: 0.4;
   cursor: default;

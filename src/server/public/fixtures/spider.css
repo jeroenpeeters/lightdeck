@@ -185,19 +185,6 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
-.effect-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
-  gap: 0.5rem;
-}
-.effect {
-  min-height: 3.5rem;
-  text-align: left;
-}
-.stop {
-  width: 100%;
-  margin-top: 0.5rem;
-}
 .effects-choice .hint {
   margin-top: 0.9rem;
 }

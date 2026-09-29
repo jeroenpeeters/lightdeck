@@ -15,6 +15,7 @@
       <header class="fixture-head">
         <h1 id="fixture-name">Laser</h1>
         <p class="where" id="where"></p>
+        <p class="running" id="running" data-on="false"></p>
       </header>
 
       <section class="panel output" aria-labelledby="output-title">
@@ -27,6 +28,20 @@
 
       <div class="panel work">
         <p class="hint" id="laser-hint" hidden></p>
+        <div class="laser-lead">
+          <!-- The keys that open and close the laser come here. -->
+          <div id="laser-gate"></div>
+          <section class="laser-effects" id="laser-effects" aria-labelledby="effects-title" hidden>
+            <h3 id="effects-title">Effects</h3>
+            <fieldset class="effect-list" id="effect-list">
+              <legend class="visually-hidden">Choose an effect</legend>
+            </fieldset>
+            <button type="button" class="key stop" id="effect-stop">Stop the effect</button>
+            <p class="hint" id="effect-hint"></p>
+          </section>
+        </div>
+
+        <h3>Channels</h3>
         <div class="laser-blocks" id="laser-blocks"></div>
 
         <h3>Channels being sent</h3>

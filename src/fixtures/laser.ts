@@ -15,12 +15,19 @@
  * - What the place within the two automatic colour ranges of channel 9 does.
  * - Whether channels 3 to 10 count in auto and sound mode.
  * - That "Pattern with dots, wireless strips" on channel 10 means dots without lines.
+ * - That channel 9 has seven single colours. Only the effects in
+ *   `src/engine/laserEffects.ts` count on that.
  */
 
 import { type ByteRange, defineProfile, type FunctionControl } from './profile.js';
 
 export const LASER_PATTERNS = 51;
 export const LASER_PROGRAMS = 4;
+/**
+ * Single colours on channel 9: red, green, blue and what two or three of them make.
+ * The manual gives no number; seven is what an RGB laser can mix without dimming.
+ */
+export const LASER_COLOURS = 7;
 
 const FASTER = 'the larger the value, the faster the speed';
 

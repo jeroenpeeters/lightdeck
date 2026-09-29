@@ -1,6 +1,6 @@
 /*
- * What belongs to the page of the laser: the tile that says what it does, and the
- * blocks with keys and a fader per channel.
+ * What belongs to the page of the laser: the tile that says what it does, the keys
+ * that open it next to its effects, and the blocks with keys and a fader per channel.
  */
 
 /* ---- what the laser does ---- */
@@ -40,18 +40,29 @@
 .work > h3 {
   margin-top: 2rem;
 }
+.laser-lead,
 .laser-blocks {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 1.75rem 2rem;
 }
-.work > .hint + .laser-blocks {
+.laser-blocks {
+  margin-top: 0.75rem;
+}
+.work > .hint + .laser-lead {
   margin-top: 1rem;
 }
 @container (min-width: 46rem) {
+  .laser-lead,
   .laser-blocks {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
+}
+.laser-effects > .effect-list {
+  margin-top: 0.5rem;
+}
+.laser-effects > .hint {
+  margin-top: 0.9rem;
 }
 .laser-block > .choice {
   margin-top: 0;
