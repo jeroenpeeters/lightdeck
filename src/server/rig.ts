@@ -4,10 +4,11 @@
  * The rig owns the patch, so it is the one place where universes are put together:
  * each fixture controller encodes its own channels, and the rig hands the whole
  * universe to the output. It also holds what belongs to no single fixture: the tempo,
- * the blackout and the state of the link to the LR512.
+ * the blackout, the playback of the show and the state of the link to the LR512.
  *
  * Events: `fixture` (id, state, dmx, origin), `frame` (id, dmx, beat),
- * `tempo` (state, beat, origin), `blackout` (blackout, origin), `status` (status).
+ * `tempo` (state, beat, origin), `blackout` (blackout, origin), `status` (status),
+ * `show` (summary), `playback` (state).
  */
 
 import { EventEmitter } from 'node:events';
@@ -15,6 +16,7 @@ import type { BridgeStatus } from '../outputs/lr512/bridgeClient.js';
 import { Patch, type UniverseOutput } from '../outputs/patch.js';
 import { type FixtureController, PatchError } from './fixture.js';
 import { FIXTURE_KINDS, type FixtureKind } from './kinds.js';
+import { Playback, type PlaybackState, type ShowSummary } from './playback.js';
 import { Tempo, type TempoState } from './tempo.js';
 
 export interface FixtureDefinition {
@@ -48,6 +50,8 @@ export interface RigOptions {
   output: UniverseOutput;
   fixtures: readonly FixtureDefinition[];
   kinds?: Readonly<Record<string, FixtureKind>>;
+  /** Where the show file is. Without it the show is kept in memory only. */
+  show?: string;
   /** Monotonic clock in milliseconds. Tests pass their own. */
   now?: () => number;
 }
@@ -57,6 +61,7 @@ const ID = /^[a-z0-9][a-z0-9-]*$/;
 export class Rig extends EventEmitter {
   readonly tempo: Tempo;
   readonly fixtures: readonly RigFixture[];
+  readonly playback: Playback;
 
   private blackout = false;
   private link: LinkStatus = { bridge: false, device: 'unknown', universes: 0, channels: [] };
@@ -103,6 +108,13 @@ export class Rig extends EventEmitter {
     this.tempo.on('tempo', (state: TempoState, origin?: string) => {
       this.emit('tempo', state, this.tempo.getBeat(), origin);
     });
+
+    this.playback = new Playback({
+      fixtures,
+      ...(options.show === undefined ? {} : { path: options.show }),
+    });
+    this.playback.on('show', (show: ShowSummary) => this.emit('show', show));
+    this.playback.on('playback', (state: PlaybackState) => this.emit('playback', state));
   }
 
   find(id: string): RigFixture | undefined {
@@ -148,6 +160,7 @@ export class Rig extends EventEmitter {
   }
 
   close(): void {
+    this.playback.close();
     for (const { controller } of this.fixtures) controller.close();
     this.tempo.removeAllListeners();
     this.removeAllListeners();

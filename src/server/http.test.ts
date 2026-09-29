@@ -22,6 +22,7 @@ describe('HTTP server', () => {
     const publicDir = mkdtempSync(join(tmpdir(), 'lightdeck-public-'));
     mkdirSync(join(publicDir, 'fixtures'));
     writeFileSync(join(publicDir, 'shell.js'), 'export {};');
+    writeFileSync(join(publicDir, 'deck.html'), '<!doctype html><title>Deck</title>');
     writeFileSync(
       join(publicDir, 'fixtures', 'spider.html'),
       '<!doctype html><title>Spider</title>',
@@ -60,10 +61,13 @@ describe('HTTP server', () => {
   // biome-ignore lint/suspicious/noExplicitAny: shapes are asserted field by field
   const state = async () => (await (await fetch(`${base}/api/state`)).json()) as any;
 
-  it('goes from the front door to the page of the first fixture', async () => {
+  it('goes from the front door to the deck', async () => {
     const response = await fetch(`${base}/`, { redirect: 'manual' });
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/fixtures/spider');
+    expect(response.headers.get('location')).toBe('/deck');
+    const deck = await fetch(`${base}/deck`);
+    expect(deck.status).toBe(200);
+    expect(await deck.text()).toContain('<title>Deck</title>');
   });
 
   it('serves every fixture the page of its kind', async () => {
@@ -282,6 +286,76 @@ describe('HTTP server', () => {
       text += decoder.decode(value, { stream: true });
     }
     expect(text).toContain('event: frame\ndata: {"id":"spider-2","dmx":[');
+    abort.abort();
+  });
+
+  it('stores the fixtures as a scene and sets them to it again', async () => {
+    await post('/api/fixtures/spider/update', { levels: { dimmer: 1 } });
+    await post('/api/fixtures/laser/update', { raw: { mode: MANUAL } });
+    const stored = await post('/api/scenes', { label: 'Warm', client: 'tablet-1' });
+    expect(await stored.json()).toEqual({ ok: true, id: 'warm' });
+
+    await post('/api/fixtures/spider/update', { levels: { dimmer: 0 } });
+    await post('/api/fixtures/laser/update', { raw: { mode: 0 } });
+    expect((await state()).playback).toEqual({ scene: 'warm', changed: true });
+
+    const recalled = await post('/api/playback', { scene: 'warm', client: 'tablet-1' });
+    expect(recalled.status).toBe(200);
+    expect(ch(output, 6)).toBe(255);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+    const now = await state();
+    expect(now.playback).toEqual({ scene: 'warm', changed: false });
+    expect(now.show).toEqual({
+      file: null,
+      problem: null,
+      scenes: [{ id: 'warm', label: 'Warm', fixtures: ['spider', 'laser'] }],
+    });
+  });
+
+  it('stores over, renames and deletes a scene', async () => {
+    await post('/api/scenes', { label: 'Warm' });
+    await post('/api/fixtures/spider-2/update', { levels: { dimmer: 1 } });
+    expect((await post('/api/scenes/warm/store', {})).status).toBe(200);
+    expect((await post('/api/scenes/warm/rename', { label: 'Warm up' })).status).toBe(200);
+    expect((await state()).show.scenes).toEqual([
+      { id: 'warm', label: 'Warm up', fixtures: ['spider-2'] },
+    ]);
+    expect((await post('/api/scenes/warm/delete', {})).status).toBe(200);
+    expect((await state()).show.scenes).toEqual([]);
+  });
+
+  it('says what is wrong with a request about scenes', async () => {
+    const nameless = await post('/api/scenes', {});
+    expect(nameless.status).toBe(400);
+    expect(await error(nameless)).toBe('a scene needs a name');
+
+    const missing = await post('/api/playback', { scene: 'nothing' });
+    expect(missing.status).toBe(400);
+    expect(await error(missing)).toBe('there is no scene called "nothing"');
+
+    expect((await post('/api/scenes/nothing/delete', {})).status).toBe(400);
+    expect((await post('/api/scenes/warm/burn', {})).status).toBe(404);
+  });
+
+  it('streams the show and the playback', async () => {
+    const abort = new AbortController();
+    const response = await fetch(`${base}/api/events`, { signal: abort.signal });
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    const readUntil = async (marker: string) => {
+      while (!text.includes(marker)) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+    };
+    await readUntil('event: playback\ndata: {"scene":null,"changed":false}');
+    expect(text).toContain('event: show\ndata: {"file":null,"problem":null,"scenes":[]}');
+
+    await post('/api/scenes', { label: 'Warm' });
+    await readUntil('event: playback\ndata: {"scene":"warm","changed":false}');
+    expect(text).toContain('"scenes":[{"id":"warm","label":"Warm","fixtures":[]}]');
     abort.abort();
   });
 });

@@ -46,6 +46,9 @@ export interface LaserPatch {
   effect?: unknown;
 }
 
+/** What of the state a change can set and a scene keeps: all of it. */
+type Look = LaserState;
+
 /** The effects of a laser, and the range of the gate in which they count. */
 export interface LaserEffects {
   list: readonly LaserEffect[];
@@ -102,20 +105,19 @@ export class LaserController extends EventEmitter implements FixtureController {
     this.universe = options.universe;
     this.address = options.address;
 
-    const raw: Record<string, number> = {};
     for (const control of this.profile.controls) {
       if (control.kind !== 'function') {
         throw new Error(`${this.profile.id}: "${control.name}" is not a function control`);
       }
-      raw[control.name] = control.idle;
     }
-    const closed = raw[this.gate];
+    const rest = this.rest();
+    const closed = rest.raw[this.gate];
     if (closed === undefined) {
       throw new Error(`${this.profile.id} has no control "${this.gate}" to close the laser with`);
     }
     this.closed = closed;
     this.checkEffects();
-    this.state = { raw, effect: { id: null } };
+    this.state = rest;
 
     // Fails here, at startup, when the fixture does not fit at this address.
     this.send();
@@ -152,22 +154,61 @@ export class LaserController extends EventEmitter implements FixtureController {
    * invalid. `origin` is passed on with the event so a browser can skip its own echo.
    */
   update(change: unknown, origin?: string): void {
-    const patch = readObject(change, 'a change of the laser', ['raw', 'effect']) as LaserPatch;
-    const raw = { ...this.state.raw };
+    this.state = this.apply(this.state, change, 'a change of the laser');
+    this.runTicker();
+    this.push(origin);
+  }
+
+  /** The channels that are not at rest, and a chosen effect. */
+  snapshot(): Record<string, unknown> {
+    const rest = this.rest();
+    const raw: Record<string, number> = {};
+    for (const [name, value] of Object.entries(this.state.raw)) {
+      if (value !== rest.raw[name]) raw[name] = value;
+    }
+    const { effect } = this.state;
+    return {
+      ...(Object.keys(raw).length > 0 ? { raw } : {}),
+      ...(effect.id !== null ? { effect: { ...effect } } : {}),
+    };
+  }
+
+  check(part: unknown): void {
+    this.apply(this.rest(), part ?? {}, 'the laser in a scene');
+  }
+
+  /**
+   * A scene may open the laser, which an effect may not: recalling one is something the
+   * operator does, or a sequence the operator started.
+   */
+  recall(part: unknown, origin?: string): void {
+    this.state = this.apply(this.rest(), part ?? {}, 'the laser in a scene');
+    this.runTicker();
+    this.push(origin);
+  }
+
+  /** The laser with nothing set: closed, every channel at rest, no effect. */
+  private rest(): Look {
+    const raw: Record<string, number> = {};
+    for (const control of this.profile.controls) {
+      if (control.kind === 'function') raw[control.name] = control.idle;
+    }
+    return { raw, effect: { id: null } };
+  }
+
+  /** `base` with the change on top. Throws when any part of the change is invalid. */
+  private apply(base: Look, change: unknown, what: string): Look {
+    const patch = readObject(change, what, ['raw', 'effect']) as LaserPatch;
+    const raw = { ...base.raw };
     const newRaw = patch.raw === undefined ? {} : readObject(patch.raw, 'raw');
     for (const [name, value] of Object.entries(newRaw)) {
-      if (!(name in this.state.raw))
-        throw new PatchError(`"${name}" is not a channel of the laser`);
+      if (!(name in base.raw)) throw new PatchError(`"${name}" is not a channel of the laser`);
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 255) {
         throw new PatchError(`"${name}" must be a whole number between 0 and 255`);
       }
       raw[name] = value;
     }
-    const effect = this.readEffect(patch.effect);
-
-    this.state = { ...this.state, raw, effect };
-    this.runTicker();
-    this.push(origin);
+    return { raw, effect: this.readEffect(base.effect, patch.effect) };
   }
 
   act(name: string): void {
@@ -214,10 +255,10 @@ export class LaserController extends EventEmitter implements FixtureController {
     }
   }
 
-  private readEffect(change: unknown): LaserEffectSettings {
-    if (change === undefined) return this.state.effect;
+  private readEffect(current: LaserEffectSettings, change: unknown): LaserEffectSettings {
+    if (change === undefined) return current;
     const { id } = readObject(change, 'effect', ['id']);
-    if (id === undefined) return this.state.effect;
+    if (id === undefined) return current;
     if (id !== null && !this.effects.some((effect) => effect.id === id)) {
       throw new PatchError(
         `unknown effect "${String(id)}", choose one of ${this.effects.map((e) => e.id).join(', ')}`,

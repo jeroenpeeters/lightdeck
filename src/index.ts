@@ -11,6 +11,8 @@
  *                                       spider's)
  *   --laser-address  LASER_ADDRESS      DMX start address of the laser (default 44, right
  *                                       after a spider at 1), or "none" to run without it
+ *   --show           SHOW_FILE          the show file, which the deck writes
+ *                                       (default show.yaml, where lightdeck is started)
  *   --port           PORT               port of the web page (default 8080)
  *   --host           HOST               address to listen on (default 0.0.0.0)
  */
@@ -42,6 +44,7 @@ const { values: args } = parseArgs({
     address: { type: 'string' },
     'laser-universe': { type: 'string' },
     'laser-address': { type: 'string' },
+    show: { type: 'string' },
     port: { type: 'string' },
     host: { type: 'string' },
   },
@@ -63,6 +66,7 @@ const laserUniverse = wholeNumber(
   args['laser-universe'] ?? process.env.LASER_UNIVERSE ?? String(universe),
   'laser universe',
 );
+const showFile = args.show ?? process.env.SHOW_FILE ?? 'show.yaml';
 const port = wholeNumber(args.port ?? process.env.PORT ?? '8080', 'port');
 const host = args.host ?? process.env.HOST ?? '0.0.0.0';
 
@@ -73,7 +77,7 @@ const fixtures: FixtureDefinition[] = [
 if (laserAddress !== undefined) {
   fixtures.push({
     id: 'laser',
-    kind: 'laser'
+    kind: 'laser',
     label: 'Laser',
     universe: laserUniverse,
     address: laserAddress,
@@ -103,7 +107,7 @@ const bridge = new Lr512BridgeClient({
 });
 
 try {
-  rig = new Rig({ output: bridge, fixtures });
+  rig = new Rig({ output: bridge, fixtures, show: showFile });
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
@@ -124,6 +128,9 @@ server.listen(port, host, () => {
     );
   }
   if (laserAddress === undefined) log('no laser: started with laser address "none"');
+  const show = rig?.playback.getShow();
+  if (show) log(`show ${show.file}, ${show.scenes.length} scenes`);
+  if (show?.problem) log(`warning: the show file is not used, it has a mistake. ${show.problem}`);
   bridge.start();
 });
 

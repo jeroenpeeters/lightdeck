@@ -1,0 +1,127 @@
+/*
+ * What belongs to the deck: the keys of the scenes, and the rows to name a scene with.
+ */
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.panel > .hint {
+  margin-top: 0.35rem;
+}
+
+.console > .notice {
+  margin-top: 0;
+}
+
+/* ---- the scenes ---- */
+
+.scene-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.scene {
+  display: grid;
+  align-content: center;
+  gap: 0.2rem;
+  min-height: 5.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  line-height: 1.15;
+  text-align: left;
+  touch-action: manipulation;
+}
+.scene:active {
+  background: var(--key-down);
+}
+.scene-name {
+  font-size: var(--large);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.scene-sets {
+  color: var(--dim);
+  font-size: var(--small);
+}
+
+/* The fixtures are set to this scene. */
+.scene[data-state="set"] {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--ink);
+}
+.scene[data-state="set"] .scene-sets {
+  color: var(--ink);
+}
+/* They were, and have been changed by hand since: the outline stays, the fill goes. */
+.scene[data-state="changed"] {
+  border-color: var(--signal);
+  box-shadow: inset 0 0 0 1px var(--signal);
+}
+.scene[data-state="changed"] .scene-name,
+.scene[data-state="changed"] .scene-sets {
+  color: var(--signal);
+}
+/* Chosen to edit. */
+.scene[data-state="chosen"] {
+  border-color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
+}
+.scene[data-state="chosen"] .scene-sets {
+  color: var(--ink);
+}
+
+/* ---- naming a scene ---- */
+
+.name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.5rem;
+  max-width: 40rem;
+  margin-top: 1rem;
+}
+.name-row label {
+  grid-column: 1 / -1;
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.field {
+  min-width: 0;
+  min-height: var(--touch);
+  padding: 0 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+}
+.field:disabled {
+  opacity: 0.4;
+}
+@media (max-width: 30rem) {
+  .name-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.store-over,
+.delete {
+  margin-top: 0.75rem;
+}
+.delete {
+  border-color: var(--stop);
+  color: var(--stop);
+}
+.delete[data-sure="true"] {
+  background: var(--stop);
+  color: var(--ink);
+  font-weight: 600;
+}

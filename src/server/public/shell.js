@@ -1,14 +1,21 @@
 // The shell of every page of the console. Plain browser JavaScript, no build step.
 //
-// A page is about one fixture. Around it the shell puts what belongs to no fixture:
-// the way to the other pages, the tempo and the speed, the blackout, and the state of
-// the link to the LR512. It also does the talking to the server, so that a page only
-// has to say what changes and to draw what it is told.
+// A page is about one fixture, or about the show, as the deck is. Around it the shell
+// puts what belongs to no fixture: the way to the other pages, the tempo and the speed,
+// the blackout, and the state of the link to the LR512. It also does the talking to the
+// server, so that a page only has to say what changes and to draw what it is told.
 //
 // A page starts the shell and gets back what it needs:
 //
 //   const shell = await start();          null when the page cannot be shown
+//   const shell = await start({ page: 'deck' });        for a page about no fixture
 //   shell.fixture                          the fixture as /api/state describes it
+//   shell.fixtures                         every fixture of the console
+//   shell.show, shell.playback             the scenes, and which one the fixtures are set to
+//   shell.ask(url, body)                   ask the server for something once; gives
+//                                          { ok, error } and what the server answered
+//   shell.on('show', (show) => ...)        the scenes changed
+//   shell.on('playback', (playback) => ...)             another scene, or changed by hand
 //   shell.send(patch)                      change the fixture
 //   shell.pending()                        what is still on its way to the server
 //   shell.act('reset')                     let the fixture do something by name
@@ -31,7 +38,7 @@ const TAPS_KEPT = 8;
 const FRAME = `
   <header class="topbar">
     <p class="brand">Lightdeck</p>
-    <nav class="pages" id="pages" aria-label="Fixtures"></nav>
+    <nav class="pages" id="pages" aria-label="Pages"></nav>
     <ul class="links" id="links" aria-label="Connection">
       <li class="link" id="link-bridge" data-state="unknown">
         <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
@@ -86,12 +93,15 @@ function alarm(text) {
   notice.hidden = false;
 }
 
-export async function start() {
+export async function start({ page = 'fixture' } = {}) {
   const frame = document.createElement('template');
   frame.innerHTML = FRAME;
   document.body.prepend(frame.content);
 
-  const id = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() ?? '');
+  const id =
+    page === 'fixture'
+      ? decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() ?? '')
+      : null;
   let initial;
   try {
     initial = await (await fetch('/api/state')).json();
@@ -102,6 +112,10 @@ export async function start() {
 
   const clientId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const fixture = initial.fixtures.find((each) => each.id === id);
+  /** The fixtures this page is about: its own, or all of them. */
+  const watched = fixture ? [fixture] : initial.fixtures;
+  let show = initial.show;
+  let playback = initial.playback;
   const limits = initial.tempo;
   let tempo = { bpm: initial.tempo.bpm, rate: initial.tempo.rate };
   let blackout = initial.blackout;
@@ -112,26 +126,36 @@ export async function start() {
   let pageNotes = () => [];
   /** A beat number and the moment it was true, to count on from between messages. */
   let beatBase = { beat: initial.tempo.beat, at: performance.now() };
-  const handlers = { fixture: [], frame: [], change: [] };
+  const handlers = { fixture: [], frame: [], change: [], show: [], playback: [] };
   const tell = (name, message) => {
     for (const handler of handlers[name]) handler(message);
   };
 
-  for (const each of initial.fixtures) {
-    const link = element('a', 'page-link', each.label);
-    link.href = `/fixtures/${each.id}`;
-    if (each.id === id) link.setAttribute('aria-current', 'page');
+  const pages = [
+    { name: 'Deck', href: '/deck', here: page === 'deck' },
+    ...initial.fixtures.map((each) => ({
+      name: each.label,
+      href: `/fixtures/${each.id}`,
+      here: each.id === id,
+    })),
+  ];
+  for (const each of pages) {
+    const link = element('a', 'page-link', each.name);
+    link.href = each.href;
+    if (each.here) link.setAttribute('aria-current', 'page');
     $('pages').append(link);
   }
-  if (!fixture) {
+  if (page === 'fixture' && !fixture) {
     alarm(`There is no fixture called "${id}". Choose one above.`);
     return null;
   }
-  document.title = `${fixture.label} · Lightdeck`;
-  if ($('fixture-name')) $('fixture-name').textContent = fixture.label;
-  if ($('where')) {
-    $('where').textContent =
-      `Port ${fixture.universe + 1}, address ${fixture.address}, ${fixture.footprint} channels`;
+  if (fixture) {
+    document.title = `${fixture.label} · Lightdeck`;
+    if ($('fixture-name')) $('fixture-name').textContent = fixture.label;
+    if ($('where')) {
+      $('where').textContent =
+        `Port ${fixture.universe + 1}, address ${fixture.address}, ${fixture.footprint} channels`;
+    }
   }
 
   // ---- talking to the server ----
@@ -143,6 +167,10 @@ export async function start() {
     blackout = fresh.blackout;
     const real = fresh.fixtures.find((each) => each.id === id);
     if (real) tell('fixture', { state: real.state, dmx: real.dmx, own: false });
+    show = fresh.show;
+    playback = fresh.playback;
+    tell('show', show);
+    tell('playback', playback);
     render();
     tell('change');
   }
@@ -193,7 +221,7 @@ export async function start() {
     return send;
   }
 
-  const sendFixture = sender(`/api/fixtures/${id}/update`);
+  const sendFixture = fixture ? sender(`/api/fixtures/${id}/update`) : undefined;
   const sendBlackout = sender('/api/blackout');
   // A tap on the beat is only right at the moment it was made.
   const sendTempo = sender('/api/tempo', ({ sync: _sync, ...kept }) => kept);
@@ -217,6 +245,22 @@ export async function start() {
       }, 4 * RETRY_MS);
     }
     renderNotice();
+  }
+
+  /** Asks for something once. What cannot be done is answered, not tried again. */
+  async function ask(url, body = {}) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...body, client: clientId }),
+      });
+      const answer = await response.json().catch(() => ({}));
+      if (response.ok) return { ...answer, ok: true };
+      return { ok: false, error: answer.error ?? response.statusText };
+    } catch {
+      return { ok: false, error: 'This page cannot reach lightdeck.' };
+    }
   }
 
   function listen() {
@@ -260,6 +304,14 @@ export async function start() {
       status = message;
       renderLinks();
       renderNotice();
+    });
+    on('show', (message) => {
+      show = message;
+      tell('show', show);
+    });
+    on('playback', (message) => {
+      playback = message;
+      tell('playback', playback);
     });
   }
 
@@ -374,10 +426,29 @@ export async function start() {
         : 'LR512 not found';
   }
 
+  /** Why nothing reaches this fixture where it is patched, or nothing when it does. */
+  function patchNote(each) {
+    const name = `the ${each.label.toLowerCase()}`;
+    const port = each.universe + 1;
+    if (status.device !== 'open') return '';
+    if (each.universe >= status.universes) {
+      return `This LR512 has ${status.universes} ports and ${name} is set to port ${port}. Start lightdeck with a lower universe for ${name}.`;
+    }
+    if (status.channels[each.universe] === 0) {
+      const usable = status.channels.flatMap((count, i) => (count > 0 ? [i] : []));
+      return (
+        `Port ${port} of this LR512 has no channels, so nothing reaches ${name}. ` +
+        (usable.length > 0
+          ? `Plug ${name} into port ${usable[0] + 1} and start lightdeck with universe ${usable[0]} for it.`
+          : 'The LR512 reports no usable port.')
+      );
+    }
+    return '';
+  }
+
   function renderNotice() {
-    const name = `the ${fixture.label.toLowerCase()}`;
-    const port = fixture.universe + 1;
     const notes = pageNotes();
+    const patch = watched.map(patchNote).find((note) => note !== '');
     let text = '';
     // Alarm: something is wrong. Anything else only explains why the lights are dark.
     let level = 'alarm';
@@ -389,15 +460,8 @@ export async function start() {
     } else if (status.device === 'lost') {
       text =
         'The bridge cannot find the LR512 and keeps searching. Check that the LR512 has power and is on the Wi-Fi.';
-    } else if (status.device === 'open' && fixture.universe >= status.universes) {
-      text = `This LR512 has ${status.universes} ports and ${name} is set to port ${port}. Start lightdeck with a lower universe for ${name}.`;
-    } else if (status.device === 'open' && status.channels[fixture.universe] === 0) {
-      const usable = status.channels.flatMap((count, i) => (count > 0 ? [i] : []));
-      text =
-        `Port ${port} of this LR512 has no channels, so nothing reaches ${name}. ` +
-        (usable.length > 0
-          ? `Plug ${name} into port ${usable[0] + 1} and start lightdeck with universe ${usable[0]} for it.`
-          : 'The LR512 reports no usable port.');
+    } else if (patch) {
+      text = patch;
     } else {
       const note =
         notes.find((each) => each.level === 'alarm') ??
@@ -431,9 +495,17 @@ export async function start() {
 
   return {
     fixture,
+    fixtures: initial.fixtures,
     send: sendFixture,
-    pending: sendFixture.pending,
+    pending: sendFixture?.pending,
     act,
+    ask,
+    get show() {
+      return show;
+    },
+    get playback() {
+      return playback;
+    },
     on: (name, handler) => handlers[name].push(handler),
     notes: (say) => {
       pageNotes = say;

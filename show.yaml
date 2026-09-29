@@ -1,0 +1,7 @@
+scenes:
+  test:
+    label: test
+    fixtures: {}
+  scene-2:
+    label: scene 2
+    fixtures: {}

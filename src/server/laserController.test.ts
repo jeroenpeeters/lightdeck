@@ -366,3 +366,76 @@ describe('LaserController effects', () => {
     expect(laser.getDmx()).toEqual([MANUAL, 0, 0, 0, 0, 0, 0, 30, 70, 0]);
   });
 });
+
+describe('LaserController in a scene', () => {
+  let output: RecordingOutput;
+  let laser: LaserController;
+
+  beforeEach(() => {
+    output = new RecordingOutput();
+    laser = new LaserController({
+      profile: ALIEN_LASER_10CH,
+      gate: LASER_GATE,
+      output,
+      tempo: new Tempo(),
+      effects: EFFECTS,
+      universe: 0,
+      address: LASER_AT,
+    });
+  });
+  afterEach(() => laser.close());
+
+  it('gives nothing while it is closed and at rest', () => {
+    expect(laser.snapshot()).toEqual({});
+  });
+
+  it('gives the channels that are set and the chosen effect', () => {
+    laser.update({ raw: { mode: MANUAL, drawing: 191, size: 0 }, effect: { id: 'pulse' } });
+    expect(laser.snapshot()).toEqual({
+      raw: { mode: MANUAL, drawing: 191 },
+      effect: { id: 'pulse' },
+    });
+  });
+
+  it('comes back to what was kept, and opens when the part says so', () => {
+    laser.update({ raw: { mode: MANUAL, drawing: 191 }, effect: { id: 'pulse' } });
+    const kept = laser.snapshot();
+    const before = laser.getState();
+    laser.update({ raw: { mode: 0, drawing: 0, size: 80 }, effect: { id: null } });
+    expect(ch(output, LASER_AT)).toBe(0);
+    laser.recall(kept, 'deck');
+    expect(laser.getState()).toEqual(before);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('closes without a part', () => {
+    laser.update({ raw: { mode: MANUAL, drawing: 191 }, effect: { id: 'pulse' } });
+    laser.recall(undefined);
+    expect([...output.last].every((b) => b === 0)).toBe(true);
+    expect(laser.getState().effect.id).toBeNull();
+  });
+
+  it('stays closed during a blackout, whatever is recalled', () => {
+    laser.setBlackout(true);
+    laser.recall({ raw: { mode: MANUAL } });
+    expect(ch(output, LASER_AT)).toBe(0);
+    laser.setBlackout(false);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('refuses a part it cannot take, and stays as it is', () => {
+    laser.update({ raw: { mode: MANUAL } });
+    const before = laser.getState();
+    for (const part of [
+      { raw: { mode: 300 } },
+      { raw: { beam: 1 } },
+      { effect: { id: 'disco' } },
+      { levels: { dimmer: 1 } },
+      [],
+    ]) {
+      expect(() => laser.check(part)).toThrow(PatchError);
+      expect(() => laser.recall(part)).toThrow(PatchError);
+    }
+    expect(laser.getState()).toEqual(before);
+  });
+});

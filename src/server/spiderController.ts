@@ -64,6 +64,9 @@ export interface StatePatch {
   effect?: unknown;
 }
 
+/** What of the state a change can set and a scene keeps. */
+type Look = Pick<SpiderState, 'levels' | 'raw' | 'effect'>;
+
 export interface SpiderOptions {
   profile: FixtureProfile;
   layout: CellLayout;
@@ -136,25 +139,13 @@ export class SpiderController extends EventEmitter implements FixtureController 
     this.address = options.address;
     this.resetHoldMs = options.resetHoldMs ?? 3500;
 
-    const levels: Record<string, number> = {};
-    const raw: Record<string, number> = {};
-    for (const control of this.profile.controls) {
-      if (control.kind === 'function') raw[control.name] = control.idle;
-      else levels[control.name] = 0;
-    }
+    const rest = this.rest();
     for (const name of this.cellControls()) {
-      if (!(name in levels)) throw new Error(`layout names "${name}", which the profile lacks`);
+      if (!(name in rest.levels)) {
+        throw new Error(`layout names "${name}", which the profile lacks`);
+      }
     }
-    this.state = {
-      levels,
-      raw,
-      resetting: false,
-      effect: {
-        ...DEFAULT_EFFECT,
-        colourA: { ...DEFAULT_EFFECT.colourA },
-        colourB: { ...DEFAULT_EFFECT.colourB },
-      },
-    };
+    this.state = { ...rest, resetting: false };
 
     // Fails here, at startup, when the fixture does not fit at this address.
     this.send();
@@ -197,37 +188,87 @@ export class SpiderController extends EventEmitter implements FixtureController 
    * invalid. `origin` is passed on with the event so a browser can skip its own echo.
    */
   update(change: unknown, origin?: string): void {
-    const patch = readObject(change, 'a change of the spider', [
-      'levels',
-      'raw',
-      'effect',
-    ]) as StatePatch;
-    const levels = { ...this.state.levels };
-    const raw = { ...this.state.raw };
+    this.state = { ...this.state, ...this.apply(this.state, change, 'a change of the spider') };
+    this.runTicker();
+    this.push(origin);
+  }
+
+  /** Levels that are not 0, function channels that are not at rest, and a chosen effect. */
+  snapshot(): Record<string, unknown> {
+    const rest = this.rest();
+    const levels: Record<string, number> = {};
+    const raw: Record<string, number> = {};
+    for (const [name, value] of Object.entries(this.state.levels)) {
+      if (value !== rest.levels[name]) levels[name] = value;
+    }
+    for (const [name, value] of Object.entries(this.state.raw)) {
+      if (name !== RESET_CONTROL && value !== rest.raw[name]) raw[name] = value;
+    }
+    const { effect } = this.getState();
+    return {
+      ...(Object.keys(levels).length > 0 ? { levels } : {}),
+      ...(Object.keys(raw).length > 0 ? { raw } : {}),
+      ...(effect.id !== null ? { effect } : {}),
+    };
+  }
+
+  check(part: unknown): void {
+    this.apply(this.rest(), part ?? {}, 'the spider in a scene');
+  }
+
+  /** A reset that is going on goes on: it is not part of a look. */
+  recall(part: unknown, origin?: string): void {
+    const look = this.apply(this.rest(), part ?? {}, 'the spider in a scene');
+    const reset = this.state.raw[RESET_CONTROL];
+    if (reset !== undefined) look.raw[RESET_CONTROL] = reset;
+    this.state = { ...this.state, ...look };
+    this.runTicker();
+    this.push(origin);
+  }
+
+  /** The fixture with nothing set: dark, its function channels at rest, no effect. */
+  private rest(): Look {
+    const levels: Record<string, number> = {};
+    const raw: Record<string, number> = {};
+    for (const control of this.profile.controls) {
+      if (control.kind === 'function') raw[control.name] = control.idle;
+      else levels[control.name] = 0;
+    }
+    return {
+      levels,
+      raw,
+      effect: {
+        ...DEFAULT_EFFECT,
+        colourA: { ...DEFAULT_EFFECT.colourA },
+        colourB: { ...DEFAULT_EFFECT.colourB },
+      },
+    };
+  }
+
+  /** `base` with the change on top. Throws when any part of the change is invalid. */
+  private apply(base: Look, change: unknown, what: string): Look {
+    const patch = readObject(change, what, ['levels', 'raw', 'effect']) as StatePatch;
+    const levels = { ...base.levels };
+    const raw = { ...base.raw };
 
     const newLevels = patch.levels === undefined ? {} : readObject(patch.levels, 'levels');
     const newRaw = patch.raw === undefined ? {} : readObject(patch.raw, 'raw');
     for (const [name, value] of Object.entries(newLevels)) {
-      if (!(name in this.state.levels))
-        throw new PatchError(`"${name}" is not a level of this fixture`);
+      if (!(name in base.levels)) throw new PatchError(`"${name}" is not a level of this fixture`);
       if (typeof value !== 'number' || !Number.isFinite(value)) {
         throw new PatchError(`level "${name}" must be a number between 0 and 1`);
       }
       levels[name] = clamp01(value);
     }
     for (const [name, value] of Object.entries(newRaw)) {
-      if (!(name in this.state.raw)) throw new PatchError(`"${name}" is not a function channel`);
+      if (!(name in base.raw)) throw new PatchError(`"${name}" is not a function channel`);
       if (name === RESET_CONTROL) throw new PatchError('use the reset action to reset the fixture');
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 255) {
         throw new PatchError(`"${name}" must be a whole number between 0 and 255`);
       }
       raw[name] = value;
     }
-    const effect = this.readEffect(patch.effect);
-
-    this.state = { ...this.state, levels, raw, effect };
-    this.runTicker();
-    this.push(origin);
+    return { levels, raw, effect: this.readEffect(base.effect, patch.effect) };
   }
 
   act(name: string, origin?: string): void {
@@ -274,8 +315,7 @@ export class SpiderController extends EventEmitter implements FixtureController 
     this.removeAllListeners();
   }
 
-  private readEffect(change: unknown): EffectSettings {
-    const current = this.state.effect;
+  private readEffect(current: EffectSettings, change: unknown): EffectSettings {
     if (change === undefined) return current;
     const patch = readObject(change, 'effect', ['id', 'colourA', 'colourB']) as EffectPatch;
 

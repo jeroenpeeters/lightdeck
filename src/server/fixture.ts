@@ -6,6 +6,9 @@
  * kind of fixture; the rig, the HTTP side and the shell of the page only pass them on.
  * A new kind of fixture is a controller that fits this interface, an entry in
  * `kinds.ts` and a page in `public/fixtures/`.
+ *
+ * The same goes for scenes: what a scene keeps of a fixture is up to its controller,
+ * which gives it with `snapshot` and takes it back with `recall`.
  */
 
 import type { FixtureProfile } from '../fixtures/profile.js';
@@ -35,6 +38,19 @@ export interface FixtureController {
   update(patch: unknown, origin?: string): void;
   /** Does something by name, such as `reset`. Throws a `PatchError` for an unknown name. */
   act(name: string, origin?: string): void;
+
+  /**
+   * What a scene keeps of this fixture, as plain data that `recall` takes back. What is
+   * at rest is left out, so a fixture that is dark gives an empty object.
+   */
+  snapshot(): Record<string, unknown>;
+  /** Throws a `PatchError` when `recall` would refuse this part. Changes nothing. */
+  check(part: unknown): void;
+  /**
+   * Sets the fixture to its part of a scene. A scene is a complete look: what the part
+   * does not name goes to rest, and without a part the fixture goes dark.
+   */
+  recall(part: unknown, origin?: string): void;
   /** The blackout of the console. While on, the fixture is dark and keeps its state. */
   setBlackout(blackout: boolean): void;
   /**

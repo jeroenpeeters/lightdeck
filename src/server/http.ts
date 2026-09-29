@@ -1,18 +1,26 @@
 /**
  * HTTP side of the control pages, on Node's own http module.
  *
- *   GET  /                            goes to the page of the first fixture
+ *   GET  /                            goes to the deck
+ *   GET  /deck                        the deck: the scenes of the show
  *   GET  /fixtures/<id>               the page of a fixture: the file
  *                                     `fixtures/<kind>.html` from `publicDir`
  *   GET  /...                         the other static files from `publicDir`
  *   GET  /api/state                   everything a browser needs to draw itself
  *   GET  /api/events                  server-sent events: `fixture`, `tempo`, `blackout`,
- *                                     `status` and, while a fixture animates, `frame`
- *                                     with the bytes being sent and the beat
+ *                                     `status`, `show`, `playback` and, while a fixture
+ *                                     animates, `frame` with the bytes being sent and
+ *                                     the beat
  *   POST /api/tempo                   `bpm`, `rate`, `sync`
  *   POST /api/blackout                `blackout`: true or false, for every fixture
  *   POST /api/fixtures/<id>/update    partial state change of one fixture
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
+ *   POST /api/playback                `scene`: the id of the scene to set the fixtures to
+ *   POST /api/scenes                  `label`: stores the fixtures as they are as a new
+ *                                     scene, and answers with its `id`
+ *   POST /api/scenes/<id>/store       stores the fixtures as they are in this scene
+ *   POST /api/scenes/<id>/rename      `label`
+ *   POST /api/scenes/<id>/delete
  *
  * Every POST takes JSON and may carry `client`, which comes back as `origin` in the
  * event, so that a browser can skip its own echo.
@@ -25,6 +33,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, relative, sep } from 'node:path';
 import { PatchError } from './fixture.js';
+import type { PlaybackState, ShowSummary } from './playback.js';
 import type { LinkStatus, Rig, RigFixture } from './rig.js';
 import { MAX_BPM, MIN_BPM, RATES, type TempoState } from './tempo.js';
 
@@ -42,6 +51,8 @@ const MAX_BODY_BYTES = 64 * 1024;
 const KEEP_ALIVE_MS = 15_000;
 const FIXTURE_PAGE = /^\/fixtures\/([a-z0-9-]+)$/;
 const FIXTURE_POST = /^\/api\/fixtures\/([a-z0-9-]+)\/([a-z]+)$/;
+const SCENE_POST = /^\/api\/scenes\/([a-z0-9-]+)\/(store|rename|delete)$/;
+const DECK = '/deck';
 
 export interface HttpOptions {
   rig: Rig;
@@ -147,6 +158,8 @@ function describe({ rig, bridgeUrl }: HttpOptions) {
     tempo: { ...describeTempo(rig), min: MIN_BPM, max: MAX_BPM, rates: RATES },
     blackout: rig.getBlackout(),
     status: rig.getStatus(),
+    show: rig.playback.getShow(),
+    playback: rig.playback.getState(),
     bridgeUrl,
   };
 }
@@ -175,6 +188,8 @@ export function createHttpServer(options: HttpOptions): Server {
     broadcast('blackout', { blackout, origin: origin ?? null });
   });
   rig.on('status', (status: LinkStatus) => broadcast('status', status));
+  rig.on('show', (show: ShowSummary) => broadcast('show', show));
+  rig.on('playback', (state: PlaybackState) => broadcast('playback', state));
 
   const keepAlive = setInterval(() => {
     for (const stream of streams) stream.write(': keep-alive\n\n');
@@ -224,6 +239,8 @@ export function createHttpServer(options: HttpOptions): Server {
       res.write(message('tempo', { ...describeTempo(rig), origin: null }));
       res.write(message('blackout', { blackout: rig.getBlackout(), origin: null }));
       res.write(message('status', rig.getStatus()));
+      res.write(message('show', rig.playback.getShow()));
+      res.write(message('playback', rig.playback.getState()));
       req.on('close', () => streams.delete(res));
       return;
     }
@@ -242,6 +259,30 @@ export function createHttpServer(options: HttpOptions): Server {
       return;
     }
 
+    if (req.method === 'POST' && path === '/api/playback') {
+      const body = await readJson(req);
+      rig.playback.recall(body.scene, split(body).origin);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/scenes') {
+      const body = await readJson(req);
+      sendJson(res, 200, { ok: true, id: rig.playback.store(body.label) });
+      return;
+    }
+
+    const scene = req.method === 'POST' ? SCENE_POST.exec(path) : null;
+    if (scene) {
+      const id = scene[1] ?? '';
+      const body = await readJson(req);
+      if (scene[2] === 'store') rig.playback.storeOver(id);
+      else if (scene[2] === 'rename') rig.playback.rename(id, body.label);
+      else rig.playback.remove(id);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
     const post = req.method === 'POST' ? FIXTURE_POST.exec(path) : null;
     const fixture = post ? rig.find(post[1] ?? '') : undefined;
     if (post && fixture) {
@@ -254,12 +295,12 @@ export function createHttpServer(options: HttpOptions): Server {
     }
 
     if (req.method === 'GET' || req.method === 'HEAD') {
-      const first = rig.fixtures[0];
-      if (path === '/' && first) {
-        res.writeHead(302, { location: `/fixtures/${first.id}`, 'cache-control': 'no-store' });
+      if (path === '/') {
+        res.writeHead(302, { location: DECK, 'cache-control': 'no-store' });
         res.end();
         return;
       }
+      if (path === DECK && sendFile(req, res, '/deck.html')) return;
       const page = FIXTURE_PAGE.exec(path);
       const shown = page ? rig.find(page[1] ?? '') : undefined;
       if (shown && sendFile(req, res, `/fixtures/${shown.kind}.html`)) return;

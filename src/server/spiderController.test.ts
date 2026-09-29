@@ -352,3 +352,108 @@ describe('SpiderController effects', () => {
     expect(output.frames).toHaveLength(1);
   });
 });
+
+describe('SpiderController in a scene', () => {
+  let output: RecordingOutput;
+  let controller: SpiderController;
+
+  beforeEach(() => {
+    output = new RecordingOutput();
+    controller = new SpiderController({
+      profile: SPIDER_43CH,
+      layout: SPIDER_LAYOUT,
+      output,
+      tempo: new Tempo(),
+      universe: 0,
+      address: 1,
+      resetHoldMs: 3500,
+    });
+  });
+  afterEach(() => controller.close());
+
+  it('gives nothing while it is at rest', () => {
+    expect(controller.snapshot()).toEqual({});
+  });
+
+  it('gives what is set and leaves out what is at rest', () => {
+    controller.update({ levels: { dimmer: 1, red3: 0.5, strobe: 0 }, raw: { effectSpeed: 40 } });
+    expect(controller.snapshot()).toEqual({
+      levels: { dimmer: 1, red3: 0.5 },
+      raw: { effectSpeed: 40 },
+    });
+  });
+
+  it('gives the effect with its colours while one is chosen', () => {
+    const colourA = { red: 0, green: 1, blue: 0, white: 0 };
+    controller.update({ effect: { id: 'wave', colourA } });
+    expect(controller.snapshot()).toEqual({
+      effect: { id: 'wave', colourA, colourB: controller.getState().effect.colourB },
+    });
+    controller.update({ effect: { id: null } });
+    expect(controller.snapshot()).toEqual({});
+  });
+
+  it('comes back to what was kept, and what the part does not name goes to rest', () => {
+    controller.update({ levels: { dimmer: 1, red3: 0.5 }, effect: { id: 'wave' } });
+    const kept = controller.snapshot();
+    const before = controller.getState();
+    controller.update({
+      levels: { dimmer: 0.2, green1: 1, tilt1: 0.7 },
+      raw: { effectSpeed: 40 },
+      effect: { id: 'kick', colourA: { red: 0, green: 0, blue: 1, white: 0 } },
+    });
+    controller.recall(kept, 'deck');
+    expect(controller.getState()).toEqual(before);
+    expect(controller.snapshot()).toEqual(kept);
+  });
+
+  it('tells the listeners who recalled', () => {
+    const told = vi.fn();
+    controller.on('state', told);
+    controller.recall({ levels: { dimmer: 1 } }, 'deck');
+    expect(told).toHaveBeenCalledTimes(1);
+    expect(told.mock.calls[0]?.[1]).toBe('deck');
+    expect(ch(output, 6)).toBe(255);
+  });
+
+  it('goes dark without a part', () => {
+    controller.update({ levels: { dimmer: 1, white8: 1 }, effect: { id: 'kick' } });
+    controller.recall(undefined);
+    expect([...output.last].every((b) => b === 0)).toBe(true);
+    expect(controller.getState().effect.id).toBeNull();
+  });
+
+  it('lets a reset that is going on go on, and does not keep it in a scene', () => {
+    vi.useFakeTimers();
+    try {
+      controller.resetFixture();
+      expect(controller.snapshot()).toEqual({});
+      controller.recall({ levels: { dimmer: 1 } });
+      expect(controller.getState().resetting).toBe(true);
+      expect(ch(output, 43)).toBe(255);
+      vi.advanceTimersByTime(3500);
+      expect(ch(output, 43)).toBe(0);
+      expect(ch(output, 6)).toBe(255);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses a part it cannot take, and stays as it is', () => {
+    controller.update({ levels: { dimmer: 1 } });
+    const before = controller.getState();
+    for (const part of [
+      { levels: { glow: 1 } },
+      { raw: { reset: 255 } },
+      { effect: { id: 'disco' } },
+      { colour: 'red' },
+      'bright',
+    ]) {
+      expect(() => controller.check(part)).toThrow(PatchError);
+      expect(() => controller.recall(part)).toThrow(PatchError);
+    }
+    expect(controller.getState()).toEqual(before);
+    expect(() => controller.check({ levels: { dimmer: 0.5 } })).not.toThrow();
+    expect(controller.getState()).toEqual(before);
+  });
+});
