@@ -12,9 +12,9 @@
  */
 
 import { parseArgs } from 'node:util';
-import { type Control, encodeFixture, UNIVERSE_SIZE, writeFixture } from '../fixtures/profile.js';
+import { encodeFixture, UNIVERSE_SIZE, writeFixture } from '../fixtures/profile.js';
 import { SPIDER_43CH, SPIDER_CELLS } from '../fixtures/spider.js';
-import { Lr512BridgeClient } from '../outputs/lr512/bridgeClient.js';
+import { printBytes, printTable, sendToBridge } from './shared.js';
 
 const profile = SPIDER_43CH;
 const COLOURS = ['red', 'green', 'blue', 'white'];
@@ -42,27 +42,6 @@ examples:
 function fail(message: string): never {
   console.error(`${message}\n\n${USAGE}`);
   process.exit(1);
-}
-
-function channelsOf(control: Control): string {
-  return control.kind === 'level' && control.fineChannel !== undefined
-    ? `${control.channel}+${control.fineChannel}`
-    : String(control.channel);
-}
-
-function printTable(): void {
-  console.log(`${profile.name} (${profile.footprint} channels)\n`);
-  for (const control of profile.controls) {
-    const unit = control.kind === 'function' ? 'raw 0..255' : 'percent';
-    console.log(
-      `  ${channelsOf(control).padStart(5)}  ${control.name.padEnd(12)} ${unit.padEnd(11)} ${control.label}`,
-    );
-    if (control.kind === 'function') {
-      for (const r of control.ranges) {
-        console.log(`${' '.repeat(33)}${`${r.from}-${r.to}`.padEnd(8)} ${r.meaning}`);
-      }
-    }
-  }
 }
 
 function integerOption(value: string | undefined, fallback: number, name: string): number {
@@ -99,7 +78,7 @@ if (options.help) {
   process.exit(0);
 }
 if (options.list) {
-  printTable();
+  printTable(profile);
   process.exit(0);
 }
 
@@ -140,66 +119,12 @@ try {
 }
 
 console.log(`Spider at address ${address}, universe index ${universeIndex}:`);
-let any = false;
-for (const control of profile.controls) {
-  const bytes =
-    control.kind === 'level' && control.fineChannel !== undefined
-      ? [footprint[control.channel - 1], footprint[control.fineChannel - 1]]
-      : [footprint[control.channel - 1]];
-  if (bytes.every((b) => b === 0)) continue;
-  any = true;
-  console.log(
-    `  ch ${channelsOf(control).padStart(5)}  ${control.name.padEnd(12)} = ${bytes.join(', ')}`,
-  );
-}
-if (!any) console.log('  all channels 0 (blackout)');
+printBytes(profile, footprint, 'all channels 0 (blackout)');
 
-const sendOnce = options.once || options.blackout;
-const client = new Lr512BridgeClient({
-  url: `ws://${host}:${port}`,
-  log: (message) => console.log(message),
-  onStatus: (status) => {
-    console.log(
-      status.device === 'open'
-        ? `bridge: LR512 open, ${status.universes} universes`
-        : 'bridge: LR512 not connected, the bridge holds the frame until it is back',
-    );
-    if (status.device === 'open' && universeIndex >= status.universes) {
-      console.log(`warning: universe index ${universeIndex} does not exist on this device`);
-    } else if (status.device === 'open' && status.channels[universeIndex] === 0) {
-      const usable = status.channels.flatMap((c, i) => (c > 0 ? [i] : []));
-      console.log(
-        `warning: universe index ${universeIndex} has 0 channels on this LR512, so nothing reaches the fixture.` +
-          (usable.length > 0 ? ` Use --universe ${usable.join(' or ')}.` : ''),
-      );
-    }
-  },
-  onConnection: (connected) => {
-    if (!connected || !sendOnce) return;
-    // Give the frame time to leave the socket, then exit.
-    client.tick();
-    setTimeout(() => {
-      client.stop();
-      process.exit(0);
-    }, 300);
-  },
-});
-
-client.setUniverse(universeIndex, universe);
-client.start();
-if (sendOnce) {
-  setTimeout(() => {
-    console.error(`could not reach the bridge at ws://${host}:${port} within 10 s`);
-    client.stop();
-    process.exit(1);
-  }, 10_000);
-} else {
-  console.log('Holding this state. Ctrl-C to stop; the lights stay as they are.');
-  // Keep the state fresh in case the bridge app restarts.
-  setInterval(() => client.setUniverse(universeIndex, universe), 1000);
-}
-
-process.on('SIGINT', () => {
-  client.stop();
-  process.exit(0);
+sendToBridge({
+  host,
+  port,
+  universeIndex,
+  universe,
+  once: options.once || options.blackout,
 });

@@ -15,6 +15,19 @@ export interface ByteRange {
   from: number;
   to: number;
   meaning: string;
+  /** Names the range within its control, so that it can be chosen: `manual`, `speed`. */
+  key?: string;
+  /** Short plain name for a key on the control page. */
+  name?: string;
+  /**
+   * What the place within the range sets, for example `Speed`. Without it, and without
+   * `steps`, every byte in the range means the same.
+   */
+  scale?: string;
+  /** Number of choices spread evenly over the range, for example 51 patterns. */
+  steps?: number;
+  /** The range only counts while another function control sits in the range with this key. */
+  when?: { control: string; key: string };
 }
 
 interface ControlBase {
@@ -24,6 +37,8 @@ interface ControlBase {
   channel: number;
   /** The manual's wording for this channel. */
   label: string;
+  /** Plain name for the control page, where the manual's wording does not help. */
+  title?: string;
   /** Links the control to the normalized fixture model. */
   attribute?: Attribute;
   /** 1-based cell (LED, head) this control belongs to, when the fixture has several. */
@@ -107,7 +122,43 @@ export function defineProfile(profile: FixtureProfile): FixtureProfile {
       claim(control.fineChannel, `${control.name} (fine)`);
     }
   }
+  for (const control of profile.controls) {
+    if (control.kind === 'function') checkRanges(profile, control);
+  }
   return Object.freeze({ ...profile, controls: Object.freeze([...profile.controls]) });
+}
+
+function checkRanges(profile: FixtureProfile, control: FunctionControl): void {
+  const where = `${profile.id}: control "${control.name}"`;
+  const keys = new Set<string>();
+  for (const range of control.ranges) {
+    const { from, to, key, steps, when } = range;
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to > 255 || from > to) {
+      throw new RangeError(`${where} has a range ${from}-${to}, outside 0..255`);
+    }
+    if (key !== undefined) {
+      if (keys.has(key)) throw new Error(`${where} has two ranges with the key "${key}"`);
+      keys.add(key);
+    }
+    if (steps !== undefined && (!Number.isInteger(steps) || steps < 2 || steps > to - from + 1)) {
+      throw new RangeError(`${where} cannot have ${steps} steps in the range ${from}-${to}`);
+    }
+    if (when !== undefined) {
+      const other = profile.controls.find((c) => c.name === when.control);
+      const needed = other?.kind === 'function' ? findRange(other, when.key) : undefined;
+      if (!needed) {
+        throw new Error(
+          `${where} depends on "${when.control}" being "${when.key}", which is not there`,
+        );
+      }
+      // One level deep, so that working out which ranges count always ends.
+      if (needed.when) {
+        throw new Error(
+          `${where} depends on "${when.control}" being "${when.key}", which depends on something itself`,
+        );
+      }
+    }
+  }
 }
 
 export function findControl(profile: FixtureProfile, name: string): Control | undefined {
@@ -128,6 +179,76 @@ function checkRaw(profile: FixtureProfile, control: Control, value: number): num
     );
   }
   return value;
+}
+
+export function findRange(control: FunctionControl, key: string): ByteRange | undefined {
+  return control.ranges.find((r) => r.key === key);
+}
+
+/**
+ * The range a function control is in. `raw` holds the bytes of the fixture's function
+ * controls by name; a control without a byte is at its idle value. Ranges that depend on
+ * another control only count while that control is in the range they name.
+ */
+export function rangeAt(
+  profile: FixtureProfile,
+  control: FunctionControl,
+  raw: Readonly<Record<string, number>> = {},
+): ByteRange | undefined {
+  const byte = raw[control.name] ?? control.idle;
+  return activeRanges(profile, control, raw).find((r) => byte >= r.from && byte <= r.to);
+}
+
+/** The ranges of a function control that count, given the bytes of the other controls. */
+export function activeRanges(
+  profile: FixtureProfile,
+  control: FunctionControl,
+  raw: Readonly<Record<string, number>> = {},
+): ByteRange[] {
+  return control.ranges.filter((range) => {
+    if (!range.when) return true;
+    const other = findControl(profile, range.when.control);
+    if (other?.kind !== 'function') return false;
+    return rangeAt(profile, other, raw)?.key === range.when.key;
+  });
+}
+
+/** Bytes per step of a range. A range without `steps` is one step. */
+function stepWidth(range: ByteRange): number {
+  return Math.floor((range.to - range.from + 1) / (range.steps ?? 1));
+}
+
+/**
+ * The byte that chooses a range. With a `scale`, `place` 0..1 runs through the range.
+ * Without one the byte is the control's idle value when that lies in the range, and
+ * otherwise the middle of the range, away from edges the manual may have off by one.
+ */
+export function byteInRange(control: FunctionControl, range: ByteRange, place = 0): number {
+  if (range.steps !== undefined) {
+    return byteForStep(range, 1 + Math.round(clamp01(place) * (range.steps - 1)));
+  }
+  if (range.scale !== undefined) {
+    return range.from + Math.round((range.to - range.from) * clamp01(place));
+  }
+  if (control.idle >= range.from && control.idle <= range.to) return control.idle;
+  return Math.floor((range.from + range.to) / 2);
+}
+
+/** The byte for step 1..`steps` of a range: the middle of the bytes that step has. */
+export function byteForStep(range: ByteRange, step: number): number {
+  const steps = range.steps ?? 1;
+  if (!Number.isInteger(step) || step < 1 || step > steps) {
+    throw new RangeError(`step ${step} is outside 1..${steps}`);
+  }
+  const width = stepWidth(range);
+  return Math.min(range.to, range.from + (step - 1) * width + Math.floor(width / 2));
+}
+
+/** The step 1..`steps` a byte chooses. Bytes left over at the end belong to the last step. */
+export function stepOfByte(range: ByteRange, byte: number): number {
+  const steps = range.steps ?? 1;
+  const step = Math.floor((byte - range.from) / stepWidth(range)) + 1;
+  return Math.min(steps, Math.max(1, step));
 }
 
 /** Normalized level to the control's raw value. */

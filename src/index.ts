@@ -1,20 +1,28 @@
 /**
- * lightdeck: serves the spider control page and keeps the LR512 bridge fed.
+ * lightdeck: serves a control page per fixture, puts the universes together and keeps
+ * the LR512 bridge fed.
  *
  * Settings come from the command line or the environment:
- *   --bridge   LR512_BRIDGE_URL   ws://<phone-ip>:9010, required
- *   --universe SPIDER_UNIVERSE    bridge universe index, 0-based (default 0, the first port)
- *   --address  SPIDER_ADDRESS     DMX start address of the spider (default 1)
- *   --port     PORT               port of the web page (default 8080)
- *   --host     HOST               address to listen on (default 0.0.0.0)
+ *   --bridge         LR512_BRIDGE_URL   ws://<phone-ip>:9010, required
+ *   --universe       SPIDER_UNIVERSE    bridge universe index of the spider, 0-based
+ *                                       (default 0, the first port)
+ *   --address        SPIDER_ADDRESS     DMX start address of the spider (default 1)
+ *   --laser-universe LASER_UNIVERSE     bridge universe index of the laser (default: the
+ *                                       spider's)
+ *   --laser-address  LASER_ADDRESS      DMX start address of the laser (default 44, right
+ *                                       after a spider at 1), or "none" to run without it
+ *   --port           PORT               port of the web page (default 8080)
+ *   --host           HOST               address to listen on (default 0.0.0.0)
  */
 
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { SPIDER_43CH, SPIDER_LAYOUT } from './fixtures/spider.js';
 import { Lr512BridgeClient } from './outputs/lr512/bridgeClient.js';
-import { SpiderController } from './server/controller.js';
 import { createHttpServer } from './server/http.js';
+import { type FixtureDefinition, Rig } from './server/rig.js';
+
+/** How long the last frame gets to leave for the bridge when lightdeck stops. */
+const LAST_FRAME_MS = 300;
 
 function fail(message: string): never {
   console.error(message);
@@ -32,6 +40,8 @@ const { values: args } = parseArgs({
     bridge: { type: 'string' },
     universe: { type: 'string' },
     address: { type: 'string' },
+    'laser-universe': { type: 'string' },
+    'laser-address': { type: 'string' },
     port: { type: 'string' },
     host: { type: 'string' },
   },
@@ -46,60 +56,95 @@ if (!bridgeUrl) {
 }
 const universe = wholeNumber(args.universe ?? process.env.SPIDER_UNIVERSE ?? '0', 'universe');
 const address = wholeNumber(args.address ?? process.env.SPIDER_ADDRESS ?? '1', 'address');
+const laserAddressText = args['laser-address'] ?? process.env.LASER_ADDRESS ?? '44';
+const laserAddress =
+  laserAddressText === 'none' ? undefined : wholeNumber(laserAddressText, 'laser address');
+const laserUniverse = wholeNumber(
+  args['laser-universe'] ?? process.env.LASER_UNIVERSE ?? String(universe),
+  'laser universe',
+);
 const port = wholeNumber(args.port ?? process.env.PORT ?? '8080', 'port');
 const host = args.host ?? process.env.HOST ?? '0.0.0.0';
 
+// The fixtures on the console. One more fixture is one more line here.
+const fixtures: FixtureDefinition[] = [
+  { id: 'spider', kind: 'spider', label: 'Spider', universe, address },
+];
+if (laserAddress !== undefined) {
+  fixtures.push({
+    id: 'laser',
+    kind: 'laser',
+    label: 'Laser',
+    universe: laserUniverse,
+    address: laserAddress,
+  });
+}
+
 const log = (message: string) => console.log(`${new Date().toISOString()}  ${message}`);
 
-let controller: SpiderController | undefined;
+let rig: Rig | undefined;
 const bridge = new Lr512BridgeClient({
   url: bridgeUrl,
   log: (message) => log(`bridge: ${message}`),
-  onConnection: (connected) => controller?.setBridgeConnected(connected),
+  onConnection: (connected) => rig?.setBridgeConnected(connected),
   onStatus: (status) => {
     log(
       `bridge: LR512 ${status.device}, ${status.universes} universes, channels per universe [${status.channels.join(', ')}]`,
     );
-    if (status.device === 'open' && status.channels[universe] === 0) {
-      log(
-        `warning: universe index ${universe} has 0 channels on this LR512, nothing sent to it reaches a fixture`,
-      );
+    for (const index of new Set(fixtures.map((fixture) => fixture.universe))) {
+      if (status.device === 'open' && status.channels[index] === 0) {
+        log(
+          `warning: universe index ${index} has 0 channels on this LR512, nothing sent to it reaches a fixture`,
+        );
+      }
     }
-    controller?.setDeviceStatus(status);
+    rig?.setDeviceStatus(status);
   },
 });
 
 try {
-  controller = new SpiderController({
-    profile: SPIDER_43CH,
-    layout: SPIDER_LAYOUT,
-    output: bridge,
-    universe,
-    address,
-  });
+  rig = new Rig({ output: bridge, fixtures });
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
 
 const server = createHttpServer({
-  controller,
+  rig,
   bridgeUrl,
   publicDir: fileURLToPath(new URL('./server/public/', import.meta.url)),
 });
 
 server.on('error', (error) => fail(`cannot listen on ${host}:${port}: ${error.message}`));
 server.listen(port, host, () => {
-  log(`spider page on http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
-  log(`spider at address ${address}, universe index ${universe}, bridge ${bridgeUrl}`);
+  log(`control pages on http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
+  log(`bridge ${bridgeUrl}`);
+  for (const fixture of fixtures) {
+    log(
+      `${fixture.label} at address ${fixture.address}, universe index ${fixture.universe}, page /fixtures/${fixture.id}`,
+    );
+  }
+  if (laserAddress === undefined) log('no laser: started with laser address "none"');
   bridge.start();
 });
 
+let stopping = false;
 const shutdown = () => {
-  bridge.stop();
-  controller?.close();
-  server.close(() => process.exit(0));
+  if (stopping) return;
+  stopping = true;
+  // The bridge holds the last frame it got. A laser must not keep burning with nobody at
+  // the controls: fixtures like that go dark now, and that frame gets time to leave.
+  rig?.darken();
+  bridge.tick();
+  rig?.close();
   // Open event streams keep the server alive; do not wait for them.
-  setTimeout(() => process.exit(0), 500).unref();
+  server.close();
+  setTimeout(
+    () => {
+      bridge.stop();
+      process.exit(0);
+    },
+    bridge.connected ? LAST_FRAME_MS : 0,
+  );
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f1114" />
+    <title>Spider</title>
+    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/fixtures/spider.css" />
+  </head>
+  <body>
+    <!-- The shell puts the status bar, the tempo and the notice above this. -->
+    <main class="console" id="console" data-view="effects">
+      <header class="fixture-head">
+        <h1 id="fixture-name">Spider</h1>
+        <p class="where" id="where"></p>
+        <p class="running" id="running" data-on="false"></p>
+      </header>
+
+      <section class="panel output" aria-labelledby="output-title">
+        <h2 id="output-title">Output</h2>
+        <div class="strip" id="strip"></div>
+      </section>
+
+      <section class="panel master" aria-labelledby="master-title">
+        <h2 id="master-title">Master</h2>
+        <div class="sliders" id="master-sliders"></div>
+      </section>
+
+      <div class="panel work">
+        <div class="views" role="tablist" aria-label="Controls">
+          <button type="button" role="tab" class="view-tab" id="tab-effects" aria-controls="view-effects" aria-selected="true">Effects</button>
+          <button type="button" role="tab" class="view-tab" id="tab-colour" aria-controls="view-colour" aria-selected="false">Colour</button>
+          <button type="button" role="tab" class="view-tab" id="tab-movement" aria-controls="view-movement" aria-selected="false">Movement</button>
+          <button type="button" role="tab" class="view-tab" id="tab-fixture" aria-controls="view-fixture" aria-selected="false">Fixture</button>
+        </div>
+
+        <div class="view view-effects" role="tabpanel" id="view-effects" aria-labelledby="tab-effects">
+          <div class="effects-choice">
+            <fieldset class="effect-list" id="effect-list">
+              <legend class="visually-hidden">Choose an effect</legend>
+            </fieldset>
+            <button type="button" class="key stop" id="effect-stop">Stop the effect</button>
+            <p class="hint" id="effect-hint"></p>
+          </div>
+
+          <div class="effects-settings">
+            <fieldset class="choice" id="colour-a">
+              <legend>First colour</legend>
+            </fieldset>
+            <fieldset class="choice" id="colour-b">
+              <legend>Second colour</legend>
+            </fieldset>
+            <p class="hint" id="palette-hint" hidden></p>
+          </div>
+        </div>
+
+        <div class="view view-colour" role="tabpanel" id="view-colour" aria-labelledby="tab-colour" hidden>
+          <h3 id="mixer-title">Colour</h3>
+          <p class="hint" id="mixer-hint"></p>
+          <fieldset class="choice" id="picks">
+            <legend>Lenses</legend>
+          </fieldset>
+          <div class="sliders" id="colour-sliders"></div>
+          <fieldset class="choice" id="swatches">
+            <legend>Ready-made colours</legend>
+          </fieldset>
+        </div>
+
+        <div class="view view-movement" role="tabpanel" id="view-movement" aria-labelledby="tab-movement" hidden>
+          <p class="hint" id="motion-hint" hidden></p>
+          <div class="sliders" id="motion-sliders"></div>
+          <label class="check">
+            <input type="checkbox" id="link-bars" checked />
+            <span>Move both bars together</span>
+          </label>
+        </div>
+
+        <div class="view view-fixture" role="tabpanel" id="view-fixture" aria-labelledby="tab-fixture" hidden>
+          <h3>Built-in programs</h3>
+          <p class="hint">
+            The spider can run its own programs. Keep both program sliders at 0 to control the
+            lights yourself.
+          </p>
+          <div class="sliders" id="program-sliders"></div>
+
+          <div class="reset">
+            <button type="button" class="key reset-button" id="reset">Hold to restart the spider</button>
+            <p class="hint" id="reset-hint">Hold the button for one second. The spider restarts.</p>
+          </div>
+
+          <h3>Channels being sent</h3>
+          <ol class="readout" id="readout"></ol>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="/fixtures/spider.js"></script>
+  </body>
+</html>

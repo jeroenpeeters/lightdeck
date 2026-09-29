@@ -1,0 +1,155 @@
+/**
+ * The rig: every fixture on the console, and what they share.
+ *
+ * The rig owns the patch, so it is the one place where universes are put together:
+ * each fixture controller encodes its own channels, and the rig hands the whole
+ * universe to the output. It also holds what belongs to no single fixture: the tempo,
+ * the blackout and the state of the link to the LR512.
+ *
+ * Events: `fixture` (id, state, dmx, origin), `frame` (id, dmx, beat),
+ * `tempo` (state, beat, origin), `blackout` (blackout, origin), `status` (status).
+ */
+
+import { EventEmitter } from 'node:events';
+import type { BridgeStatus } from '../outputs/lr512/bridgeClient.js';
+import { Patch, type UniverseOutput } from '../outputs/patch.js';
+import { type FixtureController, PatchError } from './fixture.js';
+import { FIXTURE_KINDS, type FixtureKind } from './kinds.js';
+import { Tempo, type TempoState } from './tempo.js';
+
+export interface FixtureDefinition {
+  /** Names the fixture in addresses of pages and of the API: `spider`, `spider-2`. */
+  id: string;
+  /** Which kind of fixture it is, a key of the kinds. */
+  kind: string;
+  /** What the operator calls it. */
+  label: string;
+  /** 0-based universe index on the bridge. */
+  universe: number;
+  /** 1-based DMX start address. */
+  address: number;
+}
+
+export interface RigFixture extends FixtureDefinition {
+  controller: FixtureController;
+}
+
+export interface LinkStatus {
+  /** The server has a connection to the bridge app. */
+  bridge: boolean;
+  /** What the bridge says about the LR512. Unknown until it has reported. */
+  device: 'open' | 'lost' | 'unknown';
+  universes: number;
+  /** Licensed channels per universe as reported by the bridge; empty when unknown. */
+  channels: number[];
+}
+
+export interface RigOptions {
+  output: UniverseOutput;
+  fixtures: readonly FixtureDefinition[];
+  kinds?: Readonly<Record<string, FixtureKind>>;
+  /** Monotonic clock in milliseconds. Tests pass their own. */
+  now?: () => number;
+}
+
+const ID = /^[a-z0-9][a-z0-9-]*$/;
+
+export class Rig extends EventEmitter {
+  readonly tempo: Tempo;
+  readonly fixtures: readonly RigFixture[];
+
+  private blackout = false;
+  private link: LinkStatus = { bridge: false, device: 'unknown', universes: 0, channels: [] };
+
+  /** Throws when a fixture is unknown, named twice, or does not fit where it is put. */
+  constructor(options: RigOptions) {
+    super();
+    const kinds = options.kinds ?? FIXTURE_KINDS;
+    this.tempo = new Tempo(options.now ? { now: options.now } : {});
+    const patch = new Patch(options.output);
+
+    const fixtures: RigFixture[] = [];
+    try {
+      for (const definition of options.fixtures) {
+        const { id, label, universe, address } = definition;
+        if (!ID.test(id)) {
+          throw new Error(`"${id}" cannot name a fixture: use small letters, digits and dashes`);
+        }
+        if (fixtures.some((f) => f.id === id)) throw new Error(`two fixtures are called "${id}"`);
+        const kind = kinds[definition.kind];
+        if (!kind) {
+          throw new Error(
+            `"${id}" is a ${definition.kind}, which lightdeck does not know. It knows: ${Object.keys(kinds).join(', ')}`,
+          );
+        }
+        const output = patch.claim(label, universe, address, kind.profile.footprint);
+        const controller = kind.create({ output, tempo: this.tempo, universe, address });
+        fixtures.push({ ...definition, controller });
+      }
+    } catch (error) {
+      for (const made of fixtures) made.controller.close();
+      throw error;
+    }
+    this.fixtures = fixtures;
+
+    for (const { id, controller } of fixtures) {
+      controller.on('state', (state: unknown, origin?: string) => {
+        this.emit('fixture', id, state, controller.getDmx(), origin);
+      });
+      controller.on('frame', (dmx: number[], beat: number) => {
+        this.emit('frame', id, dmx, beat);
+      });
+    }
+    this.tempo.on('tempo', (state: TempoState, origin?: string) => {
+      this.emit('tempo', state, this.tempo.getBeat(), origin);
+    });
+  }
+
+  find(id: string): RigFixture | undefined {
+    return this.fixtures.find((fixture) => fixture.id === id);
+  }
+
+  getBlackout(): boolean {
+    return this.blackout;
+  }
+
+  /** Darkens every fixture, or lets them show again what they are set to. */
+  setBlackout(blackout: unknown, origin?: string): void {
+    if (typeof blackout !== 'boolean') throw new PatchError('blackout must be true or false');
+    this.blackout = blackout;
+    for (const { controller } of this.fixtures) controller.setBlackout(blackout);
+    this.emit('blackout', blackout, origin);
+  }
+
+  getStatus(): LinkStatus {
+    return { ...this.link, channels: [...this.link.channels] };
+  }
+
+  setBridgeConnected(connected: boolean): void {
+    this.link = connected
+      ? { ...this.link, bridge: true }
+      : { bridge: false, device: 'unknown', universes: 0, channels: [] };
+    this.emit('status', this.getStatus());
+  }
+
+  setDeviceStatus(status: BridgeStatus): void {
+    this.link = {
+      ...this.link,
+      device: status.device,
+      universes: status.universes,
+      channels: [...status.channels],
+    };
+    this.emit('status', this.getStatus());
+  }
+
+  /** For when lightdeck stops: fixtures that must not stay on go dark. */
+  darken(): void {
+    for (const { controller } of this.fixtures) controller.darken();
+  }
+
+  close(): void {
+    for (const { controller } of this.fixtures) controller.close();
+    this.tempo.removeAllListeners();
+    this.removeAllListeners();
+  }
+}

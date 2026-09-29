@@ -1,0 +1,72 @@
+/*
+ * What belongs to the page of the laser: the tile that says what it does, and the
+ * blocks with keys and a fader per channel.
+ */
+
+/* ---- what the laser does ---- */
+
+.laser-tile {
+  display: grid;
+  align-content: center;
+  gap: 0.1rem;
+  min-height: 4.25rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  max-width: 24rem;
+  margin-top: 0.75rem;
+}
+.laser-state {
+  font-size: var(--large);
+  font-weight: 600;
+  line-height: 1.1;
+}
+.laser-detail {
+  color: var(--dim);
+  font-size: var(--small);
+}
+/* The laser is open: it draws. */
+.laser-tile[data-on="true"] {
+  border-color: var(--signal);
+  box-shadow: inset 0 0 0 1px var(--signal);
+}
+.laser-tile[data-on="true"] .laser-state {
+  color: var(--signal);
+}
+
+/* ---- the channels ---- */
+
+.work > h3 {
+  margin-top: 2rem;
+}
+.laser-blocks {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.75rem 2rem;
+}
+.work > .hint + .laser-blocks {
+  margin-top: 1rem;
+}
+@container (min-width: 46rem) {
+  .laser-blocks {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+.laser-block > .choice {
+  margin-top: 0;
+}
+.laser-block > .hint {
+  margin-top: 0.5rem;
+}
+/* A fader with a key on either side, to go one step at a time. */
+.stepper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: end;
+  margin-top: 0.75rem;
+}
+.stepper[data-steps="true"] {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
