@@ -1,13 +1,15 @@
 // The shell of every page of the console. Plain browser JavaScript, no build step.
 //
 // A page is about one fixture, or about the show, as the deck is. Around it the shell
-// puts what belongs to no fixture: the way to the other pages, the tempo and the speed,
-// the blackout, the level of the master, and the state of the link to the LR512. It also
+// puts what belongs to no fixture: the way to the other pages, the tempo, the blackout,
+// the level of the master and of the master speed, and the state of the link to the LR512. It also
 // does the talking to the server, so that a page only has to say what changes and to draw
 // what it is told.
 //
 // The master is shown here and set on the deck. It is shown on every page, because on
-// the page of a fixture it is why less goes out than what is set.
+// the page of a fixture it is why less goes out than what is set. The same goes for the
+// master speed: it multiplies with the speed of every effect, so on the page of a
+// fixture it is why an effect runs faster or slower than it is set to.
 //
 // A page starts the shell and gets back what it needs:
 //
@@ -35,17 +37,24 @@
 //   shell.notes(() => [{ text, level, urgent }])        what the page has to say
 //   shell.refresh()                        show the notes again
 //   shell.blackout, shell.tempo, shell.beat()
+//   shell.speed(own)                       what an effect with the speed `own` runs at:
+//                                          { given, held }. `given` is its own speed
+//                                          times the master speed, halved until
+//                                          it stays within the changes per second that
+//                                          are allowed, and `held` says that it was halved
 //   shell.master                           the master, 0 to 1
 //   shell.setMaster(level)                 move the master, for every fixture
+//   shell.rates                            the speeds the master speed can have
+//   shell.tempo.rate                       the master speed
+//   shell.setRate(rate)                    set the master speed, for every effect
 //
 // And for a page that shows the master:
 //
 //   masterPercent(level)                   the master in percent, as the shell shows it
 
 import { changesOnTheWay, merge } from './changes.js';
-import { $, button, element, percent, slider } from './ui.js';
+import { $, element, percent, slider, speedName } from './ui.js';
 
-const RATE_NAMES = { 0.5: 'Half', 1: 'Normal', 2: 'Double' };
 const BEATS_PER_BAR = 4;
 const RETRY_MS = 600;
 /** Taps further apart than this start a new count. */
@@ -60,6 +69,10 @@ const FRAME = `
       <span class="master-name">Master</span>
       <span class="master-value" id="master-value"></span>
     </p>
+    <p class="master-level" id="speed-level" data-full="true">
+      <span class="master-name">Speed</span>
+      <span class="master-value" id="speed-value"></span>
+    </p>
     <ul class="links" id="links" aria-label="Connection">
       <li class="link" id="link-bridge" data-state="unknown">
         <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
@@ -71,7 +84,7 @@ const FRAME = `
     <button type="button" class="blackout" id="blackout" aria-pressed="false">Blackout</button>
   </header>
 
-  <section class="panel desk" aria-label="Tempo and speed">
+  <section class="panel desk" aria-label="Tempo">
     <div class="sliders" id="tempo-sliders"></div>
     <div class="desk-tap">
       <p class="hint">Your last tap is beat one of the bar.</p>
@@ -87,9 +100,6 @@ const FRAME = `
         </ol>
       </div>
     </div>
-    <fieldset class="choice" id="rates">
-      <legend>Speed</legend>
-    </fieldset>
   </section>
 
   <p class="notice" id="notice" role="status" hidden></p>
@@ -472,10 +482,12 @@ export async function start({ page = 'fixture' } = {}) {
   $('tempo-down').addEventListener('click', () => nudgeTempo(-1));
   $('tempo-up').addEventListener('click', () => nudgeTempo(1));
 
-  for (const rate of limits.rates) {
-    const made = button('pick', RATE_NAMES[rate] ?? `${rate} times`, () => setTempo({ rate }));
-    made.dataset.rate = String(rate);
-    $('rates').append(made);
+  /** The speed an effect runs at, counted the way the server does. */
+  function speed(own = 1) {
+    const wanted = own * tempo.rate;
+    let given = wanted;
+    while ((tempo.bpm / 60) * given > limits.changesPerSecond) given /= 2;
+    return { given, held: given < wanted };
   }
 
   $('blackout').addEventListener('click', () => {
@@ -572,9 +584,8 @@ export async function start({ page = 'fixture' } = {}) {
 
   function render() {
     tempoRow.refresh();
-    for (const made of document.querySelectorAll('#rates .pick')) {
-      made.setAttribute('aria-pressed', String(Number(made.dataset.rate) === tempo.rate));
-    }
+    $('speed-level').dataset.full = String(tempo.rate === 1);
+    $('speed-value').textContent = speedName(tempo.rate);
     $('blackout').setAttribute('aria-pressed', String(blackout));
     $('blackout').textContent = blackout ? 'Lift blackout' : 'Blackout';
     const level = masterPercent(master);
@@ -608,6 +619,7 @@ export async function start({ page = 'fixture' } = {}) {
     },
     refresh: renderNotice,
     beat: beatNow,
+    speed,
     get blackout() {
       return blackout;
     },
@@ -615,6 +627,8 @@ export async function start({ page = 'fixture' } = {}) {
       return master;
     },
     setMaster,
+    rates: limits.rates,
+    setRate: (rate) => setTempo({ rate }),
     get tempo() {
       return { ...tempo };
     },

@@ -5,12 +5,23 @@
 // another screen come back through the shell. While an effect runs, the server also
 // sends the bytes that go to the fixture, and the lenses are drawn from those.
 //
-// Tempo, speed, blackout and the master are not the spider's: they are in the shell.
+// Tempo, blackout, the master and the master speed are not the spider's: they are in the
+// shell.
 // The master is set on the deck. Here it only dims the drawing of the lenses, which
 // shows what goes out.
 
 import { start } from '../shell.js';
-import { $, button, element, percent, renderReadout, slider, views } from '../ui.js';
+import {
+  $,
+  button,
+  element,
+  percent,
+  renderReadout,
+  slider,
+  speedKeys,
+  speedNote,
+  views,
+} from '../ui.js';
 
 const SWATCHES = [
   { name: 'Amber', red: 1, green: 0.58, blue: 0, white: 0 },
@@ -29,6 +40,8 @@ const RESET_HOLD_MS = 1000;
 let shell;
 let fixture;
 let effects = [];
+/** Shows which speed of the effect is chosen. */
+let showSpeed = () => {};
 /** Bars as the page names them: 1-based lens numbers and the tilt control of the bar. */
 let bars = [];
 let colours = [];
@@ -208,6 +221,9 @@ function buildEffects() {
     $('effect-list').append(made);
   }
   $('effect-stop').addEventListener('click', () => setEffect({ id: null }));
+  showSpeed = speedKeys($('effect-speed'), fixture.details.speeds ?? [1], (speed) =>
+    setEffect({ speed }),
+  );
 
   for (const [id, key] of [
     ['colour-a', 'colourA'],
@@ -386,6 +402,9 @@ function renderEffects() {
   $('effect-hint').textContent = effect
     ? effect.description
     : 'Choose an effect. It sets the colours in time with the music. Brightness, strobe and blackout stay with you.';
+  const speed = state.effect.speed ?? 1;
+  showSpeed(speed);
+  $('speed-hint').textContent = speedNote(speed, shell.speed(speed));
 
   for (const [id, key] of [
     ['colour-a', 'colourA'],

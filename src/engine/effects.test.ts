@@ -4,9 +4,10 @@ import {
   type EffectContext,
   type EffectFrame,
   findEffect,
-  flashesPerBeat,
+  limitSpeed,
   MAX_FLASH_HZ,
   type Rgbw,
+  SPEEDS,
 } from './effects.js';
 
 const A: Rgbw = { red: 1, green: 0.5, blue: 0, white: 0 };
@@ -122,26 +123,32 @@ describe('kick', () => {
 });
 
 describe('chase', () => {
-  it('moves the bright lens along all eight, twice per bar', () => {
-    const order = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75].map((beat) =>
-      brightest(render('chase', beat + 0.01)),
-    );
+  it('moves the bright lens along all eight, one lens per beat', () => {
+    const order = [0, 1, 2, 3, 4, 5, 6, 7].map((beat) => brightest(render('chase', beat + 0.01)));
     expect(order).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    expect(brightest(render('chase', 2.01))).toBe(0);
+    expect(brightest(render('chase', 8.01))).toBe(0);
+  });
+
+  it('stays where it is until the next beat', () => {
+    expect(render('chase', 3.01)).toEqual(render('chase', 3.99));
+    expect(render('chase', 3.99)).not.toEqual(render('chase', 4));
   });
 
   it('leaves a tail behind the head, not in front of it', () => {
-    const frame = render('chase', 0.76); // head just past lens 3
+    const frame = render('chase', 3.5); // head on lens 3
     expect(peak(frame.cells[2])).toBeGreaterThan(peak(frame.cells[4]));
   });
 });
 
 describe('bounce', () => {
-  it('goes to the far end and comes back within one bar', () => {
-    expect(brightest(render('bounce', 0))).toBe(0);
-    expect(brightest(render('bounce', 2))).toBe(7);
-    expect(brightest(render('bounce', 4))).toBe(0);
-    expect(brightest(render('bounce', 1))).toBe(brightest(render('bounce', 3)));
+  it('goes to the far end and back, one lens per beat', () => {
+    const order = Array.from({ length: 17 }, (_, beat) => brightest(render('bounce', beat + 0.5)));
+    expect(order).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1, 0, 0]);
+  });
+
+  it('is in the first colour at one end and in the second at the other', () => {
+    expect(render('bounce', 0).cells[0]).toEqual(A);
+    expect(render('bounce', 7).cells[7]).toEqual(B);
   });
 });
 
@@ -176,7 +183,7 @@ describe('sparkle', () => {
   it('keeps a dim wash and lets only some lenses flash', () => {
     let flashes = 0;
     let slots = 0;
-    for (let beat = 0; beat < 32; beat += 0.25) {
+    for (let beat = 0; beat < 128; beat += 1) {
       const frame = render('sparkle', beat + 0.01);
       for (const cell of frame.cells) {
         slots++;
@@ -187,41 +194,64 @@ describe('sparkle', () => {
     expect(flashes / slots).toBeGreaterThan(0.1);
     expect(flashes / slots).toBeLessThan(0.35);
   });
+
+  it('flashes the same lenses for a whole beat, and others on the next', () => {
+    const lit = (beat: number) => render('sparkle', beat).cells.map((cell) => cell.blue > 0.011);
+    expect(lit(5.01)).toEqual(lit(5.6));
+    const sets = new Set([0, 1, 2, 3, 4, 5, 6, 7].map((beat) => lit(beat + 0.01).join()));
+    expect(sets.size).toBeGreaterThan(4);
+  });
 });
 
 describe('build-up', () => {
   it('gets brighter and wider, then drops on the second colour', () => {
     const early = render('build', 1.1);
-    const late = render('build', 13.01);
+    const late = render('build', 27.01);
     expect(total(late)).toBeGreaterThan(total(early));
     expect(early.cells.filter((c) => peak(c) > 0).length).toBeLessThan(
       late.cells.filter((c) => peak(c) > 0).length,
     );
     expect(peak(early.cells[0])).toBe(0);
+    expect(peak(render('build', 0).cells[3])).toBeGreaterThan(0);
 
-    const drop = render('build', 15.02);
+    const drop = render('build', 31.02);
     for (const cell of drop.cells) {
       expect(cell.blue).toBeGreaterThan(0.9);
       expect(cell.red).toBe(0);
     }
   });
 
-  it('starts again after sixteen beats', () => {
-    expect(render('build', 17.3)).toEqual(render('build', 1.3));
+  it('flashes once per bar, then every two beats, then on every beat', () => {
+    const on = (beat: number) => total(render('build', beat)) > 0;
+    /** The beats in a stretch on which the light comes on. */
+    const starts = (from: number, to: number) => {
+      const found: number[] = [];
+      for (let beat = from; beat < to; beat += 0.25) {
+        if (on(beat) && !(beat > from && on(beat - 0.25))) found.push(beat);
+      }
+      return found;
+    };
+    expect(starts(0, 16)).toEqual([0, 4, 8, 12]);
+    expect(starts(16, 24)).toEqual([16, 18, 20, 22]);
+    expect(starts(24, 31)).toEqual([24, 25, 26, 27, 28, 29, 30]);
+  });
+
+  it('starts again after eight bars', () => {
+    expect(render('build', 33.3)).toEqual(render('build', 1.3));
   });
 });
 
 describe('strobe burst', () => {
-  it('flashes only during the fourth beat', () => {
-    for (const beat of [0.3, 1.3, 2.3]) {
+  it('flashes only during the fourth bar, on the beat', () => {
+    for (const beat of [0.3, 5.3, 11.3, 16.3]) {
       const frame = render('burst', beat);
       expect(frame.cells[0]?.blue).toBe(0);
       expect(peak(frame.cells[0])).toBeLessThan(0.7);
     }
-    const on = render('burst', 3.01);
-    const off = render('burst', 3.2);
-    expect(on.cells[0]?.blue).toBe(1);
-    expect(total(off)).toBe(0);
+    for (const beat of [12, 13, 14, 15]) {
+      expect(render('burst', beat + 0.01).cells[0]?.blue).toBe(1);
+      expect(total(render('burst', beat + 0.5))).toBe(0);
+    }
   });
 });
 
@@ -243,34 +273,75 @@ describe('scissor', () => {
   });
 });
 
-describe('flash rate limit', () => {
-  it('halves the subdivision until the rate is within the limit', () => {
-    expect(flashesPerBeat(126, 4)).toBe(4); // 8.4 per second
-    expect(flashesPerBeat(160, 4)).toBe(2); // 10.7 would be too fast
-    expect(flashesPerBeat(280, 4)).toBe(2);
-    expect(flashesPerBeat(400, 4)).toBe(1);
-    expect(flashesPerBeat(126, 1)).toBe(1);
+describe('speed', () => {
+  it('has a normal speed, and two slower and two faster', () => {
+    expect(SPEEDS).toEqual([0.25, 0.5, 1, 2, 4]);
   });
 
-  /** Counts dark-to-bright changes of lens 0 per second over a stretch of music. */
-  function flashesPerSecond(id: string, bpm: number, fromBeat: number, toBeat: number): number {
-    const step = 0.002;
+  it('is given as wanted while a change per beat stays within the flash limit', () => {
+    expect(limitSpeed(126, 4)).toBe(4); // 8.4 per second
+    expect(limitSpeed(150, 4)).toBe(4); // 10 per second, the limit itself
+    expect(limitSpeed(60, 0.25)).toBe(0.25);
+    expect(limitSpeed(200, 2)).toBe(2);
+  });
+
+  it('is halved until a change per beat is within the limit', () => {
+    expect(limitSpeed(160, 4)).toBe(2); // 10.7 would be too fast
+    expect(limitSpeed(200, 4)).toBe(2);
+    expect(limitSpeed(126, 16)).toBe(4);
+    expect(limitSpeed(200, 16)).toBe(2);
+  });
+
+  /** The highest tempo an effect is given, whatever tempo and speeds are chosen. */
+  const fastest = Math.max(
+    ...[60, 126, 150, 151, 200].flatMap((bpm) =>
+      SPEEDS.flatMap((effect) => SPEEDS.map((console) => bpm * limitSpeed(bpm, effect * console))),
+    ),
+  );
+
+  it('never gives an effect a tempo at which a change per beat is over the flash limit', () => {
+    expect(fastest).toBe(600);
+    expect(fastest / 60).toBeLessThanOrEqual(MAX_FLASH_HZ);
+  });
+
+  /** Counts dark-to-bright changes of a lens per second, over 64 beats of the effect. */
+  function flashesPerSecond(id: string, bpm: number, cell: number): number {
+    const beats = 64;
     let flashes = 0;
     let wasOn = false;
-    for (let beat = fromBeat; beat < toBeat; beat += step) {
-      const on = peak(render(id, beat, { bpm }).cells[3]) > 0.5;
+    for (let beat = 0; beat < beats; beat += 0.01) {
+      const on = peak(render(id, beat, { bpm }).cells[cell]) > 0.5;
       if (on && !wasOn) flashes++;
       wasOn = on;
     }
-    const seconds = ((toBeat - fromBeat) / bpm) * 60;
-    return flashes / seconds;
+    return flashes / ((beats / bpm) * 60);
   }
 
-  it.each([126, 140, 180, 252, 400])('keeps strobe burst within the limit at %i bpm', (bpm) => {
-    expect(flashesPerSecond('burst', bpm, 3, 4)).toBeLessThanOrEqual(MAX_FLASH_HZ + 0.5);
-  });
+  it.each(EFFECTS.map((effect) => effect.id))(
+    'keeps %s within the flash limit at the highest tempo it is given',
+    (id) => {
+      for (const cell of [0, 3, 7]) {
+        expect(flashesPerSecond(id, fastest, cell)).toBeLessThanOrEqual(MAX_FLASH_HZ + 0.2);
+      }
+    },
+  );
 
-  it.each([126, 140, 180, 252, 400])('keeps build-up within the limit at %i bpm', (bpm) => {
-    expect(flashesPerSecond('build', bpm, 12, 15)).toBeLessThanOrEqual(MAX_FLASH_HZ + 0.5);
-  });
+  it.each(EFFECTS.map((effect) => effect.id))(
+    'changes %s once per beat at most, unless it moves smoothly',
+    (id) => {
+      const smooth = ['wave', 'spectrum', 'scissor'];
+      if (smooth.includes(id)) return;
+      // Between two beats a lens may fade or go out, but no lens may come on.
+      for (let beat = 0; beat < 64; beat++) {
+        for (let cell = 0; cell < 8; cell++) {
+          let before = peak(render(id, beat + 0.01).cells[cell]);
+          for (let part = 0.05; part < 1; part += 0.05) {
+            const now = peak(render(id, beat + part).cells[cell]);
+            expect(now - before).toBeLessThan(0.1);
+            before = now;
+          }
+        }
+      }
+    },
+  );
 });

@@ -40,6 +40,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, relative, sep } from 'node:path';
+import { MAX_FLASH_HZ } from '../engine/effects.js';
 import { PatchError, readObject } from './fixture.js';
 import type { PlaybackState, ShowSummary } from './playback.js';
 import type { LinkStatus, Rig, RigFixture } from './rig.js';
@@ -164,7 +165,14 @@ function describeTempo(rig: Rig) {
 function describe({ rig, bridgeUrl }: HttpOptions) {
   return {
     fixtures: rig.fixtures.map(describeFixture),
-    tempo: { ...describeTempo(rig), min: MIN_BPM, max: MAX_BPM, rates: RATES },
+    tempo: {
+      ...describeTempo(rig),
+      min: MIN_BPM,
+      max: MAX_BPM,
+      rates: RATES,
+      // What the speed of an effect is held to, for a page to say what an effect gets.
+      changesPerSecond: MAX_FLASH_HZ,
+    },
     blackout: rig.getBlackout(),
     master: rig.getMaster(),
     status: rig.getStatus(),

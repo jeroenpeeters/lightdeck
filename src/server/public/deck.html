@@ -20,8 +20,13 @@
 
       <p class="hint deck-hint" id="deck-hint" hidden></p>
 
-      <!-- The fader of the master comes here. It is there in Show and in Program. -->
-      <section class="panel grand-master" id="grand-master" aria-label="Master"></section>
+      <!-- The masters are there in Show and in Program. The fader comes in the first. -->
+      <section class="panel masters" aria-label="Masters">
+        <div class="grand-master" id="grand-master"></div>
+        <fieldset class="choice master-speed" id="master-speed">
+          <legend>Master speed</legend>
+        </fieldset>
+      </section>
 
       <!-- A row per group comes here. -->
       <div class="groups" id="groups" hidden></div>

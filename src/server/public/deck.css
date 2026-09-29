@@ -50,7 +50,33 @@
   border-left-color: var(--stop);
 }
 
-/* ---- the master ---- */
+/* ---- the masters ---- */
+
+/* The master of the brightness, and next to it the master of the speed of the effects. */
+.masters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem 2.5rem;
+  align-items: end;
+}
+@media (min-width: 50rem) {
+  .masters {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+/* Keys, not a fader: only halves and doubles keep an effect on the beat. */
+.master-speed {
+  margin-top: 0;
+}
+.master-speed > legend {
+  margin-bottom: 0.5rem;
+}
+.master-speed > .pick {
+  min-width: 4rem;
+  min-height: 4rem;
+  font-size: var(--large);
+  font-weight: 600;
+}
 
 /*
  * A fader for a finger in the dark: a tall handle on a thick track. It has a panel of

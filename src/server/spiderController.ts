@@ -16,7 +16,14 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { EFFECTS, type EffectFrame, findEffect, type Rgbw } from '../engine/effects.js';
+import {
+  EFFECTS,
+  type EffectFrame,
+  findEffect,
+  limitSpeed,
+  type Rgbw,
+  SPEEDS,
+} from '../engine/effects.js';
 import {
   encodeFixture,
   type FixtureProfile,
@@ -43,6 +50,8 @@ export interface EffectSettings {
   id: string | null;
   colourA: Rgbw;
   colourB: Rgbw;
+  /** Speed of the effect relative to the tempo, one of `SPEEDS`. At 1 it changes per beat. */
+  speed: number;
 }
 
 export interface SpiderState {
@@ -59,6 +68,7 @@ export interface EffectPatch {
   id?: unknown;
   colourA?: unknown;
   colourB?: unknown;
+  speed?: unknown;
 }
 
 export interface StatePatch {
@@ -99,6 +109,7 @@ const DEFAULT_EFFECT: EffectSettings = {
   id: null,
   colourA: { red: 1, green: 0.58, blue: 0, white: 0 },
   colourB: { red: 0, green: 0.15, blue: 1, white: 0 },
+  speed: 1,
 };
 
 function readColour(value: unknown, name: string): Rgbw {
@@ -176,10 +187,11 @@ export class SpiderController extends EventEmitter implements FixtureController 
     };
   }
 
-  /** The arrangement of the cells, and the effects there are to choose from. */
+  /** The arrangement of the cells, and the effects and their speeds to choose from. */
   describe(): Record<string, unknown> {
     return {
       layout: this.layout,
+      speeds: SPEEDS,
       effects: EFFECTS.map(({ id, name, description, colours, moves }) => ({
         id,
         name,
@@ -337,7 +349,12 @@ export class SpiderController extends EventEmitter implements FixtureController 
 
   private readEffect(current: EffectSettings, change: unknown): EffectSettings {
     if (change === undefined) return current;
-    const patch = readObject(change, 'effect', ['id', 'colourA', 'colourB']) as EffectPatch;
+    const patch = readObject(change, 'effect', [
+      'id',
+      'colourA',
+      'colourB',
+      'speed',
+    ]) as EffectPatch;
 
     const effect: EffectSettings = { ...current };
     if (patch.id !== undefined) {
@@ -350,6 +367,12 @@ export class SpiderController extends EventEmitter implements FixtureController 
     }
     if (patch.colourA !== undefined) effect.colourA = readColour(patch.colourA, 'colourA');
     if (patch.colourB !== undefined) effect.colourB = readColour(patch.colourB, 'colourB');
+    if (patch.speed !== undefined) {
+      if (typeof patch.speed !== 'number' || !SPEEDS.includes(patch.speed)) {
+        throw new PatchError(`the speed of an effect must be one of ${SPEEDS.join(', ')}`);
+      }
+      effect.speed = patch.speed;
+    }
     return effect;
   }
 
@@ -362,13 +385,14 @@ export class SpiderController extends EventEmitter implements FixtureController 
   }
 
   private renderEffect(): EffectFrame | undefined {
-    const { id, colourA, colourB } = this.state.effect;
+    const { id, colourA, colourB, speed: wanted } = this.state.effect;
     const effect = id === null ? undefined : findEffect(id);
     if (!effect) return undefined;
     const { bpm, rate } = this.tempo.getState();
+    const speed = limitSpeed(bpm, wanted * rate);
     return effect.render({
-      beat: this.tempo.getBeat() * rate,
-      bpm: bpm * rate,
+      beat: this.tempo.getBeat() * speed,
+      bpm: bpm * speed,
       cells: this.layout.cells,
       bars: this.layout.bars,
       a: colourA,

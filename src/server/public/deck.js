@@ -24,12 +24,14 @@
 // The deck also has the fader of the master, in Show and in Program. The master is for
 // the whole console and no part of a scene: moving it changes no scene, and a scene
 // does not move it. The shell keeps it and sends it, and shows its level on every page.
+// Next to it are the keys of the master speed, which works the same way for the speed
+// of the effects: every effect runs at its own speed times the master speed.
 //
-// Tempo, speed and blackout are in the shell. Its notice is kept at the bottom of the
+// Tempo and blackout are in the shell. Its notice is kept at the bottom of the
 // screen here, with the one of the deck, so that no key moves when it comes or goes.
 
 import { masterPercent, start } from './shell.js';
-import { $, button, element, slider } from './ui.js';
+import { $, button, element, slider, speedKeys } from './ui.js';
 
 /** How long a delete key waits for the second press. */
 const SURE_MS = 3000;
@@ -46,6 +48,7 @@ const page = {
   mode: $('mode'),
   hint: $('deck-hint'),
   master: $('grand-master'),
+  speed: $('master-speed'),
   groups: $('groups'),
   newGroup: $('new-group'),
   makeGroup: $('make-group'),
@@ -71,6 +74,8 @@ let lost = false;
 const rows = new Map();
 /** The fader of the master. */
 let fader;
+/** Shows which master speed is chosen. */
+let showSpeed = () => {};
 
 const groupOf = (id) => shell.show.groups.find((group) => group.id === id);
 const sceneOf = (group, id) => groupOf(group)?.scenes.find((scene) => scene.id === id);
@@ -309,6 +314,13 @@ function buildMaster() {
     write: (number) => shell.setMaster(number / 100),
   });
   page.master.append(fader);
+  showSpeed = speedKeys(page.speed, shell.rates, shell.setRate);
+}
+
+/** The masters moved, here or on another screen. */
+function renderMasters() {
+  fader.refresh();
+  showSpeed(shell.tempo.rate);
 }
 
 function buildTicks() {
@@ -499,10 +511,10 @@ async function main() {
     renderNotice();
   });
   shell.on('playback', render);
-  // The master moved, here or on another screen. The groups have nothing to do with it.
-  shell.on('change', fader.refresh);
+  // The groups have nothing to do with the masters.
+  shell.on('change', renderMasters);
   programming = location.hash === PROGRAM;
-  fader.refresh();
+  renderMasters();
   render();
   renderNotice();
 }

@@ -13,8 +13,9 @@
  * stays with the operator. Effects count in manual mode only, because that is the mode
  * in which channel 2 chooses a pattern.
  *
- * Nothing here changes more often than once per beat, which at the highest tempo and
- * double speed is below `MAX_FLASH_HZ`.
+ * Nothing here changes more often than once per beat at speed 1. Faster and slower is a
+ * matter of the speed, which scales the beat that an effect is given and which whoever
+ * renders the effect limits with `limitSpeed`.
  *
  * Not in the manual, and assumed here:
  * - That the fixture follows a position or a size that changes 40 times per second.
@@ -33,11 +34,12 @@ import {
   stepOfByte,
 } from '../fixtures/profile.js';
 import { clamp01 } from '../model/fixture.js';
+import { MAX_FLASH_HZ } from './effects.js';
 
 export interface LaserEffectContext {
-  /** Beats since the tempo was last synced, as a fraction. Already scaled by the rate. */
+  /** Beats since the tempo was last synced, as a fraction. Already scaled by the speed. */
   beat: number;
-  /** Effective tempo in beats per minute, rate included. */
+  /** Effective tempo in beats per minute, speed included. */
   bpm: number;
   /** What the operator has set: raw bytes by control name. */
   raw: Readonly<Record<string, number>>;
@@ -59,8 +61,8 @@ export const LASER_EFFECTS_MODE = 'manual';
 
 /** Beats per bar. */
 const BAR = 4;
-/** The highest tempo there is: 200 beats per minute at double speed. */
-const FASTEST_BPM = 400;
+/** The highest tempo an effect is given: the one at which a beat is a flash at the limit. */
+const FASTEST_BPM = MAX_FLASH_HZ * 60;
 /** How far into the fixed sizes the pulse shrinks the pattern. */
 const PULSE_DEPTH = 0.75;
 

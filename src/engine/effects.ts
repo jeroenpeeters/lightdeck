@@ -8,6 +8,12 @@
  *
  * Brightness lives in the cell colours. The fixture's master dimmer stays with the
  * operator.
+ *
+ * At speed 1 an effect changes once per beat at most: a chase takes one step per beat, a
+ * flash comes on the beat. What moves smoothly, such as the wave, takes a bar or more
+ * for one cycle. Faster and slower is a matter of the speed, which scales the beat that
+ * an effect is given. Whoever renders an effect limits that speed with `limitSpeed`, so
+ * that nothing flashes more often than `MAX_FLASH_HZ`.
  */
 
 import { clamp01 } from '../model/fixture.js';
@@ -20,9 +26,9 @@ export interface Rgbw {
 }
 
 export interface EffectContext {
-  /** Beats since the tempo was last synced, as a fraction. Already scaled by the rate. */
+  /** Beats since the tempo was last synced, as a fraction. Already scaled by the speed. */
   beat: number;
-  /** Effective tempo in beats per minute, rate included. Used to limit flash rates. */
+  /** Effective tempo in beats per minute, speed included. */
   bpm: number;
   /** Number of colour cells. */
   cells: number;
@@ -51,16 +57,32 @@ export interface Effect {
   render(context: EffectContext): EffectFrame;
 }
 
-/**
- * Upper limit for full-brightness flashing, in flashes per second. Effects that flash
- * on subdivisions of the beat fall back to a coarser subdivision above this.
- */
+/** Upper limit for full-brightness flashing, in flashes per second. */
 export const MAX_FLASH_HZ = 10;
+
+/**
+ * The speeds to choose from, relative to the tempo. They go for the effect of a fixture
+ * and for the console as a whole, and the two multiply.
+ */
+export const SPEEDS: readonly number[] = [0.25, 0.5, 1, 2, 4];
+
+/**
+ * The speed an effect gets: the speed that is wanted, halved until a change on every
+ * beat stays at or below `MAX_FLASH_HZ`. So four times the speed at 126 beats per minute
+ * is given, and at 160 it falls back to twice.
+ */
+export function limitSpeed(bpm: number, wanted: number): number {
+  let speed = wanted;
+  while ((bpm / 60) * speed > MAX_FLASH_HZ) speed /= 2;
+  return speed;
+}
 
 const BLACK: Rgbw = { red: 0, green: 0, blue: 0, white: 0 };
 const TAU = Math.PI * 2;
 
 const frac = (x: number) => x - Math.floor(x);
+/** Remainder that is never negative. */
+const mod = (x: number, n: number) => ((x % n) + n) % n;
 
 function scale(colour: Rgbw, level: number): Rgbw {
   const k = clamp01(level);
@@ -115,16 +137,6 @@ function noise(a: number, b: number): number {
   return (h >>> 0) / 4294967296;
 }
 
-/**
- * How many flashes per beat are allowed at this tempo: the wanted subdivision, halved
- * until the flash rate is at or below MAX_FLASH_HZ.
- */
-export function flashesPerBeat(bpm: number, wanted: number): number {
-  let division = wanted;
-  while (division > 1 && (bpm / 60) * division > MAX_FLASH_HZ) division /= 2;
-  return division;
-}
-
 function fill(cells: number, colour: (index: number) => Rgbw): Rgbw[] {
   return Array.from({ length: cells }, (_, i) => colour(i));
 }
@@ -134,6 +146,9 @@ function barOf(bars: EffectContext['bars'], cell: number): number {
   return bars.findIndex((bar) => bar.includes(cell));
 }
 
+/** How long the build-up takes: eight bars. */
+const BUILD_BEATS = 32;
+
 const kick: Effect = {
   id: 'kick',
   name: 'Kick',
@@ -142,7 +157,7 @@ const kick: Effect = {
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
-    const downbeat = Math.floor(beat) % 4 === 0;
+    const downbeat = mod(Math.floor(beat), 4) === 0;
     const level = 0.06 + 0.94 * hit(beat, 5);
     return { cells: fill(cells, () => scale(downbeat ? b : a, level)) };
   },
@@ -152,11 +167,11 @@ const chase: Effect = {
   id: 'chase',
   name: 'Chase',
   description:
-    'One bright lens runs along all eight with a fading tail, twice per bar, over a dim second colour.',
+    'One bright lens steps along all eight with a fading tail, one lens per beat, over a dim second colour.',
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
-    const head = frac(beat / 2) * cells;
+    const head = mod(Math.floor(beat), cells);
     return {
       cells: fill(cells, (i) => {
         const behind = (head - i + cells) % cells;
@@ -170,13 +185,15 @@ const bounce: Effect = {
   id: 'bounce',
   name: 'Bounce',
   description:
-    'A spot of light travels to the far end and back once per bar, changing from the first colour to the second on the way.',
+    'A spot of light steps to the far end and back, one lens per beat, changing from the first colour to the second on the way.',
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
-    const there = 1 - Math.abs(2 * frac(beat / 4) - 1);
-    const position = there * (cells - 1);
-    const colour = mix(a, b, there);
+    // There in as many beats as there are lenses, and back in as many, so with eight
+    // lenses it turns around on the bar.
+    const step = mod(Math.floor(beat), 2 * cells);
+    const position = step < cells ? step : 2 * cells - 1 - step;
+    const colour = mix(a, b, cells > 1 ? position / (cells - 1) : 0);
     return {
       cells: fill(cells, (i) => {
         const near = clamp01(1 - Math.abs(i - position) / 1.4);
@@ -195,7 +212,7 @@ const swap: Effect = {
   moves: false,
   render({ beat, cells, bars, a, b }) {
     const count = Math.max(bars.length, 1);
-    const lit = Math.floor(beat) % count;
+    const lit = mod(Math.floor(beat), count);
     const level = hit(beat, 3.5);
     return {
       cells: fill(cells, (i) => {
@@ -242,13 +259,12 @@ const sparkle: Effect = {
   id: 'sparkle',
   name: 'Sparkle',
   description:
-    'A dim wash of the first colour with single lenses flashing in the second colour, at random, four times per beat.',
+    'A dim wash of the first colour with single lenses flashing in the second colour, at random, other lenses on every beat.',
   colours: 'both',
   moves: false,
-  render({ beat, bpm, cells, a, b }) {
-    const division = flashesPerBeat(bpm, 4);
-    const slot = Math.floor(beat * division);
-    const level = hit(beat * division, 3);
+  render({ beat, cells, a, b }) {
+    const slot = Math.floor(beat);
+    const level = hit(beat, 3);
     const base = scale(a, 0.1);
     return {
       cells: fill(cells, (i) => (noise(slot, i) < 0.22 ? mix(base, b, level) : base)),
@@ -260,23 +276,24 @@ const build: Effect = {
   id: 'build',
   name: 'Build-up',
   description:
-    'Sixteen beats of tension: the flashes get faster and brighter and spread from the middle outwards, then everything drops on the second colour.',
+    'Eight bars of tension: the flashes get faster and brighter and spread from the middle outwards, then everything drops on the second colour.',
   colours: 'both',
   moves: false,
-  render({ beat, bpm, cells, a, b }) {
-    const position = ((beat % 16) + 16) % 16;
-    if (position >= 15) return { cells: fill(cells, () => scale(b, hit(position, 2.2))) };
+  render({ beat, cells, a, b }) {
+    const position = mod(beat, BUILD_BEATS);
+    const last = BUILD_BEATS - 1;
+    if (position >= last) return { cells: fill(cells, () => scale(b, hit(position, 2.2))) };
 
-    const progress = position / 15;
-    const wanted = position < 8 ? 1 : position < 12 ? 2 : 4;
-    const division = flashesPerBeat(bpm, wanted);
-    const on = frac(position * division) < 0.5;
+    const progress = position / last;
+    // A flash every bar, then every two beats, then on every beat.
+    const every = position < 16 ? 4 : position < 24 ? 2 : 1;
+    const on = frac(position / every) < 0.5;
     const level = on ? 0.2 + 0.8 * progress : 0;
-    // Lenses join in from the middle outwards as the tension rises.
-    const reach = 0.5 + progress * (cells / 2);
+    // Lenses join in from the middle outwards as the tension rises, on the beat.
+    const reach = 0.5 + (Math.floor(position) / last) * (cells / 2);
     const middle = (cells - 1) / 2;
     return {
-      cells: fill(cells, (i) => (Math.abs(i - middle) < reach ? scale(a, level) : BLACK)),
+      cells: fill(cells, (i) => (Math.abs(i - middle) <= reach ? scale(a, level) : BLACK)),
     };
   },
 };
@@ -285,17 +302,15 @@ const burst: Effect = {
   id: 'burst',
   name: 'Strobe burst',
   description:
-    'Three beats of kick in the first colour, then a rapid burst of flashes in the second colour on the fourth.',
+    'Three bars of kick in the first colour, then a bar of hard flashes on the beat in the second colour.',
   colours: 'both',
   moves: false,
-  render({ beat, bpm, cells, a, b }) {
-    const inBar = ((Math.floor(beat) % 4) + 4) % 4;
-    if (inBar < 3) {
+  render({ beat, cells, a, b }) {
+    if (mod(beat, 16) < 12) {
       const level = 0.05 + 0.6 * hit(beat, 5);
       return { cells: fill(cells, () => scale(a, level)) };
     }
-    const division = flashesPerBeat(bpm, 4);
-    const on = frac(beat * division) < 0.4;
+    const on = frac(beat) < 0.4;
     return { cells: fill(cells, () => (on ? scale(b, 1) : BLACK)) };
   },
 };

@@ -8,7 +8,7 @@ import {
   rangeAt,
   stepOfByte,
 } from '../fixtures/profile.js';
-import { MAX_FLASH_HZ } from './effects.js';
+import { limitSpeed, MAX_FLASH_HZ } from './effects.js';
 import {
   findLaserEffect,
   LASER_EFFECTS,
@@ -87,9 +87,12 @@ describe('the set of laser effects', () => {
     }
   });
 
-  it('changes at most once per beat, which stays below the flash limit', () => {
-    const fastest = 400;
-    expect(fastest / 60).toBeLessThanOrEqual(MAX_FLASH_HZ);
+  it('changes at most once per beat, which the limit on the speed keeps below the flash limit', () => {
+    for (const bpm of [60, 126, 150, 151, 200]) {
+      for (const wanted of [0.25, 1, 4, 16]) {
+        expect((bpm * limitSpeed(bpm, wanted)) / 60).toBeLessThanOrEqual(MAX_FLASH_HZ);
+      }
+    }
     for (const id of ['patterns', 'colours']) {
       const effect = findLaserEffect(id);
       const name = effect?.drives[0] as string;
@@ -192,10 +195,10 @@ describe('twist', () => {
     const at = (bpm: number, beat = 0) => byte('twist', 'rotation', beat, { bpm });
     expect(at(30)).toBeLessThan(at(126));
     expect(at(126)).toBeLessThan(at(252));
-    expect(at(126)).toBe(148);
-    expect(at(400)).toBe(191);
-    expect(at(126, 4)).toBe(212);
-    expect(at(400, 4)).toBe(255);
+    expect(at(126)).toBe(141);
+    expect(at(600)).toBe(191);
+    expect(at(126, 4)).toBe(205);
+    expect(at(600, 4)).toBe(255);
     expect(keyOf('rotation', at(1000))).toBe('forward');
   });
 });

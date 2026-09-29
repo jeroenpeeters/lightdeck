@@ -161,7 +161,7 @@ describe('Playback', () => {
     expect(ch(output, LASER_AT)).toBe(0);
     expect(state('laser')).toEqual({
       raw: expect.objectContaining({ mode: 0, drawing: 0 }),
-      effect: { id: null },
+      effect: { id: null, speed: 1 },
     });
   });
 

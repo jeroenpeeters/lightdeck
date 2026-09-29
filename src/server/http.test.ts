@@ -129,7 +129,7 @@ describe('HTTP server', () => {
       'sweep',
       'twist',
     ]);
-    expect(laser.state.effect).toEqual({ id: null });
+    expect(laser.state.effect).toEqual({ id: null, speed: 1 });
     expect(laser.controls[0].ranges[1]).toEqual(
       expect.objectContaining({ from: 64, to: 127, key: 'manual', name: 'Manual' }),
     );
@@ -137,7 +137,14 @@ describe('HTTP server', () => {
     expect(laser.dmx).toEqual(new Array(10).fill(0));
 
     expect(body.tempo).toEqual(
-      expect.objectContaining({ bpm: 126, rate: 1, min: 60, max: 200, rates: [0.5, 1, 2] }),
+      expect.objectContaining({
+        bpm: 126,
+        rate: 1,
+        min: 60,
+        max: 200,
+        rates: [0.25, 0.5, 1, 2, 4],
+        changesPerSecond: 10,
+      }),
     );
     expect(typeof body.tempo.beat).toBe('number');
     expect(body.blackout).toBe(false);

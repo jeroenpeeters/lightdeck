@@ -5,17 +5,19 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { SPEEDS } from '../engine/effects.js';
 import { PatchError, readObject } from './fixture.js';
 
 export const MIN_BPM = 60;
 export const MAX_BPM = 200;
-export const RATES: readonly number[] = [0.5, 1, 2];
+/** The speeds of the console as a whole. They multiply with the speed of each effect. */
+export const RATES: readonly number[] = SPEEDS;
 const DEFAULT_BPM = 126;
 
 export interface TempoState {
   /** Tempo in beats per minute. */
   bpm: number;
-  /** Speed of effects relative to the tempo: 0.5, 1 or 2. */
+  /** Speed of every effect relative to the tempo, one of `RATES`. */
   rate: number;
 }
 

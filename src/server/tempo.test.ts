@@ -53,6 +53,14 @@ describe('Tempo', () => {
     ]);
   });
 
+  it('takes a quarter of the speed up to four times the speed', () => {
+    const tempo = new Tempo();
+    for (const rate of [0.25, 0.5, 1, 2, 4]) {
+      tempo.update({ rate });
+      expect(tempo.getState().rate).toBe(rate);
+    }
+  });
+
   it('refuses settings that make no sense, and changes nothing', () => {
     const seen: unknown[] = [];
     tempo.on('tempo', (state) => seen.push(state));
@@ -62,6 +70,8 @@ describe('Tempo', () => {
       { bpm: 'fast' },
       { bpm: Number.NaN },
       { rate: 3 },
+      { rate: 8 },
+      { rate: 0.125 },
       { rate: '1' },
       { sync: 'yes' },
       { bpm: 120, rate: 3 },

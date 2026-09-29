@@ -6,6 +6,49 @@ export function percent(level) {
   return Math.round(level * 100);
 }
 
+/** A speed relative to the tempo, as a key says it: ÷4, ÷2, ×1, ×2, ×4. */
+export function speedName(speed) {
+  return speed >= 1 ? `×${speed}` : `÷${1 / speed}`;
+}
+
+/** The same in words, for who cannot see the key. */
+export function speedInWords(speed) {
+  if (speed === 1) return 'Normal speed';
+  return speed > 1 ? `${speed} times as fast` : `${1 / speed} times as slow`;
+}
+
+/**
+ * What the speed of an effect comes to. `own` is the speed chosen for the effect, and
+ * `given` and `held` are what the shell says it gets, see `shell.speed`.
+ */
+export function speedNote(own, { given, held }) {
+  const pace =
+    given === 1
+      ? 'A change on every beat.'
+      : given > 1
+        ? `${given} changes per beat.`
+        : `A change every ${1 / given} beats.`;
+  if (held) {
+    return `${pace} That is ${speedName(given)}: at this tempo more would be over ten changes per second.`;
+  }
+  return given === own ? pace : `${pace} That is ${speedName(given)}, with the master speed.`;
+}
+
+/** Keys to choose a speed from, in a fieldset. Gives what shows the chosen one. */
+export function speedKeys(fieldset, speeds, choose) {
+  const keys = speeds.map((speed) => {
+    const made = button('pick', speedName(speed), () => choose(speed));
+    made.setAttribute('aria-label', speedInWords(speed));
+    fieldset.append(made);
+    return { speed, made };
+  });
+  return (chosen) => {
+    for (const { speed, made } of keys) {
+      made.setAttribute('aria-pressed', String(speed === chosen));
+    }
+  };
+}
+
 export function element(tag, className, text) {
   const made = document.createElement(tag);
   if (className) made.className = className;

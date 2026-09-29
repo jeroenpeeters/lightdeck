@@ -23,7 +23,7 @@ each for its own part of the rig: a scene for the spider under a scene for the l
 - **Sequence**: a list of steps that runs on the master tempo and loops. A step lasts a
   number of bars and names a scene for one or more groups.
 - **Deck**: the page for showtime. The groups with their scenes, the sequences, the grand
-  master, blackout and tempo.
+  master, the master speed, blackout and tempo.
 - **Hold**: a button that changes the output while pressed and gives it back on release,
   such as a strobe burst.
 
@@ -53,11 +53,19 @@ each for its own part of the rig: a scene for the spider under a scene for the l
    "Groups" below.
 7. **A step of a sequence can set several groups, and only sets what changes** (Jeroen).
    See "Sequences" below.
-8. **The show is one YAML file, written by the deck** (Jeroen) and still editable by
+8. **At normal speed an effect changes once per beat at most, and every effect has a
+   speed of its own** (Jeroen, 2026-09-30): ÷4, ÷2, ×1, ×2 or ×4. It is part of the
+   state of the fixture, so a scene holds it: a chase at ×1 on the spider under a laser
+   that changes pattern once per bar. The master speed works like the grand master: it
+   is set on the deck, with the same five speeds, it multiplies with the speed of every
+   effect, its level shows in the status bar of every page, and it is no part of a
+   scene. It has keys and no fader, because only halves and doubles keep an effect on
+   the beat. Together the two speeds are held to ten changes per second.
+9. **The show is one YAML file, written by the deck** (Jeroen) and still editable by
    hand. The server watches it, and a file that does not validate never replaces the
    running show. Getting it into git is a copy, not the way of working.
-9. **Lightdeck runs on Jeroen's laptop for now** (Jeroen), with the bridge on a real
-   Android device. The container and the homelab deploy are postponed.
+10. **Lightdeck runs on Jeroen's laptop for now** (Jeroen), with the bridge on a real
+    Android device. The container and the homelab deploy are postponed.
 
 ## Groups
 
@@ -105,8 +113,8 @@ is missed, for example for the tilt of the spider.
 
 ## Open
 
-- **Do sequences follow the speed (0.5, 1, 2)?** Proposal: no. A sequence counts real
-  bars; the speed only changes the effects within a step.
+- **Do sequences follow the master speed (÷4 to ×4)?** Proposal: no. A sequence
+  counts real bars; the speed only changes the effects within a step.
 
 ## Show file
 

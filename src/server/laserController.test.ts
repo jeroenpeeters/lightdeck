@@ -51,7 +51,7 @@ describe('LaserController', () => {
         colour: 0,
         drawing: 0,
       },
-      effect: { id: null },
+      effect: { id: null, speed: 1 },
     });
   });
 
@@ -165,7 +165,10 @@ describe('LaserController', () => {
       expect(laser.getState()).toEqual(state);
       expect(laser.snapshot()).toEqual(kept);
     }
-    expect(kept).toEqual({ raw: { mode: MANUAL, program: 57 }, effect: { id: 'pulse' } });
+    expect(kept).toEqual({
+      raw: { mode: MANUAL, program: 57 },
+      effect: { id: 'pulse', speed: 1 },
+    });
   });
 
   it('sends and tells nothing when the master does not change', () => {
@@ -353,6 +356,34 @@ describe('LaserController effects', () => {
     expect(ch(output, LASER_AT + 1)).toBe(2); // pattern 1
   });
 
+  it('runs faster or slower with the speed of the effect, times the speed of the console', () => {
+    /** The pattern that shows a little after two beats. */
+    const patternAfterTwoBeats = (speed: number, rate: number) => {
+      tempo.update({ rate, sync: true });
+      laser.update({ raw: { mode: MANUAL, program: 0 }, effect: { id: 'patterns', speed } });
+      advance(BEAT_MS * 2 + 25);
+      return ((ch(output, LASER_AT + 1) ?? 0) - 2) / 5 + 1;
+    };
+    expect(patternAfterTwoBeats(1, 1)).toBe(3);
+    expect(patternAfterTwoBeats(0.25, 1)).toBe(1);
+    expect(patternAfterTwoBeats(0.5, 1)).toBe(2);
+    expect(patternAfterTwoBeats(2, 1)).toBe(5);
+    expect(patternAfterTwoBeats(4, 1)).toBe(9);
+    expect(patternAfterTwoBeats(2, 0.5)).toBe(3);
+    // 126 beats per minute times 16 is far over ten per second: halved to times 4.
+    expect(patternAfterTwoBeats(4, 4)).toBe(9);
+  });
+
+  it('keeps the speed of the effect in a scene, and takes 1 for a scene that names none', () => {
+    laser.update({ raw: { mode: MANUAL }, effect: { id: 'patterns', speed: 0.25 } });
+    const kept = laser.snapshot();
+    expect(kept.effect).toEqual({ id: 'patterns', speed: 0.25 });
+    laser.recall({ raw: { mode: MANUAL }, effect: { id: 'pulse' } });
+    expect(laser.getState().effect).toEqual({ id: 'pulse', speed: 1 });
+    laser.recall(kept);
+    expect(laser.getState().effect).toEqual({ id: 'patterns', speed: 0.25 });
+  });
+
   it('never opens the laser: a chosen effect waits until the operator does', () => {
     laser.update({ effect: { id: 'pulse' } });
     const before = output.frames.length;
@@ -477,7 +508,7 @@ describe('LaserController effects', () => {
     const seen: LaserState[] = [];
     laser.on('state', (state) => seen.push(state as LaserState));
     laser.update({ effect: { id: 'twist' } }, 'tablet');
-    expect(seen).toEqual([{ raw: expect.any(Object), effect: { id: 'twist' } }]);
+    expect(seen).toEqual([{ raw: expect.any(Object), effect: { id: 'twist', speed: 1 } }]);
   });
 
   it('refuses effect settings that make no sense, and changes nothing', () => {
@@ -486,6 +517,8 @@ describe('LaserController effects', () => {
       { id: 'kick' },
       { id: 5 },
       { id: 'sweep', bpm: 120 },
+      { id: 'sweep', speed: 3 },
+      { speed: '2' },
       { colourA: {} },
       'sweep',
       null,
@@ -493,14 +526,19 @@ describe('LaserController effects', () => {
     for (const effect of bad) {
       expect(() => laser.update({ raw: { mode: MANUAL }, effect })).toThrow(PatchError);
     }
-    expect(laser.getState()).toEqual(expect.objectContaining({ effect: { id: null } }));
+    expect(laser.getState()).toEqual(expect.objectContaining({ effect: { id: null, speed: 1 } }));
     expect(laser.getState().raw.mode).toBe(0);
   });
 
   it('works without effects', () => {
     laser.close();
     laser = make(undefined);
-    expect(laser.describe()).toEqual({ gate: 'mode', effects: [], effectsIn: null });
+    expect(laser.describe()).toEqual({
+      gate: 'mode',
+      speeds: [0.25, 0.5, 1, 2, 4],
+      effects: [],
+      effectsIn: null,
+    });
     expect(() => laser.update({ effect: { id: 'sweep' } })).toThrow(PatchError);
     laser.update({ raw: { mode: MANUAL }, effect: { id: null } });
     expect(ch(output, LASER_AT)).toBe(MANUAL);
@@ -562,7 +600,7 @@ describe('LaserController in a scene', () => {
     laser.update({ raw: { mode: MANUAL, drawing: 191, size: 0 }, effect: { id: 'pulse' } });
     expect(laser.snapshot()).toEqual({
       raw: { mode: MANUAL, drawing: 191 },
-      effect: { id: 'pulse' },
+      effect: { id: 'pulse', speed: 1 },
     });
   });
 

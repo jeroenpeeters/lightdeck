@@ -14,7 +14,7 @@
 // says which of the two it is.
 
 import { start } from '../shell.js';
-import { $, button, element, renderReadout } from '../ui.js';
+import { $, button, element, renderReadout, speedKeys, speedNote } from '../ui.js';
 
 let shell;
 let fixture;
@@ -25,6 +25,8 @@ let state;
 let dmx = [];
 let blocks = [];
 let effects = [];
+/** Shows which speed of the effect is chosen. */
+let showSpeed = () => {};
 /** Key of the range of the gate in which effects count. */
 let effectsIn = null;
 /** The last byte the operator had in a range, to come back to. */
@@ -111,6 +113,12 @@ function heldBy() {
 function setEffect(id) {
   state.effect = { ...state.effect, id };
   shell.send({ effect: { id } });
+  render();
+}
+
+function setSpeed(speed) {
+  state.effect = { ...state.effect, speed };
+  shell.send({ effect: { speed } });
   render();
 }
 
@@ -237,6 +245,7 @@ function buildEffects() {
     $('effect-list').append(made);
   }
   $('effect-stop').addEventListener('click', () => setEffect(null));
+  showSpeed = speedKeys($('effect-speed'), fixture.details.speeds ?? [1], setSpeed);
 }
 
 // ---- drawing the state ----
@@ -310,6 +319,9 @@ function renderEffects() {
   $('effect-hint').textContent = chosen
     ? chosen.description
     : `Choose an effect. It moves in time with the music and shows in ${effectsMode()} mode. It never opens the laser: that stays with you.`;
+  const speed = state.effect?.speed ?? 1;
+  showSpeed(speed);
+  $('speed-hint').textContent = speedNote(speed, shell.speed(speed));
 }
 
 /** What changes while an effect runs. The rest of the page stays as it is. */

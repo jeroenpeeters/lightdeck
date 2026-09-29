@@ -241,7 +241,7 @@ legend {
   font-size: var(--large);
   font-weight: 600;
 }
-/* Less goes out than what is set. */
+/* Less goes out than what is set, or effects run at another speed than they are set to. */
 .master-level[data-full="false"] > .master-value {
   color: var(--signal);
 }
@@ -498,7 +498,7 @@ legend {
   opacity: 0.4;
 }
 
-/* ---- the desk: tempo and speed, which belong to no fixture ---- */
+/* ---- the desk: the tempo, which belongs to no fixture ---- */
 
 .desk {
   display: grid;
@@ -517,7 +517,7 @@ legend {
 }
 @media (min-width: 60rem) {
   .desk {
-    grid-template-columns: minmax(12rem, 1fr) minmax(22rem, auto) auto;
+    grid-template-columns: minmax(12rem, 1fr) minmax(22rem, auto);
   }
 }
 .desk > .sliders,

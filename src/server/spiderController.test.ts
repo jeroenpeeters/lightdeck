@@ -357,7 +357,7 @@ describe('SpiderController effects', () => {
   });
 
   it('sends a new frame forty times per second while an effect runs', () => {
-    controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase' } });
+    controller.update({ levels: { dimmer: 1 }, effect: { id: 'wave' } });
     const before = output.frames.length;
     advance(1000);
     expect(output.frames.length - before).toBe(40);
@@ -440,7 +440,7 @@ describe('SpiderController effects', () => {
     for (const id of ['chase', 'scissor', 'burst']) {
       const change = {
         levels: { dimmer: 1, strobe: 0.2, motorSpeed: 0.3, tilt1: 0.9 },
-        effect: { id },
+        effect: { id, speed: 4 },
       };
       tempo.update({ sync: true });
       controller.update(change);
@@ -485,30 +485,64 @@ describe('SpiderController effects', () => {
     expect(Math.max(...frames.slice(10).flatMap((dmx) => dmx.slice(6, 38)))).toBeGreaterThan(200);
   });
 
+  /** The lens the chase is on, a little after `beats` beats at 120 beats per minute. */
+  const headAfter = (beats: number, settings: { rate?: number; speed?: number; bpm?: number }) => {
+    tempo.update({ bpm: 120, rate: settings.rate ?? 1, sync: true });
+    controller.update({
+      levels: { dimmer: 1 },
+      effect: { id: 'chase', speed: settings.speed ?? 1 },
+    });
+    if (settings.bpm !== undefined) tempo.update({ bpm: settings.bpm });
+    advance(beats * 500 + 50);
+    const reds = Array.from({ length: 8 }, (_, i) => ch(output, 7 + i * 4) ?? 0);
+    return reds.indexOf(Math.max(...reds));
+  };
+
+  it('takes one step per beat at normal speed', () => {
+    expect(headAfter(1, {})).toBe(1);
+    expect(headAfter(3, {})).toBe(3);
+  });
+
   it('runs on the tempo of the console, faster or slower with its speed', () => {
-    const headAfterOneBeat = (rate: number) => {
-      tempo.update({ bpm: 120, rate, sync: true });
-      controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase' } });
-      advance(500);
-      const reds = Array.from({ length: 8 }, (_, i) => ch(output, 7 + i * 4) ?? 0);
-      return reds.indexOf(Math.max(...reds));
-    };
-    expect(headAfterOneBeat(1)).toBe(4);
-    expect(headAfterOneBeat(0.5)).toBe(2);
-    expect(headAfterOneBeat(2)).toBe(0);
+    expect(headAfter(2, { rate: 0.25 })).toBe(0);
+    expect(headAfter(2, { rate: 0.5 })).toBe(1);
+    expect(headAfter(2, { rate: 2 })).toBe(4);
+    expect(headAfter(1, { rate: 4 })).toBe(4);
+  });
+
+  it('runs faster or slower with the speed of the effect', () => {
+    expect(headAfter(2, { speed: 0.25 })).toBe(0);
+    expect(headAfter(2, { speed: 0.5 })).toBe(1);
+    expect(headAfter(2, { speed: 2 })).toBe(4);
+    expect(headAfter(1, { speed: 4 })).toBe(4);
+  });
+
+  it('multiplies the speed of the effect with the speed of the console', () => {
+    expect(headAfter(2, { speed: 2, rate: 0.5 })).toBe(2);
+    expect(headAfter(2, { speed: 0.5, rate: 0.5 })).toBe(0);
+    expect(headAfter(1, { speed: 2, rate: 2 })).toBe(4);
+  });
+
+  it('falls back to a lower speed when the effect would change more than ten times per second', () => {
+    // 120 beats per minute times 8 is 16 per second: halved to times 4, which is 8.
+    expect(headAfter(1, { speed: 4, rate: 2 })).toBe(4);
+    expect(headAfter(1, { speed: 4, rate: 4 })).toBe(4);
+    // At 180 beats per minute times 4 is 12 per second: halved to times 2.
+    expect(headAfter(1, { speed: 4, bpm: 180 })).toBe(3);
   });
 
   it('follows a change of tempo while it runs', () => {
-    const headAfter = (bpm: number) => {
-      tempo.update({ bpm: 120, rate: 1, sync: true });
-      controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase' } });
-      tempo.update({ bpm });
-      advance(500);
-      const reds = Array.from({ length: 8 }, (_, i) => ch(output, 7 + i * 4) ?? 0);
-      return reds.indexOf(Math.max(...reds));
-    };
-    expect(headAfter(120)).toBe(4);
-    expect(headAfter(60)).toBe(2);
+    expect(headAfter(2, { bpm: 120 })).toBe(2);
+    expect(headAfter(2, { bpm: 60 })).toBe(1);
+  });
+
+  it('keeps its speed when another effect is chosen, and tells it with the state', () => {
+    controller.update({ effect: { id: 'chase', speed: 0.5 } });
+    controller.update({ effect: { id: 'wave' } });
+    expect(controller.getState().effect).toEqual(
+      expect.objectContaining({ id: 'wave', speed: 0.5 }),
+    );
+    expect(controller.describe().speeds).toEqual([0.25, 0.5, 1, 2, 4]);
   });
 
   it('uses the chosen colours', () => {
@@ -547,6 +581,9 @@ describe('SpiderController effects', () => {
       { bpm: 120 },
       { rate: 2 },
       { sync: true },
+      { speed: 3 },
+      { speed: '2' },
+      { speed: 0 },
     ];
     for (const effect of bad) {
       expect(() => controller.update({ effect })).toThrow(PatchError);
@@ -592,10 +629,21 @@ describe('SpiderController in a scene', () => {
     const colourA = { red: 0, green: 1, blue: 0, white: 0 };
     controller.update({ effect: { id: 'wave', colourA } });
     expect(controller.snapshot()).toEqual({
-      effect: { id: 'wave', colourA, colourB: controller.getState().effect.colourB },
+      effect: { id: 'wave', colourA, colourB: controller.getState().effect.colourB, speed: 1 },
     });
     controller.update({ effect: { id: null } });
     expect(controller.snapshot()).toEqual({});
+  });
+
+  it('keeps the speed of the effect, and takes 1 for a scene that names none', () => {
+    controller.update({ effect: { id: 'chase', speed: 0.25 } });
+    const kept = controller.snapshot();
+    expect(kept.effect).toEqual(expect.objectContaining({ id: 'chase', speed: 0.25 }));
+    controller.recall({ effect: { id: 'kick' } });
+    expect(controller.getState().effect.speed).toBe(1);
+    controller.recall(kept);
+    expect(controller.getState().effect.speed).toBe(0.25);
+    expect(() => controller.check({ effect: { id: 'chase', speed: 3 } })).toThrow(PatchError);
   });
 
   it('comes back to what was kept, and what the part does not name goes to rest', () => {

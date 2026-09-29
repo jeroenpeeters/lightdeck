@@ -19,6 +19,7 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { limitSpeed, SPEEDS } from '../engine/effects.js';
 import type { LaserEffect } from '../engine/laserEffects.js';
 import {
   encodeFixture,
@@ -36,6 +37,8 @@ import type { Tempo } from './tempo.js';
 export interface LaserEffectSettings {
   /** Id of the chosen effect, or null when the operator sets every channel. */
   id: string | null;
+  /** Speed of the effect relative to the tempo, one of `SPEEDS`. At 1 it changes per beat. */
+  speed: number;
 }
 
 export interface LaserState {
@@ -135,12 +138,13 @@ export class LaserController extends EventEmitter implements FixtureController {
   }
 
   /**
-   * The control that opens and closes the laser, the effects there are to choose from,
-   * and the range of the gate in which they count.
+   * The control that opens and closes the laser, the effects and their speeds there are
+   * to choose from, and the range of the gate in which the effects count.
    */
   describe(): Record<string, unknown> {
     return {
       gate: this.gate,
+      speeds: SPEEDS,
       effects: this.effects.map(({ id, name, description, drives }) => ({
         id,
         name,
@@ -200,7 +204,7 @@ export class LaserController extends EventEmitter implements FixtureController {
     for (const control of this.profile.controls) {
       if (control.kind === 'function') raw[control.name] = control.idle;
     }
-    return { raw, effect: { id: null } };
+    return { raw, effect: { id: null, speed: 1 } };
   }
 
   /** `base` with the change on top. Throws when any part of the change is invalid. */
@@ -277,14 +281,23 @@ export class LaserController extends EventEmitter implements FixtureController {
 
   private readEffect(current: LaserEffectSettings, change: unknown): LaserEffectSettings {
     if (change === undefined) return current;
-    const { id } = readObject(change, 'effect', ['id']);
-    if (id === undefined) return current;
-    if (id !== null && !this.effects.some((effect) => effect.id === id)) {
-      throw new PatchError(
-        `unknown effect "${String(id)}", choose one of ${this.effects.map((e) => e.id).join(', ')}`,
-      );
+    const { id, speed } = readObject(change, 'effect', ['id', 'speed']);
+    const effect = { ...current };
+    if (id !== undefined) {
+      if (id !== null && !this.effects.some((each) => each.id === id)) {
+        throw new PatchError(
+          `unknown effect "${String(id)}", choose one of ${this.effects.map((e) => e.id).join(', ')}`,
+        );
+      }
+      effect.id = id as string | null;
     }
-    return { id: id as string | null };
+    if (speed !== undefined) {
+      if (typeof speed !== 'number' || !SPEEDS.includes(speed)) {
+        throw new PatchError(`the speed of an effect must be one of ${SPEEDS.join(', ')}`);
+      }
+      effect.speed = speed;
+    }
+    return effect;
   }
 
   /** The chosen effect, when the laser is in the mode in which effects count. */
@@ -302,9 +315,10 @@ export class LaserController extends EventEmitter implements FixtureController {
     const effect = this.showing();
     if (effect) {
       const { bpm, rate } = this.tempo.getState();
+      const speed = limitSpeed(bpm, this.state.effect.speed * rate);
       const rendered = effect.render({
-        beat: this.tempo.getBeat() * rate,
-        bpm: bpm * rate,
+        beat: this.tempo.getBeat() * speed,
+        bpm: bpm * speed,
         raw: this.state.raw,
       });
       for (const name of effect.drives) {
