@@ -221,6 +221,31 @@ legend {
   font-weight: 600;
 }
 
+/*
+ * The level of the master. It comes before anything in the bar that changes in width,
+ * and is as wide at every level, so that it stays where it is.
+ */
+.master-level {
+  display: grid;
+  width: 4.5rem;
+  line-height: 1.1;
+}
+.master-name {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.master-value {
+  color: var(--dim);
+  font-size: var(--large);
+  font-weight: 600;
+}
+/* Less goes out than what is set. */
+.master-level[data-full="false"] > .master-value {
+  color: var(--signal);
+}
+
 /* Always within reach, whatever page is on screen and however far it is scrolled. */
 .blackout {
   min-height: var(--touch);

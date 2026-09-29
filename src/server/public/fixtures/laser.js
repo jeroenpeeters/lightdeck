@@ -9,7 +9,9 @@
 // While an effect shows, the server sends the bytes it renders, and the blocks of the
 // driven channels show those instead of what the operator set.
 //
-// Blackout and tempo are not the laser's: they are in the shell.
+// Blackout, master and tempo are not the laser's: they are in the shell. The laser has
+// no dimmer, so the master at 0 holds it closed the way the blackout does, and the page
+// says which of the two it is.
 
 import { start } from '../shell.js';
 import { $, button, element, renderReadout } from '../ui.js';
@@ -90,8 +92,21 @@ function byteToEnter(control, range) {
   return Math.floor((range.from + range.to) / 2);
 }
 
-/** Closed by the operator. A blackout closes the laser as well, whatever this says. */
+/**
+ * Closed by the operator. The blackout and the master at 0 close the laser as well,
+ * whatever this says.
+ */
 const isOff = () => !gate || holds(currentRange(gate) ?? {}, gate.idle);
+
+/**
+ * What of the console holds the laser closed, whatever is set here: 'blackout', 'master'
+ * or nothing. The blackout comes first. The master counts as the server does: open only
+ * when it is known to be above 0.
+ */
+function heldBy() {
+  if (shell.blackout) return 'blackout';
+  return shell.master > 0 ? null : 'master';
+}
 
 function setEffect(id) {
   state.effect = { ...state.effect, id };
@@ -235,13 +250,17 @@ function words(control) {
 }
 
 function renderTile() {
-  const closed = shell.blackout || isOff();
+  const held = heldBy();
+  const closed = held !== null || isOff();
   $('laser-tile').dataset.on = String(!closed);
-  $('laser-state').textContent = shell.blackout
-    ? 'Closed by blackout'
-    : closed
-      ? 'Closed'
-      : words(gate);
+  $('laser-state').textContent =
+    held === 'blackout'
+      ? 'Closed by blackout'
+      : held === 'master'
+        ? 'Closed by the master'
+        : closed
+          ? 'Closed'
+          : words(gate);
   // What comes right after the gate says most: the pattern or the program.
   const next = controls[controls.indexOf(gate) + 1];
   $('laser-detail').textContent = closed || !next ? 'Nothing is drawn' : words(next);
@@ -258,10 +277,14 @@ function renderHint() {
     ? gate.ranges.filter((range) => range.key && !holds(range, gate.idle)).map((r) => r.name)
     : [];
   const waiting = chosenEffect() && !showingEffect() ? chosenEffect() : undefined;
+  const held = heldBy();
   let text = '';
-  if (shell.blackout) {
+  if (held === 'blackout') {
     text =
       'Blackout is on, so the laser is closed. What you set here is kept and shows when you lift the blackout.';
+  } else if (held === 'master') {
+    text =
+      'The master is at 0, so the laser is closed. What you set here is kept and shows when you raise the master on the deck.';
   } else if (waiting) {
     text = `${waiting.name} is chosen and waits: effects show in ${effectsMode()} mode. Choose ${effectsMode()} to see it.`;
   } else if (isOff() && open.length > 1) {
@@ -278,7 +301,7 @@ function renderEffects() {
     made.setAttribute('aria-pressed', String(made.dataset.effect === chosen?.id));
   }
   $('effect-stop').disabled = !chosen;
-  $('running').dataset.on = String(Boolean(showing) && !shell.blackout);
+  $('running').dataset.on = String(Boolean(showing) && heldBy() === null);
   $('running').textContent = chosen
     ? showing
       ? chosen.name
@@ -323,18 +346,9 @@ async function main() {
   buildEffects();
 
   shell.on('fixture', (message) => {
+    // The shell has laid what is still on its way over the state, so nothing is set back.
+    state = message.state;
     dmx = message.dmx;
-    if (message.own) {
-      renderFrame();
-      return;
-    }
-    // What is still on its way to the server is newer than what the server tells.
-    const pending = shell.pending();
-    state = {
-      ...message.state,
-      raw: { ...message.state.raw, ...(pending?.raw ?? {}) },
-      effect: { ...message.state.effect, ...(pending?.effect ?? {}) },
-    };
     render();
   });
   shell.on('frame', (message) => {

@@ -1,20 +1,150 @@
 /*
- * What belongs to the deck: the keys of the scenes, and the rows to name a scene with.
+ * What belongs to the deck: a row per group with the keys of its scenes, and what
+ * Program adds to it, the rows to name a scene or a group with.
+ *
+ * In a row nothing takes its size from what it says, so that no key moves under a
+ * finger when a scene goes on or off: the columns are fixed and text that changes stays
+ * on one line.
  */
 
-.panel-head {
-  display: flex;
-  flex-wrap: wrap;
+.deck-head {
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
 }
-.panel > .hint {
-  margin-top: 0.35rem;
+.mode {
+  margin-left: auto;
+}
+.deck-hint {
+  max-width: 80ch;
 }
 
-.console > .notice {
+/*
+ * What there is to say stays at the bottom of the screen: the notice of the shell and
+ * under it the one of the deck. There it is in sight wherever the page is scrolled to.
+ * It takes no room of its own, so that the page is as long with it as without it and no
+ * key moves when it comes or goes. The room above it is kept free at the end of the
+ * page, where a notice then lies under the last group and not over it.
+ */
+.notices {
+  position: sticky;
+  bottom: 0.5rem;
+  z-index: 1;
+  height: 0;
+  margin-top: 5rem;
+}
+.notices-stack {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.notices-stack > .notice {
   margin-top: 0;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--signal);
+  background: var(--key);
+}
+.notices-stack > .notice[data-level="alarm"] {
+  border-left-color: var(--stop);
+}
+
+/* ---- the master ---- */
+
+/*
+ * A fader for a finger in the dark: a tall handle on a thick track. It has a panel of
+ * its own above the groups, and the name of the first group lies between it and the
+ * keys of the scenes. Nothing in the panel changes in size when the fader moves.
+ */
+.grand-master > .slider {
+  row-gap: 0.5rem;
+  align-items: center;
+}
+.grand-master label {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.grand-master output {
+  min-width: 4ch;
+  font-size: 2rem;
+}
+.grand-master input[type="range"] {
+  height: 4.5rem;
+}
+.grand-master input[type="range"]::-webkit-slider-runnable-track {
+  height: 0.75rem;
+}
+.grand-master input[type="range"]::-webkit-slider-thumb {
+  width: 2.75rem;
+  height: 4rem;
+  margin-top: -1.625rem;
+}
+.grand-master input[type="range"]::-moz-range-track,
+.grand-master input[type="range"]::-moz-range-progress {
+  height: 0.75rem;
+}
+.grand-master input[type="range"]::-moz-range-thumb {
+  width: 2.75rem;
+  height: 4rem;
+}
+
+/* ---- a group ---- */
+
+.groups {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+}
+.group-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: baseline;
+}
+.group-ident {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  min-width: 0;
+}
+.group-name {
+  color: var(--paper);
+  font-size: var(--large);
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+.group-name,
+.group-ident > .where,
+.group-head > .running {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-head > .running {
+  margin-left: 0;
+  text-align: right;
+}
+
+.group-keys {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7rem;
+  gap: 0.5rem;
+  align-items: start;
+  margin-top: 0.75rem;
+}
+.group-scenes > .hint {
+  display: flex;
+  align-items: center;
+  min-height: 5.5rem;
+}
+@media (max-width: 30rem) {
+  .group-keys {
+    grid-template-columns: minmax(0, 1fr) 4.5rem;
+  }
 }
 
 /* ---- the scenes ---- */
@@ -23,12 +153,13 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
   gap: 0.5rem;
-  margin-top: 0.75rem;
 }
 .scene {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: center;
   gap: 0.2rem;
+  min-width: 0;
   min-height: 5.5rem;
   padding: 0.5rem 1rem;
   border: 1px solid var(--line);
@@ -41,17 +172,32 @@
 .scene:active {
   background: var(--key-down);
 }
+.scene:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .scene-name {
   font-size: var(--large);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+/* One line, whatever it says, and there when it says nothing. */
 .scene-sets {
+  min-height: 1.15em;
+  overflow: hidden;
   color: var(--dim);
   font-size: var(--small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.off {
+  padding: 0.5rem;
+  font-size: var(--large);
+  font-weight: 600;
+  text-align: center;
 }
 
-/* The fixtures are set to this scene. */
+/* The fixtures of the group are set to this scene. */
 .scene[data-state="set"] {
   border-color: var(--signal);
   background: var(--signal);
@@ -79,7 +225,7 @@
   color: var(--ink);
 }
 
-/* ---- naming a scene ---- */
+/* ---- naming a scene or a group ---- */
 
 .name-row {
   display: grid;
@@ -106,15 +252,24 @@
 .field:disabled {
   opacity: 0.4;
 }
-@media (max-width: 30rem) {
-  .name-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
 
-.store-over,
-.delete {
-  margin-top: 0.75rem;
+/* ---- what Program adds to a group ---- */
+
+.group-program {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.block > .name-row {
+  margin-top: 0.5rem;
+}
+.wide {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.35rem 1rem;
 }
 .delete {
   border-color: var(--stop);
@@ -124,4 +279,19 @@
   background: var(--stop);
   color: var(--ink);
   font-weight: 600;
+}
+
+/* ---- a new group ---- */
+
+.ticks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2rem;
+  margin-top: 1rem;
+}
+.ticks > .check {
+  margin-top: 0.25rem;
+}
+.new-group > .key {
+  margin-top: 0.75rem;
 }

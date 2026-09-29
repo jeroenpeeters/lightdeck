@@ -5,7 +5,9 @@
 // another screen come back through the shell. While an effect runs, the server also
 // sends the bytes that go to the fixture, and the lenses are drawn from those.
 //
-// Tempo, speed and blackout are not the spider's: they are in the shell.
+// Tempo, speed, blackout and the master are not the spider's: they are in the shell.
+// The master is set on the deck. Here it only dims the drawing of the lenses, which
+// shows what goes out.
 
 import { start } from '../shell.js';
 import { $, button, element, percent, renderReadout, slider, views } from '../ui.js';
@@ -307,7 +309,8 @@ function shownLevels() {
 
 function renderFixture() {
   const levels = shownLevels();
-  const brightness = shell.blackout ? 0 : (state.levels.dimmer ?? 0);
+  // What goes out: the brightness that is set times the master, and nothing in a blackout.
+  const brightness = shell.blackout ? 0 : (state.levels.dimmer ?? 0) * shell.master;
   for (const row of document.querySelectorAll('.bar-row')) {
     const tilt = levels[row.dataset.tilt] ?? 0;
     row.style.setProperty('--tilt', String(tilt));
@@ -435,12 +438,9 @@ async function main() {
   build();
   shell.notes(notes);
   shell.on('fixture', (message) => {
-    dmx = message.dmx;
-    if (message.own) {
-      renderReadout($('readout'), dmx, fixture.controls);
-      return;
-    }
+    // The shell has laid what is still on its way over the state, so nothing is set back.
     state = message.state;
+    dmx = message.dmx;
     render();
   });
   shell.on('frame', (message) => {

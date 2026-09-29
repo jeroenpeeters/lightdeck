@@ -1,38 +1,97 @@
-// The deck: the scenes of the show. Plain browser JavaScript, no build step.
+// The deck: the groups of the show with their scenes. Plain browser JavaScript, no build
+// step.
 //
-// A scene is what every fixture does at once. A press on its key sets the fixtures to
-// it. Storing takes the fixtures as they are now, so a scene is made on the pages of
-// the fixtures and kept here.
+// A group is a set of fixtures, and a scene is what the fixtures of its group do. Every
+// group has a row here, with a key per scene and a key for off. One scene per group is
+// on, so several scenes are on at once, each for its own fixtures.
 //
-// The deck draws what the server says: the scenes of the show, which of them the
-// fixtures are set to, and whether they were changed by hand since. It asks for what
-// the operator wants and waits for the answer to come by as an event.
+// The deck has two modes, and the address remembers which (#program):
 //
-// Tempo, speed and blackout are in the shell.
+//   Show      what the page opens in. A press on a scene sets the fixtures of its group
+//             to it, a press on Off darkens them. There is nothing to type and nothing
+//             that deletes, and no key changes size or place when a scene goes on or off.
+//   Program   storing, naming and deleting, of scenes and of groups. A press on a scene
+//             chooses it, and the fixtures stay as they are.
+//
+// Storing takes the fixtures of the group as they are now, so a scene is made on the
+// pages of the fixtures and kept here.
+//
+// The deck draws what the server says: the groups of the show, which scene is on in
+// each, and whether its fixtures were changed by hand since. It asks for what the
+// operator wants and waits for the answer to come by as an event. A press is asked once:
+// when it does not reach lightdeck the deck says so and the operator presses again.
+//
+// The deck also has the fader of the master, in Show and in Program. The master is for
+// the whole console and no part of a scene: moving it changes no scene, and a scene
+// does not move it. The shell keeps it and sends it, and shows its level on every page.
+//
+// Tempo, speed and blackout are in the shell. Its notice is kept at the bottom of the
+// screen here, with the one of the deck, so that no key moves when it comes or goes.
 
-import { start } from './shell.js';
-import { $, element } from './ui.js';
+import { masterPercent, start } from './shell.js';
+import { $, button, element, slider } from './ui.js';
 
-/** How long the delete key waits for the second press. */
+/** How long a delete key waits for the second press. */
 const SURE_MS = 3000;
+/** What the address ends in while the deck is in Program. */
+const PROGRAM = '#program';
+const NAME_LENGTH = 40;
+
+/**
+ * What the page has from the start. It is found once, by ids that no row can have: the
+ * ids in a row are made with dots, which the id of a group cannot hold.
+ */
+const page = {
+  where: $('where'),
+  mode: $('mode'),
+  hint: $('deck-hint'),
+  master: $('grand-master'),
+  groups: $('groups'),
+  newGroup: $('new-group'),
+  makeGroup: $('make-group'),
+  groupName: $('group-name'),
+  groupFixtures: $('group-fixtures'),
+  notices: $('notices'),
+  notice: $('deck-notice'),
+};
 
 let shell;
 /** While true, a press on a scene chooses it to edit and the fixtures stay as they are. */
-let editing = false;
-/** Id of the scene chosen to edit. */
+let programming = false;
+/** The scene chosen to edit, as { group, scene }. */
 let chosen = null;
+/** What a delete key was pressed for once, as { group, scene }. A group has no scene. */
+let sure = null;
+let sureTimer;
 /** What the server answered to what could not be done. */
 let failure = '';
-let sureTimer;
-const keys = new Map();
+/** True when the last press did not reach lightdeck. It is not sent again. */
+let lost = false;
+/** By the id of a group, the row that was built for it. */
+const rows = new Map();
+/** The fader of the master. */
+let fader;
 
-const sceneOf = (id) => shell.show.scenes.find((scene) => scene.id === id);
+const groupOf = (id) => shell.show.groups.find((group) => group.id === id);
+const sceneOf = (group, id) => groupOf(group)?.scenes.find((scene) => scene.id === id);
+const labelOf = (id) => shell.fixtures.find((fixture) => fixture.id === id)?.label ?? id;
+const same = (one, other) => one !== null && one.group === other.group && one.scene === other.scene;
+const count = (number, word) => (number === 1 ? `1 ${word}` : `${number} ${word}s`);
 
-function fixturesOf(scene) {
-  const names = scene.fixtures.map(
-    (id) => shell.fixtures.find((fixture) => fixture.id === id)?.label ?? id,
-  );
-  return names.length > 0 ? names.join(', ') : 'Everything dark';
+/**
+ * What is on in a group. Right after the show changed the server may not have said yet,
+ * and then no scene is on.
+ */
+function onIn(group) {
+  const on = shell.playback.groups?.[group.id];
+  const scene = group.scenes.find((each) => each.id === on?.scene);
+  return { scene, changed: Boolean(scene && on.changed) };
+}
+
+/** What a scene sets, where that says more than the row does already. */
+function setsOf(scene, group) {
+  if (scene.fixtures.length === 0) return 'Dark';
+  return group.fixtures.length > 1 ? scene.fixtures.map(labelOf).join(', ') : '';
 }
 
 /** An answer of the server as a sentence. */
@@ -43,64 +102,77 @@ function sentence(text) {
 
 async function ask(url, body) {
   const answer = await shell.ask(url, body);
-  failure = answer.ok ? '' : sentence(answer.error);
+  lost = Boolean(answer.lost);
+  failure = answer.ok || lost ? '' : sentence(answer.error);
   renderNotice();
   return answer;
 }
 
 // ---- what the operator does ----
 
-function press(id) {
-  if (editing) {
-    choose(chosen === id ? null : id);
+function press(group, scene) {
+  if (programming) {
+    const here = { group, scene };
+    choose(same(chosen, here) ? null : here);
     return;
   }
-  ask('/api/playback', { scene: id });
+  ask('/api/playback', { group, scene });
 }
 
-function choose(id) {
-  chosen = id;
+function pressOff(group) {
+  if (!programming) ask('/api/playback', { group, off: true });
+}
+
+function choose(what) {
+  chosen = what;
   unsure();
-  $('edit-name').value = sceneOf(id)?.label ?? '';
   render();
 }
 
-function setEditing(on) {
-  editing = on;
+function setProgramming(on) {
+  programming = on;
+  failure = '';
   choose(null);
+  renderNotice();
 }
 
-async function storeNew(event) {
-  event.preventDefault();
-  const field = $('new-name');
-  const answer = await ask('/api/scenes', { label: field.value });
-  if (!answer.ok) return;
-  field.value = '';
-  field.blur();
+function switchMode() {
+  const on = !programming;
+  history.replaceState(null, '', on ? PROGRAM : location.pathname + location.search);
+  setProgramming(on);
 }
 
-function storeOver() {
-  const id = shell.playback.scene;
-  if (id !== null) ask(`/api/scenes/${id}/store`);
+async function storeNew(group, field) {
+  const answer = await ask(`/api/groups/${group}/scenes`, { label: field.value });
+  if (answer.ok) field.value = '';
+  return answer.ok;
 }
 
-async function rename(event) {
-  event.preventDefault();
-  if (chosen === null) return;
-  const answer = await ask(`/api/scenes/${chosen}/rename`, { label: $('edit-name').value });
-  if (answer.ok) $('edit-name').blur();
+function storeOver(id) {
+  const group = groupOf(id);
+  const { scene } = group ? onIn(group) : {};
+  if (scene) ask(`/api/groups/${id}/scenes/${scene.id}/store`);
+}
+
+async function renameScene(group, label) {
+  if (chosen?.group !== group) return false;
+  return (await ask(`/api/groups/${group}/scenes/${chosen.scene}/rename`, { label })).ok;
+}
+
+async function renameGroup(group, label) {
+  return (await ask(`/api/groups/${group}/rename`, { label })).ok;
 }
 
 function unsure() {
   clearTimeout(sureTimer);
-  $('delete').dataset.sure = 'false';
+  sure = null;
 }
 
 /** The first press asks, the second one within a few seconds deletes. */
-async function remove() {
-  if (chosen === null) return;
-  if ($('delete').dataset.sure !== 'true') {
-    $('delete').dataset.sure = 'true';
+async function remove(what, url) {
+  if (!same(sure, what)) {
+    unsure();
+    sure = what;
     sureTimer = setTimeout(() => {
       unsure();
       render();
@@ -108,92 +180,286 @@ async function remove() {
     render();
     return;
   }
-  const answer = await ask(`/api/scenes/${chosen}/delete`);
-  if (answer.ok) choose(null);
+  unsure();
+  await ask(url);
+  render();
+}
+
+function removeScene(group) {
+  if (chosen?.group !== group) return;
+  remove({ ...chosen }, `/api/groups/${group}/scenes/${chosen.scene}/delete`);
+}
+
+function removeGroup(group) {
+  remove({ group, scene: null }, `/api/groups/${group}/delete`);
+}
+
+async function makeGroup(event) {
+  event.preventDefault();
+  const ticks = [...page.groupFixtures.querySelectorAll('input')];
+  const fixtures = ticks.filter((tick) => tick.checked).map((tick) => tick.value);
+  const answer = await ask('/api/groups', { label: page.groupName.value, fixtures });
+  if (!answer.ok) return;
+  page.groupName.value = '';
+  page.groupName.blur();
+  for (const tick of ticks) tick.checked = false;
+}
+
+// ---- building ----
+
+/** A field for a name with its key. `done` gets the name and says whether it was taken. */
+function nameRow({ id, label, key, done }) {
+  const form = element('form', 'name-row');
+  const name = element('label', '', label);
+  name.htmlFor = id;
+  const field = element('input', 'field');
+  field.id = id;
+  field.type = 'text';
+  field.maxLength = NAME_LENGTH;
+  field.autocomplete = 'off';
+  const submit = element('button', 'key', key);
+  submit.type = 'submit';
+  form.append(name, field, submit);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!(await done(field.value))) return;
+    field.blur();
+    // A field that follows a name shows it as it was stored.
+    render();
+  });
+  return { form, field, submit };
+}
+
+function block(title, ...parts) {
+  const made = element('section', 'block');
+  const head = element('h3', '', title);
+  made.append(head, ...parts);
+  return { made, head };
+}
+
+/** What Program adds to the row of a group: storing, the chosen scene, the group itself. */
+function buildProgram(row) {
+  const { id } = row;
+  row.storeNew = nameRow({
+    id: `row.${id}.new`,
+    label: 'Name of the new scene',
+    key: 'Store',
+    done: () => storeNew(id, row.storeNew.field),
+  });
+  row.storeOver = button('key wide', '', () => storeOver(id));
+  const store = block('Store what the fixtures do', row.storeNew.form, row.storeOver);
+
+  row.rename = nameRow({
+    id: `row.${id}.scene`,
+    label: 'Name',
+    key: 'Rename',
+    done: (label) => renameScene(id, label),
+  });
+  row.remove = button('key wide delete', '', () => removeScene(id));
+  const scene = block('Scene', row.rename.form, row.remove);
+  row.sceneTitle = scene.head;
+
+  row.renameGroup = nameRow({
+    id: `row.${id}.name`,
+    label: 'Name',
+    key: 'Rename',
+    done: (label) => renameGroup(id, label),
+  });
+  row.removeGroup = button('key wide delete', '', () => removeGroup(id));
+  const group = block('Group', row.renameGroup.form, row.removeGroup);
+  row.groupTitle = group.head;
+
+  const program = element('div', 'group-program');
+  program.append(store.made, scene.made, group.made);
+  return program;
+}
+
+function buildRow(id) {
+  const row = { id, keys: new Map(), label: null, edited: null };
+  row.section = element('section', 'panel group');
+  row.name = element('h2', 'group-name');
+  row.name.id = `row.${id}.title`;
+  row.section.setAttribute('aria-labelledby', row.name.id);
+  row.holds = element('p', 'where');
+  row.running = element('p', 'running');
+  const ident = element('div', 'group-ident');
+  ident.append(row.name, row.holds);
+  const head = element('div', 'group-head');
+  head.append(ident, row.running);
+
+  row.grid = element('div', 'scene-grid');
+  row.none = element('p', 'hint', 'No scenes yet.');
+  const scenes = element('div', 'group-scenes');
+  scenes.append(row.none, row.grid);
+  // Off has a place of its own at the end of the row, the same in every group.
+  row.off = button('scene off', 'Off', () => pressOff(id));
+  const keys = element('div', 'group-keys');
+  keys.append(scenes, row.off);
+
+  row.program = buildProgram(row);
+  row.section.append(head, keys, row.program);
+  return row;
+}
+
+function buildMaster() {
+  fader = slider({
+    id: 'master',
+    label: 'Master in percent',
+    read: () => masterPercent(shell.master),
+    write: (number) => shell.setMaster(number / 100),
+  });
+  page.master.append(fader);
+}
+
+function buildTicks() {
+  for (const fixture of shell.fixtures) {
+    const tick = element('input');
+    tick.type = 'checkbox';
+    tick.value = fixture.id;
+    const label = element('label', 'check');
+    label.append(tick, fixture.label);
+    page.groupFixtures.append(label);
+  }
 }
 
 // ---- drawing ----
 
-function stateOf(scene) {
-  if (editing) return scene.id === chosen ? 'chosen' : 'idle';
-  if (scene.id !== shell.playback.scene) return 'idle';
-  return shell.playback.changed ? 'changed' : 'set';
+function stateOf(group, scene) {
+  if (programming && same(chosen, { group: group.id, scene: scene.id })) return 'chosen';
+  const on = onIn(group);
+  if (on.scene !== scene) return 'idle';
+  return on.changed ? 'changed' : 'set';
 }
 
-function renderScenes() {
-  const grid = $('scenes');
-  const { scenes } = shell.show;
-  for (const [id, key] of keys) {
-    if (scenes.some((scene) => scene.id === id)) continue;
+function renderKeys(row, group) {
+  for (const [id, key] of row.keys) {
+    if (group.scenes.some((scene) => scene.id === id)) continue;
     key.remove();
-    keys.delete(id);
+    row.keys.delete(id);
   }
-  scenes.forEach((scene, index) => {
-    let key = keys.get(scene.id);
+  group.scenes.forEach((scene, index) => {
+    let key = row.keys.get(scene.id);
     if (!key) {
-      key = element('button', 'scene');
-      key.type = 'button';
+      key = button('scene', undefined, () => press(group.id, scene.id));
       key.append(element('span', 'scene-name'), element('span', 'scene-sets'));
-      key.addEventListener('click', () => press(scene.id));
-      keys.set(scene.id, key);
+      row.keys.set(scene.id, key);
     }
-    if (grid.children[index] !== key) grid.insertBefore(key, grid.children[index] ?? null);
-
-    const state = stateOf(scene);
+    if (row.grid.children[index] !== key) {
+      row.grid.insertBefore(key, row.grid.children[index] ?? null);
+    }
+    const state = stateOf(group, scene);
     key.dataset.state = state;
     key.setAttribute('aria-pressed', String(state !== 'idle'));
     key.firstElementChild.textContent = scene.label;
-    key.lastElementChild.textContent = state === 'changed' ? 'Changed by hand' : fixturesOf(scene);
+    key.lastElementChild.textContent =
+      state === 'changed' ? 'Changed by hand' : setsOf(scene, group);
   });
+  row.none.hidden = group.scenes.length > 0;
 }
 
-function render() {
-  const { show, playback } = shell;
-  const count = show.scenes.length;
-  const running = sceneOf(playback.scene);
-  if (chosen !== null && !sceneOf(chosen)) chosen = null;
-  const edited = sceneOf(chosen);
+function renderProgram(row, group) {
+  const { scene: running, changed } = onIn(group);
+  row.storeOver.disabled = !changed;
+  row.storeOver.textContent = !running
+    ? 'No scene is on'
+    : changed
+      ? `Store the changes in "${running.label}"`
+      : `"${running.label}" is as it was stored`;
 
-  $('where').textContent =
-    (count === 1 ? '1 scene' : `${count} scenes`) +
-    (show.file ? `, kept in ${show.file.split(/[\\/]/).pop()}` : ', kept until lightdeck stops');
-  $('where').title = show.file ?? '';
-  $('running').dataset.on = String(Boolean(running));
-  $('running').textContent = !running
+  const edited = chosen?.group === group.id ? sceneOf(group.id, chosen.scene) : undefined;
+  row.sceneTitle.textContent = edited ? `Scene "${edited.label}"` : 'No scene chosen';
+  // The field gets the name when the scene is chosen. After that it is the operator's.
+  if (row.edited !== (edited?.id ?? null)) {
+    row.edited = edited?.id ?? null;
+    row.rename.field.value = edited?.label ?? '';
+  }
+  row.rename.field.disabled = !edited;
+  row.rename.submit.disabled = !edited;
+  row.remove.disabled = !edited;
+  const sureOfScene = Boolean(edited) && same(sure, chosen);
+  row.remove.dataset.sure = String(sureOfScene);
+  row.remove.textContent = sureOfScene ? `Press again to delete "${edited.label}"` : 'Delete scene';
+
+  row.groupTitle.textContent = `Group "${group.label}"`;
+  // A name that is being typed stays. Otherwise the field follows the name of the group.
+  if (row.label !== group.label && document.activeElement !== row.renameGroup.field) {
+    row.renameGroup.field.value = group.label;
+    row.label = group.label;
+  }
+  const sureOfGroup = same(sure, { group: group.id, scene: null });
+  row.removeGroup.dataset.sure = String(sureOfGroup);
+  row.removeGroup.textContent = !sureOfGroup
+    ? 'Delete group'
+    : group.scenes.length === 0
+      ? `Press again to delete "${group.label}"`
+      : `Press again to delete "${group.label}" and its ${count(group.scenes.length, 'scene')}`;
+}
+
+function renderRow(row, group) {
+  const { scene: running, changed } = onIn(group);
+  const names = group.fixtures.map(labelOf).join(', ');
+  row.name.textContent = group.label;
+  // A group of one fixture is mostly called after it, and then the name says it.
+  row.holds.textContent = names === group.label ? '' : names;
+  row.running.dataset.on = String(Boolean(running));
+  row.running.textContent = !running
     ? 'No scene'
-    : playback.changed
+    : changed
       ? `${running.label}, changed by hand`
       : running.label;
 
-  renderScenes();
-  const hint = $('scenes-hint');
-  hint.textContent = editing
-    ? 'Choose a scene to rename or delete it. The fixtures stay as they are.'
-    : 'There are no scenes yet.';
-  hint.hidden = !editing && count > 0;
+  renderKeys(row, group);
+  row.off.disabled = programming;
+  row.off.setAttribute('aria-label', `${group.label} off`);
+  row.program.hidden = !programming;
+  if (programming) renderProgram(row, group);
+}
 
-  $('edit').setAttribute('aria-pressed', String(editing));
-  $('edit').textContent = editing ? 'Done editing' : 'Edit scenes';
-  $('edit').disabled = !editing && count === 0;
-
-  $('edit-panel').hidden = !editing;
-  $('edit-title').textContent = edited ? `Edit "${edited.label}"` : 'Edit scene';
-  $('edit-name').disabled = !edited;
-  $('rename-key').disabled = !edited;
-  $('delete').disabled = !edited;
-  $('delete').textContent =
-    $('delete').dataset.sure === 'true' && edited
-      ? `Press again to delete "${edited.label}"`
-      : 'Delete';
-
-  const over = $('store-over');
-  over.hidden = !running;
-  over.disabled = !playback.changed;
-  if (running) {
-    over.textContent = playback.changed
-      ? `Store the changes in "${running.label}"`
-      : `"${running.label}" is as it was stored`;
+function renderGroups() {
+  const list = page.groups;
+  const { groups } = shell.show;
+  for (const [id, row] of rows) {
+    if (groups.some((group) => group.id === id)) continue;
+    row.section.remove();
+    rows.delete(id);
   }
+  groups.forEach((group, index) => {
+    let row = rows.get(group.id);
+    if (!row) {
+      row = buildRow(group.id);
+      rows.set(group.id, row);
+    }
+    if (list.children[index] !== row.section) {
+      list.insertBefore(row.section, list.children[index] ?? null);
+    }
+    renderRow(row, group);
+  });
+  list.hidden = groups.length === 0;
+}
+
+function render() {
+  const { show } = shell;
+  // What was chosen, or asked about, may be gone from the show.
+  if (chosen && !sceneOf(chosen.group, chosen.scene)) chosen = null;
+  if (sure && !(sure.scene === null ? groupOf(sure.group) : sceneOf(sure.group, sure.scene))) {
+    unsure();
+  }
+
+  const scenes = show.groups.reduce((sum, group) => sum + group.scenes.length, 0);
+  page.where.textContent =
+    `${count(show.groups.length, 'group')}, ${count(scenes, 'scene')}` +
+    (show.file ? `, kept in ${show.file.split(/[\\/]/).pop()}` : ', kept until lightdeck stops');
+  page.where.title = show.file ?? '';
+  page.mode.setAttribute('aria-pressed', String(programming));
+
+  const { hint } = page;
+  hint.textContent = programming
+    ? 'Program is on. Set the fixtures on their pages, then store what they do in a group. A press on a scene chooses it, to rename or delete it. The fixtures stay as they are, and Off waits. Press Program again for the show.'
+    : 'There are no groups yet. Press Program to make one.';
+  hint.hidden = !programming && show.groups.length > 0;
+
+  renderGroups();
+  page.newGroup.hidden = !programming;
 }
 
 /**
@@ -202,13 +468,14 @@ function render() {
  */
 function renderNotice() {
   const { problem } = shell.show;
-  const text =
-    failure ||
-    (problem
-      ? `The show file has a mistake, so the deck goes on with the scenes it had. ${sentence(problem)}`
-      : '');
-  $('deck-notice').textContent = text;
-  $('deck-notice').hidden = text === '';
+  let text = '';
+  if (lost) text = 'That press did not reach lightdeck, and it is not sent again. Press again.';
+  else if (failure) text = failure;
+  else if (problem) {
+    text = `The show file has a mistake, so the deck goes on with the show it had. ${sentence(problem)}`;
+  }
+  page.notice.textContent = text;
+  page.notice.hidden = text === '';
 }
 
 async function main() {
@@ -216,17 +483,26 @@ async function main() {
   if (!shell) return;
   document.title = 'Deck · Lightdeck';
 
-  $('edit').addEventListener('click', () => setEditing(!editing));
-  $('store-new').addEventListener('submit', storeNew);
-  $('store-over').addEventListener('click', storeOver);
-  $('rename').addEventListener('submit', rename);
-  $('delete').addEventListener('click', remove);
+  // The notice of the shell joins the one of the deck, where it takes no room from the keys.
+  page.notices.prepend($('notice'));
+  buildMaster();
+  buildTicks();
+  page.mode.addEventListener('click', switchMode);
+  page.makeGroup.addEventListener('submit', makeGroup);
+  // The address can also be changed by hand, or by going back.
+  window.addEventListener('hashchange', () => setProgramming(location.hash === PROGRAM));
 
   shell.on('show', () => {
+    // What was refused was about the show as it was. A press that was lost still is.
+    failure = '';
     render();
     renderNotice();
   });
   shell.on('playback', render);
+  // The master moved, here or on another screen. The groups have nothing to do with it.
+  shell.on('change', fader.refresh);
+  programming = location.hash === PROGRAM;
+  fader.refresh();
   render();
   renderNotice();
 }

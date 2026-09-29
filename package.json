@@ -2,6 +2,7 @@
   "name": "lightdeck",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "Unified DMX (Light Rider LR512) + Zigbee (Home Assistant) lighting control for Dreamscape",
   "type": "module",
   "packageManager": "pnpm@11.0.8",

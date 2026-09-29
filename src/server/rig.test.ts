@@ -112,6 +112,111 @@ describe('Rig', () => {
     expect(rig.getBlackout()).toBe(false);
   });
 
+  it('starts with the master at full', () => {
+    expect(rig.getMaster()).toBe(1);
+    change('spider', { levels: { dimmer: 1 } });
+    change('laser', { raw: { mode: MANUAL } });
+    expect(ch(output, 6)).toBe(255);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('dims every fixture with one master, and closes the laser at 0', () => {
+    change('spider', { levels: { dimmer: 1, red1: 1 } });
+    change('laser', { raw: { mode: MANUAL, drawing: 191 } });
+    const seen: unknown[][] = [];
+    rig.on('master', (...args) => seen.push(args));
+    const fixtures: unknown[][] = [];
+    rig.on('fixture', (id, _state, dmx) => fixtures.push([id, dmx[id === 'spider' ? 5 : 0]]));
+
+    rig.setMaster(0.5, 'tablet');
+    expect(rig.getMaster()).toBe(0.5);
+    expect(ch(output, 6)).toBe(128);
+    expect(ch(output, 7)).toBe(255);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+    expect(seen).toEqual([[0.5, 'tablet']]);
+    // Each fixture tells what it sends now.
+    expect(fixtures).toEqual([
+      ['spider', 128],
+      ['laser', MANUAL],
+    ]);
+
+    rig.setMaster(0);
+    expect(ch(output, 6)).toBe(0);
+    expect(ch(output, 7)).toBe(255);
+    expect(ch(output, LASER_AT)).toBe(0);
+    expect(ch(output, LASER_AT + 9)).toBe(191);
+    expect(seen[1]).toEqual([0, undefined]);
+
+    rig.setMaster(1);
+    expect(ch(output, 6)).toBe(255);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('leaves what the fixtures are set to when the master moves', () => {
+    change('spider', { levels: { dimmer: 0.8 }, effect: { id: 'wave' } });
+    change('laser', { raw: { mode: MANUAL }, effect: { id: 'pulse' } });
+    const controllers = rig.fixtures.map((fixture) => fixture.controller);
+    const states = controllers.map((controller) => controller.getState());
+    const kept = controllers.map((controller) => controller.snapshot());
+    for (const master of [0.5, 0, 0.01, 1]) {
+      rig.setMaster(master);
+      expect(controllers.map((controller) => controller.getState())).toEqual(states);
+      expect(controllers.map((controller) => controller.snapshot())).toEqual(kept);
+    }
+  });
+
+  it('refuses a master that is not a number from 0 to 1, and changes nothing', () => {
+    change('spider', { levels: { dimmer: 1 } });
+    change('laser', { raw: { mode: MANUAL } });
+    rig.setMaster(0.5);
+    const seen: unknown[] = [];
+    rig.on('master', (level) => seen.push(level));
+    rig.on('fixture', (id) => seen.push(id));
+    const frames = output.frames.length;
+
+    const bad = [-0.1, 1.1, 50, Number.NaN, Number.POSITIVE_INFINITY, '0.5', true, null, {}];
+    for (const level of [...bad, undefined]) {
+      expect(() => rig.setMaster(level)).toThrow(PatchError);
+      expect(() => rig.setMaster(level)).toThrow('the master must be a number between 0 and 1');
+    }
+    expect(rig.getMaster()).toBe(0.5);
+    expect(output.frames).toHaveLength(frames);
+    expect(seen).toEqual([]);
+    expect(ch(output, 6)).toBe(128);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('has the blackout next to the master: neither moves the other', () => {
+    change('spider', { levels: { dimmer: 1 } });
+    change('laser', { raw: { mode: MANUAL } });
+    const sent = () => [ch(output, 6), ch(output, LASER_AT)];
+    const masters: unknown[] = [];
+    rig.on('master', (level) => masters.push(level));
+    const blackouts: unknown[] = [];
+    rig.on('blackout', (blackout) => blackouts.push(blackout));
+
+    rig.setMaster(0.5);
+    rig.setBlackout(true);
+    expect(sent()).toEqual([0, 0]);
+    expect(rig.getMaster()).toBe(0.5);
+    rig.setBlackout(false);
+    expect(sent()).toEqual([128, MANUAL]);
+
+    rig.setBlackout(true);
+    rig.setMaster(1);
+    expect(sent()).toEqual([0, 0]);
+    expect(rig.getBlackout()).toBe(true);
+    rig.setMaster(0);
+    rig.setBlackout(false);
+    expect(sent()).toEqual([0, 0]);
+    expect(rig.getMaster()).toBe(0);
+    rig.setMaster(1);
+    expect(sent()).toEqual([255, MANUAL]);
+
+    expect(masters).toEqual([0.5, 1, 0, 1]);
+    expect(blackouts).toEqual([true, false, true, false]);
+  });
+
   it('gives every fixture the one tempo', () => {
     vi.useFakeTimers();
     let clock = 0;
@@ -136,12 +241,68 @@ describe('Rig', () => {
     }
   });
 
+  it('passes on the frames of an effect with the master in them', () => {
+    vi.useFakeTimers();
+    let clock = 0;
+    const timed = new Rig({ output, fixtures: [SPIDER, LASER], now: () => clock });
+    const frames: unknown[][] = [];
+    timed.on('frame', (id, dmx) => frames.push([id, dmx[id === 'spider' ? 5 : 0]]));
+    try {
+      timed.find('spider')?.controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase' } });
+      timed.find('laser')?.controller.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+      timed.setMaster(0.5);
+      for (let i = 0; i < 4; i++) {
+        clock += 25;
+        vi.advanceTimersByTime(25);
+      }
+      expect(frames).toEqual([
+        ['spider', 128],
+        ['laser', MANUAL],
+        ['spider', 128],
+        ['laser', MANUAL],
+      ]);
+      timed.setMaster(0);
+      for (let i = 0; i < 4; i++) {
+        clock += 25;
+        vi.advanceTimersByTime(25);
+      }
+      expect(frames.slice(4)).toEqual([
+        ['spider', 0],
+        ['laser', 0],
+        ['spider', 0],
+        ['laser', 0],
+      ]);
+    } finally {
+      timed.close();
+      vi.useRealTimers();
+    }
+  });
+
   it('closes the laser and leaves the spider when lightdeck stops', () => {
     change('spider', { levels: { dimmer: 1 } });
     change('laser', { raw: { mode: MANUAL } });
     rig.darken();
     expect(ch(output, 6)).toBe(255);
     expect(ch(output, LASER_AT)).toBe(0);
+  });
+
+  it('keeps the laser closed after lightdeck stopped, whatever comes by which way', () => {
+    change('laser', { raw: { mode: MANUAL } });
+    const scene = rig.playback.store('laser', 'Open');
+    rig.setMaster(0);
+    // The order in which lightdeck stops. The server still handles what was under way.
+    rig.darken();
+    rig.close();
+
+    rig.setMaster(1);
+    rig.setBlackout(true);
+    rig.setBlackout(false);
+    expect(ch(output, LASER_AT)).toBe(0);
+    change('laser', { raw: { mode: MANUAL } }, 'tablet');
+    expect(ch(output, LASER_AT)).toBe(0);
+    rig.playback.recall('laser', scene, 'deck');
+    expect(ch(output, LASER_AT)).toBe(0);
+    for (const { data } of output.frames.slice(-5)) expect(data[LASER_AT - 1]).toBe(0);
   });
 
   it('tracks the link and forgets the device when the bridge goes away', () => {

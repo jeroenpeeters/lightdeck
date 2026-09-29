@@ -141,6 +141,7 @@ describe('HTTP server', () => {
     );
     expect(typeof body.tempo.beat).toBe('number');
     expect(body.blackout).toBe(false);
+    expect(body.master).toBe(1);
     expect(body.status.bridge).toBe(false);
     expect(body.bridgeUrl).toBe('ws://bridge:9010');
   });
@@ -229,6 +230,75 @@ describe('HTTP server', () => {
     expect((await post('/api/blackout', {})).status).toBe(400);
   });
 
+  it('dims every fixture with the master, and leaves what they are set to', async () => {
+    await post('/api/fixtures/spider/update', { levels: { dimmer: 1, red1: 1 } });
+    await post('/api/fixtures/spider-2/update', { levels: { dimmer: 0.5 } });
+    await post('/api/fixtures/laser/update', { raw: { mode: MANUAL } });
+
+    const half = await post('/api/master', { master: 0.5, client: 'tablet-1' });
+    expect(half.status).toBe(200);
+    expect(await half.json()).toEqual({ ok: true });
+    expect([ch(output, 6), ch(output, 7), ch(output, 106)]).toEqual([128, 255, 64]);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+    const dimmed = await state();
+    expect(dimmed.master).toBe(0.5);
+    expect(dimmed.blackout).toBe(false);
+    expect(dimmed.fixtures[0].dmx[5]).toBe(128);
+    expect(dimmed.fixtures[0].state.levels.dimmer).toBe(1);
+    expect(dimmed.fixtures[1].dmx[5]).toBe(64);
+    expect(dimmed.fixtures[1].state.levels.dimmer).toBe(0.5);
+
+    expect((await post('/api/master', { master: 0 })).status).toBe(200);
+    expect([ch(output, 6), ch(output, 7), ch(output, 106)]).toEqual([0, 255, 0]);
+    expect(ch(output, LASER_AT)).toBe(0);
+    const dark = await state();
+    expect(dark.master).toBe(0);
+    expect(dark.fixtures[2].dmx[0]).toBe(0);
+    expect(dark.fixtures[2].state.raw.mode).toBe(MANUAL);
+
+    expect((await post('/api/master', { master: 1 })).status).toBe(200);
+    expect([ch(output, 6), ch(output, 106), ch(output, LASER_AT)]).toEqual([255, 128, MANUAL]);
+  });
+
+  it('answers a master that is not a number from 0 to 1 with 400, and changes nothing', async () => {
+    await post('/api/fixtures/spider/update', { levels: { dimmer: 1 } });
+    await post('/api/master', { master: 0.5 });
+    const before = output.frames.length;
+    for (const body of [
+      { master: 1.5 },
+      { master: -0.1 },
+      { master: 50 },
+      { master: '0.5' },
+      { master: true },
+      { master: null },
+      { level: 0.2 },
+      {},
+    ]) {
+      const refused = await post('/api/master', body);
+      expect(refused.status).toBe(400);
+      expect(await error(refused)).toBe('the master must be a number between 0 and 1');
+    }
+    expect((await post('/api/master', 'not json')).status).toBe(400);
+    expect((await state()).master).toBe(0.5);
+    expect(output.frames).toHaveLength(before);
+    expect(ch(output, 6)).toBe(128);
+  });
+
+  it('has the blackout next to the master', async () => {
+    await post('/api/fixtures/spider/update', { levels: { dimmer: 1 } });
+    await post('/api/fixtures/laser/update', { raw: { mode: MANUAL } });
+    await post('/api/master', { master: 0.5 });
+    await post('/api/blackout', { blackout: true });
+    expect([ch(output, 6), ch(output, LASER_AT)]).toEqual([0, 0]);
+    expect(await state()).toEqual(expect.objectContaining({ master: 0.5, blackout: true }));
+    await post('/api/master', { master: 1 });
+    expect([ch(output, 6), ch(output, LASER_AT)]).toEqual([0, 0]);
+    await post('/api/master', { master: 0.5 });
+    await post('/api/blackout', { blackout: false });
+    expect([ch(output, 6), ch(output, LASER_AT)]).toEqual([128, MANUAL]);
+    expect(await state()).toEqual(expect.objectContaining({ master: 0.5, blackout: false }));
+  });
+
   it('streams the current picture and later changes, with their origin', async () => {
     const abort = new AbortController();
     const response = await fetch(`${base}/api/events`, { signal: abort.signal });
@@ -250,6 +320,7 @@ describe('HTTP server', () => {
     expect(text).toContain('event: fixture\ndata: {"id":"laser",');
     expect(text).toContain('event: tempo\ndata: {"bpm":126,"rate":1,');
     expect(text).toContain('event: blackout\ndata: {"blackout":false,"origin":null}');
+    expect(text).toContain('event: master\ndata: {"master":1,"origin":null}');
 
     await post('/api/fixtures/spider/update', { client: 'tablet-1', levels: { dimmer: 0.5 } });
     await readUntil('"origin":"tablet-1"');
@@ -266,6 +337,13 @@ describe('HTTP server', () => {
     await post('/api/blackout', { client: 'tablet-4', blackout: true });
     await readUntil('event: blackout\ndata: {"blackout":true,"origin":"tablet-4"}');
     expect(text).toContain('{"blackout":true,"origin":"tablet-4"}');
+
+    await post('/api/master', { client: 'tablet-5', master: 0.25 });
+    await readUntil('event: master\ndata: {"master":0.25,"origin":"tablet-5"}');
+    expect(text).toContain('event: master\ndata: {"master":0.25,"origin":"tablet-5"}');
+    await post('/api/master', { master: 0 });
+    await readUntil('event: master\ndata: {"master":0,"origin":null}');
+    expect(text).toContain('event: master\ndata: {"master":0,"origin":null}');
 
     rig.setBridgeConnected(true);
     await readUntil('"bridge":true');
@@ -289,52 +367,226 @@ describe('HTTP server', () => {
     abort.abort();
   });
 
-  it('stores the fixtures as a scene and sets them to it again', async () => {
+  const NONE = { scene: null, changed: false };
+  const STARTING = [
+    { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [] },
+    { id: 'spider-2', label: 'Spider 2', fixtures: ['spider-2'], scenes: [] },
+    { id: 'laser', label: 'Laser', fixtures: ['laser'], scenes: [] },
+    { id: 'all', label: 'All', fixtures: ['spider', 'spider-2', 'laser'], scenes: [] },
+  ];
+
+  it('describes the show and what is on', async () => {
+    const body = await state();
+    expect(body.show).toEqual({ file: null, problem: null, groups: STARTING });
+    expect(body.playback).toEqual({
+      groups: { spider: NONE, 'spider-2': NONE, laser: NONE, all: NONE },
+    });
+  });
+
+  it('stores the fixtures of a group as a scene and sets them to it again', async () => {
     await post('/api/fixtures/spider/update', { levels: { dimmer: 1 } });
     await post('/api/fixtures/laser/update', { raw: { mode: MANUAL } });
-    const stored = await post('/api/scenes', { label: 'Warm', client: 'tablet-1' });
+    const stored = await post('/api/groups/all/scenes', { label: 'Warm', client: 'tablet-1' });
     expect(await stored.json()).toEqual({ ok: true, id: 'warm' });
 
     await post('/api/fixtures/spider/update', { levels: { dimmer: 0 } });
     await post('/api/fixtures/laser/update', { raw: { mode: 0 } });
-    expect((await state()).playback).toEqual({ scene: 'warm', changed: true });
+    expect((await state()).playback.groups.all).toEqual({ scene: 'warm', changed: true });
 
-    const recalled = await post('/api/playback', { scene: 'warm', client: 'tablet-1' });
+    const recalled = await post('/api/playback', {
+      group: 'all',
+      scene: 'warm',
+      client: 'tablet-1',
+    });
     expect(recalled.status).toBe(200);
+    expect(await recalled.json()).toEqual({ ok: true });
     expect(ch(output, 6)).toBe(255);
     expect(ch(output, LASER_AT)).toBe(MANUAL);
     const now = await state();
-    expect(now.playback).toEqual({ scene: 'warm', changed: false });
-    expect(now.show).toEqual({
-      file: null,
-      problem: null,
-      scenes: [{ id: 'warm', label: 'Warm', fixtures: ['spider', 'laser'] }],
+    expect(now.playback).toEqual({
+      groups: {
+        spider: NONE,
+        'spider-2': NONE,
+        laser: NONE,
+        all: { scene: 'warm', changed: false },
+      },
+    });
+    expect(now.show.groups[3].scenes).toEqual([
+      { id: 'warm', label: 'Warm', fixtures: ['spider', 'laser'] },
+    ]);
+    expect(now.show.groups.slice(0, 3)).toEqual(STARTING.slice(0, 3));
+  });
+
+  it('has a scene on in two groups at once, and darkens one of them with off', async () => {
+    await post('/api/fixtures/spider/update', { levels: { dimmer: 1 } });
+    await post('/api/fixtures/laser/update', { raw: { mode: MANUAL } });
+    await post('/api/groups/spider/scenes', { label: 'Warm' });
+    await post('/api/groups/laser/scenes', { label: 'Open' });
+    await post('/api/playback', { group: 'all', off: true });
+    expect(ch(output, 6)).toBe(0);
+    expect(ch(output, LASER_AT)).toBe(0);
+
+    expect((await post('/api/playback', { group: 'laser', scene: 'open' })).status).toBe(200);
+    expect((await post('/api/playback', { group: 'spider', scene: 'warm' })).status).toBe(200);
+    expect(ch(output, 6)).toBe(255);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+    expect((await state()).playback.groups).toEqual({
+      spider: { scene: 'warm', changed: false },
+      'spider-2': NONE,
+      laser: { scene: 'open', changed: false },
+      all: NONE,
+    });
+
+    const off = await post('/api/playback', { group: 'spider', off: true, client: 'tablet-1' });
+    expect(off.status).toBe(200);
+    expect(ch(output, 6)).toBe(0);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+    expect((await state()).playback.groups).toEqual({
+      spider: NONE,
+      'spider-2': NONE,
+      laser: { scene: 'open', changed: false },
+      all: NONE,
     });
   });
 
-  it('stores over, renames and deletes a scene', async () => {
-    await post('/api/scenes', { label: 'Warm' });
-    await post('/api/fixtures/spider-2/update', { levels: { dimmer: 1 } });
-    expect((await post('/api/scenes/warm/store', {})).status).toBe(200);
-    expect((await post('/api/scenes/warm/rename', { label: 'Warm up' })).status).toBe(200);
-    expect((await state()).show.scenes).toEqual([
-      { id: 'warm', label: 'Warm up', fixtures: ['spider-2'] },
-    ]);
-    expect((await post('/api/scenes/warm/delete', {})).status).toBe(200);
-    expect((await state()).show.scenes).toEqual([]);
+  it('stores and recalls under the master without moving it', async () => {
+    await post('/api/fixtures/spider/update', { levels: { dimmer: 1 } });
+    await post('/api/fixtures/laser/update', { raw: { mode: MANUAL } });
+    await post('/api/master', { master: 0.5 });
+    await post('/api/groups/all/scenes', { label: 'Warm' });
+    expect((await state()).playback.groups.all).toEqual({ scene: 'warm', changed: false });
+    await post('/api/master', { master: 0 });
+    expect((await state()).playback.groups.all).toEqual({ scene: 'warm', changed: false });
+
+    await post('/api/playback', { group: 'all', off: true });
+    expect((await post('/api/playback', { group: 'all', scene: 'warm' })).status).toBe(200);
+    expect([ch(output, 6), ch(output, LASER_AT)]).toEqual([0, 0]);
+    const recalled = await state();
+    expect(recalled.master).toBe(0);
+    expect(recalled.fixtures[0].state.levels.dimmer).toBe(1);
+    expect(recalled.fixtures[2].state.raw.mode).toBe(MANUAL);
+
+    await post('/api/master', { master: 1 });
+    expect([ch(output, 6), ch(output, LASER_AT)]).toEqual([255, MANUAL]);
   });
 
-  it('says what is wrong with a request about scenes', async () => {
-    const nameless = await post('/api/scenes', {});
-    expect(nameless.status).toBe(400);
-    expect(await error(nameless)).toBe('a scene needs a name');
+  it('keeps the laser closed during a blackout, whatever is recalled', async () => {
+    await post('/api/fixtures/laser/update', { raw: { mode: MANUAL } });
+    await post('/api/groups/laser/scenes', { label: 'Open' });
+    await post('/api/playback', { group: 'laser', off: true });
+    await post('/api/blackout', { blackout: true });
+    expect((await post('/api/playback', { group: 'laser', scene: 'open' })).status).toBe(200);
+    expect(ch(output, LASER_AT)).toBe(0);
+    await post('/api/blackout', { blackout: false });
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
 
-    const missing = await post('/api/playback', { scene: 'nothing' });
-    expect(missing.status).toBe(400);
-    expect(await error(missing)).toBe('there is no scene called "nothing"');
+  it('stores over, renames and deletes a scene of a group', async () => {
+    await post('/api/groups/spider-2/scenes', { label: 'Warm' });
+    await post('/api/groups/laser/scenes', { label: 'Warm' });
+    await post('/api/fixtures/spider-2/update', { levels: { dimmer: 1 } });
+    expect((await post('/api/groups/spider-2/scenes/warm/store', {})).status).toBe(200);
+    expect(
+      (await post('/api/groups/spider-2/scenes/warm/rename', { label: 'Warm up' })).status,
+    ).toBe(200);
+    const stored = await state();
+    expect(stored.show.groups[1].scenes).toEqual([
+      { id: 'warm', label: 'Warm up', fixtures: ['spider-2'] },
+    ]);
+    expect(stored.show.groups[2].scenes).toEqual([{ id: 'warm', label: 'Warm', fixtures: [] }]);
 
-    expect((await post('/api/scenes/nothing/delete', {})).status).toBe(400);
-    expect((await post('/api/scenes/warm/burn', {})).status).toBe(404);
+    expect((await post('/api/groups/spider-2/scenes/warm/delete', {})).status).toBe(200);
+    const deleted = await state();
+    expect(deleted.show.groups[1].scenes).toEqual([]);
+    expect(deleted.show.groups[2].scenes).toHaveLength(1);
+    expect(deleted.playback.groups['spider-2']).toEqual(NONE);
+  });
+
+  it('makes, renames and deletes a group', async () => {
+    const made = await post('/api/groups', {
+      label: 'Spiders',
+      fixtures: ['spider', 'spider-2'],
+      client: 'tablet-1',
+    });
+    expect(made.status).toBe(200);
+    expect(await made.json()).toEqual({ ok: true, id: 'spiders' });
+    expect((await post('/api/groups/spiders/scenes', { label: 'Warm' })).status).toBe(200);
+    expect((await post('/api/groups/spiders/rename', { label: 'Both spiders' })).status).toBe(200);
+    const now = await state();
+    expect(now.show.groups).toEqual([
+      ...STARTING,
+      {
+        id: 'spiders',
+        label: 'Both spiders',
+        fixtures: ['spider', 'spider-2'],
+        scenes: [{ id: 'warm', label: 'Warm', fixtures: [] }],
+      },
+    ]);
+    expect(now.playback.groups.spiders).toEqual({ scene: 'warm', changed: false });
+
+    expect((await post('/api/groups/spiders/delete', {})).status).toBe(200);
+    const after = await state();
+    expect(after.show.groups).toEqual(STARTING);
+    expect(after.playback.groups.spiders).toBeUndefined();
+  });
+
+  it('says what is wrong with a request about groups and scenes', async () => {
+    await post('/api/groups/spider/scenes', { label: 'Warm' });
+    const refused: [string, unknown, string][] = [
+      ['/api/groups/spider/scenes', {}, 'a scene needs a name'],
+      ['/api/groups/strobe/scenes', { label: 'Warm' }, 'there is no group called "strobe"'],
+      ['/api/playback', { scene: 'warm' }, 'say which group, by its id'],
+      ['/api/playback', { group: 'spider' }, 'say which scene, by its id'],
+      ['/api/playback', { group: 'strobe', scene: 'warm' }, 'there is no group called "strobe"'],
+      ['/api/playback', { group: 'strobe', off: true }, 'there is no group called "strobe"'],
+      [
+        '/api/playback',
+        { group: 'laser', scene: 'warm' },
+        'there is no scene called "warm" in the group "laser"',
+      ],
+      ['/api/playback', { group: 'spider', off: false }, '"off" can only be true'],
+      [
+        '/api/playback',
+        { group: 'spider', scene: 'warm', off: true },
+        'say a scene or off, not both',
+      ],
+      [
+        '/api/playback',
+        { group: 'spider', scene: 'warm', fade: 2 },
+        'the playback cannot set "fade", only group, scene, off',
+      ],
+      [
+        '/api/groups/spider/scenes/nothing/delete',
+        {},
+        'there is no scene called "nothing" in the group "spider"',
+      ],
+      ['/api/groups/spider/scenes/warm/rename', {}, 'a scene needs a name'],
+      ['/api/groups/strobe/rename', { label: 'Strobe' }, 'there is no group called "strobe"'],
+      ['/api/groups/strobe/delete', {}, 'there is no group called "strobe"'],
+      ['/api/groups/spider/rename', { label: ' ' }, 'a group needs a name'],
+      ['/api/groups', { fixtures: ['spider'] }, 'a group needs a name'],
+      ['/api/groups', { label: 'Front' }, '"fixtures" must be a list of the fixtures of the group'],
+      ['/api/groups', { label: 'Front', fixtures: [] }, 'a group needs at least one fixture'],
+      [
+        '/api/groups',
+        { label: 'Front', fixtures: ['strobe'] },
+        'there is no fixture called "strobe", only spider, spider-2, laser',
+      ],
+    ];
+    for (const [path, body, message] of refused) {
+      const response = await post(path, body);
+      expect([path, response.status]).toEqual([path, 400]);
+      expect(await error(response)).toBe(message);
+    }
+    expect((await state()).show.groups).toHaveLength(4);
+  });
+
+  it('has nothing where the scenes were before there were groups', async () => {
+    expect((await post('/api/scenes', { label: 'Warm' })).status).toBe(404);
+    expect((await post('/api/scenes/warm/store', {})).status).toBe(404);
+    expect((await post('/api/groups/spider/burn', {})).status).toBe(404);
+    expect((await post('/api/groups/spider/scenes/warm/burn', {})).status).toBe(404);
+    expect((await state()).show.groups).toEqual(STARTING);
   });
 
   it('streams the show and the playback', async () => {
@@ -350,12 +602,25 @@ describe('HTTP server', () => {
         text += decoder.decode(value, { stream: true });
       }
     };
-    await readUntil('event: playback\ndata: {"scene":null,"changed":false}');
-    expect(text).toContain('event: show\ndata: {"file":null,"problem":null,"scenes":[]}');
+    const none = '{"scene":null,"changed":false}';
+    await readUntil(
+      `event: playback\ndata: {"groups":{"spider":${none},"spider-2":${none},"laser":${none},"all":${none}}}`,
+    );
+    expect(text).toContain(
+      `event: show\ndata: ${JSON.stringify({ file: null, problem: null, groups: STARTING })}`,
+    );
 
-    await post('/api/scenes', { label: 'Warm' });
-    await readUntil('event: playback\ndata: {"scene":"warm","changed":false}');
-    expect(text).toContain('"scenes":[{"id":"warm","label":"Warm","fixtures":[]}]');
+    await post('/api/groups/laser/scenes', { label: 'Warm' });
+    await readUntil(
+      `event: playback\ndata: {"groups":{"spider":${none},"spider-2":${none},"laser":{"scene":"warm","changed":false},"all":${none}}}`,
+    );
+    expect(text).toContain(
+      '{"id":"laser","label":"Laser","fixtures":["laser"],"scenes":[{"id":"warm","label":"Warm","fixtures":[]}]}',
+    );
+
+    await post('/api/groups', { label: 'Front', fixtures: ['spider'] });
+    await readUntil(`"all":${none},"front":${none}}}`);
+    expect(text).toContain('{"id":"front","label":"Front","fixtures":["spider"],"scenes":[]}');
     abort.abort();
   });
 });

@@ -1,9 +1,10 @@
 # Show design: groups, scenes, sequences and the deck
 
-Status: step 1 is built (2026-09-29), the scenes with a first deck to store and recall
-them. It ran against a local server without a bridge, not on the real fixtures. What is
-built has no groups yet: every scene sets every fixture. The other steps are design.
-Decisions marked "Jeroen" were made by him on 2026-09-29; the rest is a proposal.
+Status: steps 1 to 3 are built (2026-09-29): the groups with their scenes, a deck to
+store and recall them with one scene per group on, and the grand master. They ran
+against a local server without a bridge and in desktop Chrome, not on the real fixtures
+and not on a tablet. The other steps are design. Decisions marked
+"Jeroen" were made by him on 2026-09-29; the rest is a proposal.
 
 ## What it is for
 
@@ -22,7 +23,7 @@ each for its own part of the rig: a scene for the spider under a scene for the l
 - **Sequence**: a list of steps that runs on the master tempo and loops. A step lasts a
   number of bars and names a scene for one or more groups.
 - **Deck**: the page for showtime. The groups with their scenes, the sequences, the grand
-  master, a fader per fixture that has a dimmer, blackout and tempo.
+  master, blackout and tempo.
 - **Hold**: a button that changes the output while pressed and gives it back on release,
   such as a strobe burst.
 
@@ -39,9 +40,13 @@ each for its own part of the rig: a scene for the spider under a scene for the l
 3. **Scenes and sequences may open the laser, also unattended** (Jeroen). There is no arm
    switch. The rule that an effect never opens the laser stays: a scene sets the mode
    channel, an effect does not.
-4. **Grand master** (Jeroen). It scales the dimmer of fixtures that have one. A fixture
-   without a dimmer, such as the laser, is closed while the master is at 0 and shows what
-   it is set to above 0. The blackout stays, and is the same as the master at 0.
+4. **Grand master** (Jeroen). It scales the dimmer of fixtures that have one: what goes
+   out is the brightness of the scene times the grand master. A fixture without a dimmer,
+   such as the laser, is closed while the master is at 0 and shows what it is set to
+   above 0. The blackout stays, and is the same as the master at 0. The master is no
+   part of a scene: moving it does not show a scene as changed, and a recall does not
+   move it. There are no faders per fixture (Jeroen): the brightness of a fixture is
+   what its scene holds.
 5. **Tempo** is set by hand or by tapping. Ableton Link is parked (Jeroen), see below.
 6. **Scenes belong to a group, and several groups are on at once** (Jeroen). This takes
    the place of the earlier rule that a scene is a complete look for the whole rig. See
@@ -127,7 +132,7 @@ groups:
       burst:
         label: Burst
         fixtures:
-          spider: { levels: { dimmer: 1 }, effect: { id: strobe-burst } }
+          spider: { levels: { dimmer: 1 }, effect: { id: burst } }
   laser:
     label: Laser
     fixtures: [laser]
@@ -156,8 +161,13 @@ sequences:
 - The id of a scene is its own within its group. `off` cannot be the id of a scene.
 - In a step, `scenes` goes from the id of a group to the id of a scene of that group, or
   to `off`.
-- A file from step 1, with `scenes:` at the top, is read as one group `all` with every
-  fixture, so that nothing that was stored is lost.
+- An id has small letters, digits and dashes. It is what was typed: `12` and `true` are
+  the ids "12" and "true", and the deck writes them back with quotes.
+- A file from step 1, with `scenes:` at the top, is read as the groups a new show starts
+  with, and its scenes are in the group of all fixtures, so that nothing that was stored
+  is lost. Reading does not write: the first change from the deck writes the file with
+  groups.
+- `sequences` is not read yet: until step 4 it is a mistake in the file.
 - Laser bytes are to be written with the range keys of the profile, as `pnpm laser`
   takes them, so that the file can be read. For now the file has plain numbers, which are
   raw bytes: `raw: { mode: 95, program: 60 }`.
@@ -169,9 +179,9 @@ sequences:
 
 | Step | What | Done when |
 |---|---|---|
-| 1 | Scenes: store from live, recall, rename, delete, saved to the show file. **Built**, without groups | A look set by hand on two fixture pages comes back with one press, also after a restart |
-| 2 | Groups: a scene belongs to a group, one scene per group is on, off per group | A spider scene and a laser scene are on together, and each is changed without the other |
-| 3 | Grand master and fixture faders on the deck | The evening can be run from one page |
+| 1 | Scenes: store from live, recall, rename, delete, saved to the show file. **Built** | A look set by hand on two fixture pages comes back with one press, also after a restart |
+| 2 | Groups: a scene belongs to a group, one scene per group is on, off per group. **Built** | A spider scene and a laser scene are on together, and each is changed without the other |
+| 3 | Grand master on the deck. **Built** | The evening can be run from one page |
 | 4 | Sequences, one at a time | A loop runs by itself for an hour and stays on the bar, and a laser scene chosen by hand stays on under it |
 | 5 | Switching on the beat: a pressed scene starts on the next bar | A change never lands in the middle of a bar, unless asked |
 | 6 | Holds | Strobe burst while pressed, the scene is back on release |
@@ -185,26 +195,39 @@ timeline, undo, a generic fixture library.
 ## Where it attaches
 
 - `src/show/`: the types of the show file, validation, loading and saving (built for
-  scenes without groups). Groups and sequences are added to what the file can hold.
-  Which step of a sequence it is, is to be a pure function from beat to step, so it is
-  tested frame by frame like the effects.
+  groups and their scenes). Sequences are added to what the file can hold. Which step
+  of a sequence it is, is to be a pure function from beat to step, so it is tested frame
+  by frame like the effects.
 - `FixtureController`: `snapshot()` gives what a scene stores of this fixture, `check()`
   and `recall()` take it back (built). `recall` is not `update`: it starts from the
-  fixture at rest, and shares the validation with `update`. Groups change nothing here:
-  a recall without a part is what off is. `setMaster(level)` is to take the grand master.
-- `src/server/playback.ts`: the playback, which the rig owns (built for one scene over
-  every fixture). With groups it keeps per group which scene is on and whether it was
-  changed by hand, and a recall sets the fixtures of the group only. With sequences it
-  keeps what the sequence set last per group, which is what "only sets what changes"
-  counts on, and applies the steps on the tempo.
-- `http.ts`: built are `POST /api/scenes`, `POST /api/scenes/<id>/store`, `/rename`,
-  `/delete`, `POST /api/playback`, and the events `show` and `playback`. With groups
-  the scenes move under their group, `/api/groups/<group>/scenes/...`, and
-  `POST /api/playback` takes `group` with `scene` or `off`, and later `sequence`.
-  `POST /api/master` and the event `master` are to come.
-- `public/deck.html`, `.js`, `.css`: the deck (built for one list of scenes). With
-  groups it has a row per group, with the keys of its scenes, its off key and its place
-  to store.
+  fixture at rest, and shares the validation with `update`. A recall without a part is
+  what off is. `setMaster(level)` takes the grand master (built): it is kept outside the
+  state, next to the blackout, and put into what goes out. `darken()` of the laser is
+  final: after it nothing opens the laser again, whatever is set or recalled.
+- `src/server/playback.ts`: the playback, which the rig owns (built). It keeps per group
+  which scene is on and whether it was changed by hand, and a recall sets the fixtures
+  of the group only. `changed` is about what the scene made of the fixtures when it was
+  recalled: a scene that is on and gets another look in the file is not shown as
+  changed. With sequences it is to keep what the sequence set last per group, which is
+  what "only sets what changes" counts on, and to apply the steps on the tempo.
+- `http.ts`: built are `POST /api/playback`, which takes `group` with `scene` or with
+  `off`, `POST /api/groups`, `POST /api/groups/<group>/rename` and `/delete`,
+  `POST /api/groups/<group>/scenes`, `POST /api/groups/<group>/scenes/<scene>/store`,
+  `/rename` and `/delete`, and the events `show` and `playback`. The endpoints under
+  `/api/scenes` of step 1 are gone. `POST /api/master` and the event `master` are built,
+  and `GET /api/state` has `master`. `sequence` in `POST /api/playback` is to come.
+- `public/deck.html`, `.js`, `.css`: the deck (built). It has a row per group, with the
+  keys of its scenes and its off key. Show is the mode it opens in, where a press
+  recalls and nothing moves under a finger. Program adds storing, naming and deleting,
+  of scenes and of groups, and the off keys wait there, so that a slip does not throw
+  away a look that is not stored yet. A press is asked once: one that does not reach
+  lightdeck is not sent later, the deck says so and the operator presses again. The
+  fader of the master is on the deck in both modes (built). It is not kept on screen
+  when the deck scrolls.
+- `public/shell.js`: shows the level of the master in the status bar of every page
+  (built), and says in its notice when the master is at 0. `public/changes.js` keeps
+  what a page has changed until the event stream tells of it, so that an event about
+  something else, such as the master, does not set a fader back under the finger.
 
 The controllers keep their own 25 ms tickers. Fixtures stay together because they count
 on one beat, not because they share a loop.

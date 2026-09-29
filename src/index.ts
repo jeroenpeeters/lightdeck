@@ -129,7 +129,10 @@ server.listen(port, host, () => {
   }
   if (laserAddress === undefined) log('no laser: started with laser address "none"');
   const show = rig?.playback.getShow();
-  if (show) log(`show ${show.file}, ${show.scenes.length} scenes`);
+  if (show) {
+    const scenes = show.groups.reduce((count, group) => count + group.scenes.length, 0);
+    log(`show ${show.file}, ${show.groups.length} groups, ${scenes} scenes`);
+  }
   if (show?.problem) log(`warning: the show file is not used, it has a mistake. ${show.problem}`);
   bridge.start();
 });
@@ -143,8 +146,10 @@ const shutdown = () => {
   rig?.darken();
   bridge.tick();
   rig?.close();
-  // Open event streams keep the server alive; do not wait for them.
+  // Open event streams keep the server alive; do not wait for them. A request that is
+  // under way is cut off too: what it asks would come after the last frame.
   server.close();
+  server.closeAllConnections();
   setTimeout(
     () => {
       bridge.stop();

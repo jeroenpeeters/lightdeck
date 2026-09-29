@@ -120,6 +120,122 @@ describe('SpiderController', () => {
     expect(output.frames).toHaveLength(2);
   });
 
+  it('sends the brightness that is set times the master', () => {
+    const sent = (dimmer: number, master: number) => {
+      controller.update({ levels: { dimmer } });
+      controller.setMaster(master);
+      expect(controller.getDmx()[5]).toBe(ch(output, 6));
+      return ch(output, 6);
+    };
+    expect([sent(1, 1), sent(1, 0.5), sent(1, 0)]).toEqual([255, 128, 0]);
+    expect([sent(0.5, 1), sent(0.5, 0.5), sent(0.5, 0)]).toEqual([128, 64, 0]);
+    expect(sent(0, 1)).toBe(0);
+  });
+
+  it('starts with the master at full', () => {
+    controller.update({ levels: { dimmer: 0.8 } });
+    expect(ch(output, 6)).toBe(204);
+  });
+
+  it('scales nothing but the dimmer with the master', () => {
+    controller.update({
+      levels: {
+        dimmer: 1,
+        strobe: 0.5,
+        motorSpeed: 0.3,
+        tilt1: 1,
+        tilt2: 0.5,
+        red1: 1,
+        white8: 0.5,
+      },
+      raw: { function: 5, effectSpeed: 200 },
+    });
+    const full = controller.getDmx();
+    for (const master of [0.5, 0.01, 0]) {
+      controller.setMaster(master);
+      const dimmed = controller.getDmx();
+      expect(dimmed[5]).toBe(Math.round(255 * master));
+      expect(dimmed.filter((_, index) => index !== 5)).toEqual(
+        full.filter((_, index) => index !== 5),
+      );
+    }
+    expect(ch(output, 7)).toBe(255); // red1
+    expect(ch(output, 38)).toBe(128); // white8
+    expect(ch(output, 39)).toBe(full[38]); // strobe
+    expect([ch(output, 1), ch(output, 2)]).toEqual([255, 255]); // tilt1
+    expect(ch(output, 5)).toBe(77); // motor speed
+  });
+
+  it('keeps what is set whatever the master says', () => {
+    controller.update({ levels: { dimmer: 0.8, red1: 1 }, effect: { id: 'wave' } });
+    const state = controller.getState();
+    const kept = controller.snapshot();
+    for (const master of [0.5, 0, 0.01, 1]) {
+      controller.setMaster(master);
+      expect(controller.getState()).toEqual(state);
+      expect(controller.snapshot()).toEqual(kept);
+    }
+    expect(kept.levels).toEqual({ dimmer: 0.8, red1: 1 });
+  });
+
+  it('dims a change that comes while the master is down', () => {
+    controller.setMaster(0.5);
+    controller.update({ levels: { dimmer: 1 } });
+    expect(ch(output, 6)).toBe(128);
+    controller.recall({ levels: { dimmer: 0.5 } });
+    expect(ch(output, 6)).toBe(64);
+    expect(controller.getState().levels.dimmer).toBe(0.5);
+    controller.setMaster(1);
+    expect(ch(output, 6)).toBe(128);
+  });
+
+  it('tells the listeners what is sent when the master changes, and only then', () => {
+    controller.update({ levels: { dimmer: 1 } });
+    const seen: unknown[] = [];
+    controller.on('state', (state, origin) => seen.push([state, origin, controller.getDmx()[5]]));
+    controller.setMaster(1);
+    controller.setMaster(0.5);
+    controller.setMaster(0.5);
+    expect(seen).toEqual([[controller.getState(), undefined, 128]]);
+    expect(output.frames).toHaveLength(3);
+  });
+
+  it('keeps the master between nothing and full', () => {
+    controller.update({ levels: { dimmer: 1 } });
+    controller.setMaster(7);
+    expect(ch(output, 6)).toBe(255);
+    controller.setMaster(-1);
+    expect(ch(output, 6)).toBe(0);
+    controller.setMaster(1);
+    controller.setMaster(Number.NaN);
+    expect(ch(output, 6)).toBe(0);
+  });
+
+  it('is dark in a blackout whatever the master says, and dimmed again after it', () => {
+    controller.update({ levels: { dimmer: 1, strobe: 0.5 } });
+    const strobe = ch(output, 39);
+
+    controller.setBlackout(true);
+    controller.setMaster(0.5);
+    expect([ch(output, 6), ch(output, 39)]).toEqual([0, 0]);
+    controller.setBlackout(false);
+    expect([ch(output, 6), ch(output, 39)]).toEqual([128, strobe]);
+
+    controller.setBlackout(true);
+    expect(ch(output, 6)).toBe(0);
+    controller.setMaster(1);
+    expect(ch(output, 6)).toBe(0);
+    controller.setBlackout(false);
+    expect(ch(output, 6)).toBe(255);
+
+    controller.setMaster(0);
+    controller.setBlackout(true);
+    controller.setBlackout(false);
+    expect([ch(output, 6), ch(output, 39)]).toEqual([0, strobe]);
+    controller.setMaster(1);
+    expect(ch(output, 6)).toBe(255);
+  });
+
   it('sets a built-in program only through its raw byte', () => {
     controller.update({ raw: { function: 5, effectSpeed: 200 } });
     expect(ch(output, 40)).toBe(5);
@@ -216,6 +332,26 @@ describe('SpiderController effects', () => {
     vi.useRealTimers();
   });
 
+  /** A second spider on the same tempo with the master at full, to compare with. */
+  const undimmed = (change: unknown) => {
+    const sent = new RecordingOutput();
+    const other = new SpiderController({
+      profile: SPIDER_43CH,
+      layout: SPIDER_LAYOUT,
+      output: sent,
+      tempo,
+      universe: 0,
+      address: 1,
+    });
+    other.update(change);
+    return { sent, other };
+  };
+  /** The bytes of a spider without its dimmer, which is channel 6. */
+  const butDimmer = (dmx: ArrayLike<number>) => [
+    ...Array.from(dmx).slice(0, 5),
+    ...Array.from(dmx).slice(6, 43),
+  ];
+
   it('starts without an effect', () => {
     expect(controller.getState().effect.id).toBeNull();
   });
@@ -278,6 +414,75 @@ describe('SpiderController effects', () => {
     expect(ch(output, 6)).toBe(0);
     controller.setBlackout(false);
     expect(ch(output, 6)).toBe(255);
+  });
+
+  it('dims with the master while an effect runs, and leaves its colours and tilt alone', () => {
+    tempo.update({ sync: true });
+    controller.update({
+      levels: { dimmer: 1, strobe: 0.2, motorSpeed: 0.3, tilt1: 0.9 },
+      effect: { id: 'kick' },
+    });
+    expect(ch(output, 9)).toBe(255); // blue1, from the effect
+    controller.setMaster(0.5);
+    expect(ch(output, 6)).toBe(128);
+    expect(ch(output, 9)).toBe(255);
+    expect(ch(output, 1)).toBe(230); // tilt1
+    expect(ch(output, 5)).toBe(77); // motor speed
+
+    controller.setMaster(0);
+    advance(200);
+    expect(ch(output, 6)).toBe(0);
+    controller.setMaster(1);
+    expect(ch(output, 6)).toBe(255);
+  });
+
+  it('sends the frames of an effect with the dimmer scaled and nothing else', () => {
+    for (const id of ['chase', 'scissor', 'burst']) {
+      const change = {
+        levels: { dimmer: 1, strobe: 0.2, motorSpeed: 0.3, tilt1: 0.9 },
+        effect: { id },
+      };
+      tempo.update({ sync: true });
+      controller.update(change);
+      controller.setMaster(0.5);
+      const { sent, other } = undimmed(change);
+      const before = output.frames.length;
+      const beforeOther = sent.frames.length;
+      advance(1000);
+      other.close();
+
+      const dimmed = output.frames.slice(before);
+      const full = sent.frames.slice(beforeOther);
+      expect(dimmed).toHaveLength(40);
+      expect(dimmed.map((f) => f.data[5])).toEqual(new Array(40).fill(128));
+      expect(full.map((f) => f.data[5])).toEqual(new Array(40).fill(255));
+      expect(dimmed.map((f) => butDimmer(f.data))).toEqual(full.map((f) => butDimmer(f.data)));
+      expect(new Set(dimmed.map((f) => butDimmer(f.data).join())).size).toBeGreaterThan(5);
+    }
+  });
+
+  it('shows browsers the bytes that go out, with the master in them', () => {
+    const change = { levels: { dimmer: 1 }, effect: { id: 'chase' } };
+    const frames: number[][] = [];
+    controller.on('frame', (dmx) => frames.push(dmx));
+    controller.update(change);
+    const { other } = undimmed(change);
+    const full: number[][] = [];
+    other.on('frame', (dmx) => full.push(dmx));
+
+    controller.setMaster(0.5);
+    advance(500);
+    controller.setMaster(0);
+    advance(500);
+    other.close();
+
+    expect(frames).toHaveLength(20);
+    expect(frames.map((dmx) => dmx[5])).toEqual([
+      ...new Array(10).fill(128),
+      ...new Array(10).fill(0),
+    ]);
+    expect(frames.map(butDimmer)).toEqual(full.map(butDimmer));
+    expect(Math.max(...frames.slice(10).flatMap((dmx) => dmx.slice(6, 38)))).toBeGreaterThan(200);
   });
 
   it('runs on the tempo of the console, faster or slower with its speed', () => {
@@ -437,6 +642,19 @@ describe('SpiderController in a scene', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('keeps the brightness that is set in a scene, not what the master makes of it', () => {
+    controller.update({ levels: { dimmer: 0.8 } });
+    controller.setMaster(0.5);
+    expect(ch(output, 6)).toBe(102);
+    const kept = controller.snapshot();
+    expect(kept).toEqual({ levels: { dimmer: 0.8 } });
+    controller.recall(undefined);
+    controller.recall(kept);
+    expect(ch(output, 6)).toBe(102);
+    controller.setMaster(1);
+    expect(ch(output, 6)).toBe(204);
   });
 
   it('refuses a part it cannot take, and stays as it is', () => {

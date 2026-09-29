@@ -2,8 +2,12 @@
 //
 // A page is about one fixture, or about the show, as the deck is. Around it the shell
 // puts what belongs to no fixture: the way to the other pages, the tempo and the speed,
-// the blackout, and the state of the link to the LR512. It also does the talking to the
-// server, so that a page only has to say what changes and to draw what it is told.
+// the blackout, the level of the master, and the state of the link to the LR512. It also
+// does the talking to the server, so that a page only has to say what changes and to draw
+// what it is told.
+//
+// The master is shown here and set on the deck. It is shown on every page, because on
+// the page of a fixture it is why less goes out than what is set.
 //
 // A page starts the shell and gets back what it needs:
 //
@@ -11,22 +15,35 @@
 //   const shell = await start({ page: 'deck' });        for a page about no fixture
 //   shell.fixture                          the fixture as /api/state describes it
 //   shell.fixtures                         every fixture of the console
-//   shell.show, shell.playback             the scenes, and which one the fixtures are set to
+//   shell.show                             the show: its file, what is wrong with it, and
+//                                          the groups with their scenes
+//   shell.playback                         per group which scene is on, and whether its
+//                                          fixtures were changed by hand since
 //   shell.ask(url, body)                   ask the server for something once; gives
-//                                          { ok, error } and what the server answered
-//   shell.on('show', (show) => ...)        the scenes changed
-//   shell.on('playback', (playback) => ...)             another scene, or changed by hand
+//                                          { ok, error } and what the server answered,
+//                                          with `lost` when the server was not reached
+//   shell.on('show', (show) => ...)        the groups or their scenes changed
+//   shell.on('playback', (playback) => ...)             another scene, off, or changed by hand
 //   shell.send(patch)                      change the fixture
-//   shell.pending()                        what is still on its way to the server
+//   shell.pending()                        what of that the server has not told of yet
 //   shell.act('reset')                     let the fixture do something by name
-//   shell.on('fixture', ({ state, dmx, own }) => ...)   the fixture changed
+//   shell.on('fixture', ({ state, dmx, own }) => ...)   the fixture changed; `state` is
+//                                          what the server says with what is pending
+//                                          over it, so a page can take it as it is
 //   shell.on('frame', ({ dmx, beat }) => ...)           what is being sent, while it animates
-//   shell.on('change', () => ...)          blackout or tempo changed
+//   shell.on('change', () => ...)          blackout, master or tempo changed
 //   shell.notes(() => [{ text, level, urgent }])        what the page has to say
 //   shell.refresh()                        show the notes again
 //   shell.blackout, shell.tempo, shell.beat()
+//   shell.master                           the master, 0 to 1
+//   shell.setMaster(level)                 move the master, for every fixture
+//
+// And for a page that shows the master:
+//
+//   masterPercent(level)                   the master in percent, as the shell shows it
 
-import { $, button, element, slider } from './ui.js';
+import { changesOnTheWay, merge } from './changes.js';
+import { $, button, element, percent, slider } from './ui.js';
 
 const RATE_NAMES = { 0.5: 'Half', 1: 'Normal', 2: 'Double' };
 const BEATS_PER_BAR = 4;
@@ -39,6 +56,10 @@ const FRAME = `
   <header class="topbar">
     <p class="brand">Lightdeck</p>
     <nav class="pages" id="pages" aria-label="Pages"></nav>
+    <p class="master-level" id="master-level" data-full="true">
+      <span class="master-name">Master</span>
+      <span class="master-value" id="master-value"></span>
+    </p>
     <ul class="links" id="links" aria-label="Connection">
       <li class="link" id="link-bridge" data-state="unknown">
         <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
@@ -74,16 +95,12 @@ const FRAME = `
   <p class="notice" id="notice" role="status" hidden></p>
 `;
 
-const isPlain = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
-
-/** Two patches as one; where both set the same thing, the newer wins. */
-function merge(older, newer) {
-  const merged = { ...(older ?? {}) };
-  for (const [key, value] of Object.entries(newer ?? {})) {
-    const before = merged[key];
-    merged[key] = isPlain(value) && isPlain(before) ? { ...before, ...value } : value;
-  }
-  return merged;
+/**
+ * The master in percent. Only a master at 0 is shown as 0: anything above it lets the
+ * fixtures show, however little.
+ */
+export function masterPercent(level) {
+  return level > 0 ? Math.max(1, percent(level)) : 0;
 }
 
 function alarm(text) {
@@ -119,10 +136,17 @@ export async function start({ page = 'fixture' } = {}) {
   const limits = initial.tempo;
   let tempo = { bpm: initial.tempo.bpm, rate: initial.tempo.rate };
   let blackout = initial.blackout;
+  let master = initial.master;
+  /** How many changes of the master by this page the event stream has yet to tell of. */
+  let unheard = 0;
+  /** The changes of the fixture by this page that it has yet to tell of. */
+  const onTheWay = changesOnTheWay(clientId);
   let status = initial.status;
   let streamUp = true;
-  /** The places changes could not be sent to. */
+  /** The places that could not be reached. */
   const failing = new Set();
+  /** Those of them that a change is kept for, which is sent when they can be. */
+  const held = new Set();
   let pageNotes = () => [];
   /** A beat number and the moment it was true, to count on from between messages. */
   let beatBase = { beat: initial.tempo.beat, at: performance.now() };
@@ -165,8 +189,9 @@ export async function start({ page = 'fixture' } = {}) {
     tempo = { bpm: fresh.tempo.bpm, rate: fresh.tempo.rate };
     setBeat(fresh.tempo.beat);
     blackout = fresh.blackout;
+    master = fresh.master;
     const real = fresh.fixtures.find((each) => each.id === id);
-    if (real) tell('fixture', { state: real.state, dmx: real.dmx, own: false });
+    if (real) tell('fixture', { state: shownState(real.state), dmx: real.dmx, own: false });
     show = fresh.show;
     playback = fresh.playback;
     tell('show', show);
@@ -178,8 +203,12 @@ export async function start({ page = 'fixture' } = {}) {
   /**
    * Collects changes for one place and sends one request at a time, always with the
    * newest values. `again` says what of a change is still worth sending after a failure.
+   * `leave` and `drop` are for what the event stream has to tell of. `leave` hears of a
+   * change that leaves and gives the name it goes under, which comes back as `origin` in
+   * the event. `drop` hears of one that failed or was refused, which the stream never
+   * tells of.
    */
-  function sender(url, again = (sent) => sent) {
+  function sender(url, { again = (sent) => sent, leave = () => clientId, drop = () => {} } = {}) {
     let pending = null;
     let inFlight = false;
     const flush = async () => {
@@ -187,28 +216,36 @@ export async function start({ page = 'fixture' } = {}) {
       const sent = pending;
       pending = null;
       inFlight = true;
+      const name = leave(sent);
       let failed = false;
       try {
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ ...sent, client: clientId }),
+          body: JSON.stringify({ ...sent, client: name }),
         });
         if (response.status === 400) {
           // The server refused the change. Sending it again will not help: show what is real.
+          drop(name);
           await reload().catch(() => {});
         } else if (!response.ok) {
           throw new Error(response.statusText);
         }
       } catch {
         // Keep the change and try again; anything newer wins over what failed.
+        drop(name);
         pending = merge(again(sent), pending);
         failed = true;
         setTimeout(flush, RETRY_MS);
       } finally {
         inFlight = false;
-        if (failed) failing.add(url);
-        else failing.delete(url);
+        if (failed) {
+          failing.add(url);
+          held.add(url);
+        } else {
+          failing.delete(url);
+          held.delete(url);
+        }
         renderNotice();
       }
       if (!failed) flush();
@@ -221,10 +258,31 @@ export async function start({ page = 'fixture' } = {}) {
     return send;
   }
 
-  const sendFixture = fixture ? sender(`/api/fixtures/${id}/update`) : undefined;
+  const sendFixture = fixture
+    ? sender(`/api/fixtures/${id}/update`, { leave: onTheWay.leave, drop: onTheWay.drop })
+    : undefined;
   const sendBlackout = sender('/api/blackout');
   // A tap on the beat is only right at the moment it was made.
-  const sendTempo = sender('/api/tempo', ({ sync: _sync, ...kept }) => kept);
+  const sendTempo = sender('/api/tempo', { again: ({ sync: _sync, ...kept }) => kept });
+  const sendMaster = sender('/api/master', {
+    leave: () => {
+      unheard += 1;
+      return clientId;
+    },
+    drop: () => {
+      unheard = Math.max(0, unheard - 1);
+    },
+  });
+
+  /** What this page changed of the fixture and the event stream has not told of yet. */
+  const pendingFixture = () => onTheWay.all(sendFixture?.pending());
+
+  /**
+   * The state of the fixture to show: what the server says, with what is pending over
+   * it. The server says what was true when it spoke, and that can be older than a change
+   * of this page, also after the change was answered.
+   */
+  const shownState = (state) => merge(state, pendingFixture());
 
   async function act(name) {
     const url = `/api/fixtures/${id}/${name}`;
@@ -259,7 +317,7 @@ export async function start({ page = 'fixture' } = {}) {
       if (response.ok) return { ...answer, ok: true };
       return { ok: false, error: answer.error ?? response.statusText };
     } catch {
-      return { ok: false, error: 'This page cannot reach lightdeck.' };
+      return { ok: false, lost: true, error: 'This page cannot reach lightdeck.' };
     }
   }
 
@@ -269,6 +327,9 @@ export async function start({ page = 'fixture' } = {}) {
       events.addEventListener(name, (event) => handler(JSON.parse(event.data)));
     events.addEventListener('open', () => {
       streamUp = true;
+      // What the stream told while it was away is lost. It starts with what is real.
+      unheard = 0;
+      onTheWay.forget();
       renderNotice();
     });
     events.addEventListener('error', () => {
@@ -277,10 +338,11 @@ export async function start({ page = 'fixture' } = {}) {
     });
     on('fixture', (message) => {
       if (message.id !== id) return;
+      onTheWay.heard(message.origin);
       tell('fixture', {
-        state: message.state,
+        state: shownState(message.state),
         dmx: message.dmx,
-        own: message.origin === clientId,
+        own: onTheWay.mine(message.origin),
       });
     });
     on('frame', (message) => {
@@ -297,6 +359,15 @@ export async function start({ page = 'fixture' } = {}) {
     on('blackout', (message) => {
       if (message.origin === clientId) return;
       blackout = message.blackout;
+      render();
+      tell('change');
+    });
+    on('master', (message) => {
+      if (message.origin === clientId && unheard > 0) unheard -= 1;
+      // The stream tells in the order of the server. A change of this page that it has
+      // not told of yet comes after this one, and wins.
+      if (unheard > 0 || sendMaster.pending()) return;
+      master = message.master;
       render();
       tell('change');
     });
@@ -370,6 +441,13 @@ export async function start({ page = 'fixture' } = {}) {
   function nudgeTempo(step) {
     const bpm = Math.round(tempo.bpm) + step;
     setTempo({ bpm: Math.min(limits.max, Math.max(limits.min, bpm)) });
+  }
+
+  function setMaster(level) {
+    master = Math.min(1, Math.max(0, level));
+    sendMaster({ master });
+    render();
+    tell('change');
   }
 
   // ---- building ----
@@ -446,6 +524,18 @@ export async function start({ page = 'fixture' } = {}) {
     return '';
   }
 
+  /** Why every fixture is dark, or nothing when they show. The blackout comes first. */
+  function darkNote() {
+    if (blackout) {
+      return { text: 'Blackout is on. Every fixture is dark, and what you set is kept.' };
+    }
+    if (master > 0) return undefined;
+    const where = page === 'deck' ? 'the master' : 'the master on the deck';
+    return {
+      text: `The master is at 0. Every fixture is dark, and what you set is kept. Raise ${where} to see it.`,
+    };
+  }
+
   function renderNotice() {
     const notes = pageNotes();
     const patch = watched.map(patchNote).find((note) => note !== '');
@@ -453,8 +543,11 @@ export async function start({ page = 'fixture' } = {}) {
     // Alarm: something is wrong. Anything else only explains why the lights are dark.
     let level = 'alarm';
     if (!streamUp || failing.size > 0) {
+      // Only what is kept is sent later. A press that was asked once is not.
       text =
-        'This page cannot reach lightdeck. It keeps trying; your last change is sent as soon as it is back.';
+        held.size > 0
+          ? 'This page cannot reach lightdeck. It keeps trying; your last change is sent as soon as it is back.'
+          : 'This page cannot reach lightdeck. It keeps trying.';
     } else if (!status.bridge) {
       text = `The bridge app does not answer at ${initial.bridgeUrl}. Open Lightdeck LR512 Bridge on the phone and keep it on screen.`;
     } else if (status.device === 'lost') {
@@ -466,9 +559,8 @@ export async function start({ page = 'fixture' } = {}) {
       const note =
         notes.find((each) => each.level === 'alarm') ??
         notes.find((each) => each.urgent) ??
-        (blackout
-          ? { text: 'Blackout is on. Every fixture is dark, and what you set is kept.' }
-          : notes[0]);
+        darkNote() ??
+        notes[0];
       level = note?.level ?? 'note';
       text = note?.text ?? '';
     }
@@ -485,6 +577,9 @@ export async function start({ page = 'fixture' } = {}) {
     }
     $('blackout').setAttribute('aria-pressed', String(blackout));
     $('blackout').textContent = blackout ? 'Lift blackout' : 'Blackout';
+    const level = masterPercent(master);
+    $('master-level').dataset.full = String(level === 100);
+    $('master-value').textContent = `${level}%`;
     renderLinks();
     renderNotice();
   }
@@ -497,7 +592,7 @@ export async function start({ page = 'fixture' } = {}) {
     fixture,
     fixtures: initial.fixtures,
     send: sendFixture,
-    pending: sendFixture?.pending,
+    pending: pendingFixture,
     act,
     ask,
     get show() {
@@ -516,6 +611,10 @@ export async function start({ page = 'fixture' } = {}) {
     get blackout() {
       return blackout;
     },
+    get master() {
+      return master;
+    },
+    setMaster,
     get tempo() {
       return { ...tempo };
     },

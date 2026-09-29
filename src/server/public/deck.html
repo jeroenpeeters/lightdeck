@@ -10,48 +10,45 @@
     <link rel="stylesheet" href="/deck.css" />
   </head>
   <body>
-    <!-- The shell puts the status bar, the tempo and the notice above this. -->
+    <!-- The shell puts the status bar and the tempo above this. Its notice goes below. -->
     <main class="console" id="console">
-      <header class="fixture-head">
+      <header class="fixture-head deck-head">
         <h1>Deck</h1>
         <p class="where" id="where"></p>
-        <p class="running" id="running" data-on="false"></p>
+        <button type="button" class="pick mode" id="mode" aria-pressed="false">Program</button>
       </header>
 
-      <p class="notice" id="deck-notice" data-level="alarm" role="alert" hidden></p>
+      <p class="hint deck-hint" id="deck-hint" hidden></p>
 
-      <section class="panel" aria-labelledby="scenes-title">
-        <div class="panel-head">
-          <h2 id="scenes-title">Scenes</h2>
-          <button type="button" class="pick" id="edit" aria-pressed="false">Edit scenes</button>
+      <!-- The fader of the master comes here. It is there in Show and in Program. -->
+      <section class="panel grand-master" id="grand-master" aria-label="Master"></section>
+
+      <!-- A row per group comes here. -->
+      <div class="groups" id="groups" hidden></div>
+
+      <section class="panel" id="new-group" aria-labelledby="new-group-title" hidden>
+        <h2 id="new-group-title">New group</h2>
+        <form class="new-group" id="make-group">
+          <div class="name-row">
+            <label for="group-name">Name of the new group</label>
+            <input class="field" id="group-name" type="text" maxlength="40" autocomplete="off" />
+          </div>
+          <fieldset class="ticks" id="group-fixtures">
+            <legend>Its fixtures</legend>
+          </fieldset>
+          <button type="submit" class="key">Make group</button>
+        </form>
+      </section>
+
+      <!--
+        Last, and kept at the bottom of the screen: a notice moves no key when it comes.
+        The deck puts the notice of the shell here too.
+      -->
+      <div class="notices">
+        <div class="notices-stack" id="notices">
+          <p class="notice" id="deck-notice" data-level="alarm" role="alert" hidden></p>
         </div>
-        <p class="hint" id="scenes-hint" hidden></p>
-        <div class="scene-grid" id="scenes"></div>
-      </section>
-
-      <section class="panel" id="edit-panel" aria-labelledby="edit-title" hidden>
-        <h2 id="edit-title">Edit scene</h2>
-        <form class="name-row" id="rename">
-          <label for="edit-name">Name</label>
-          <input class="field" id="edit-name" type="text" maxlength="40" autocomplete="off" />
-          <button type="submit" class="key" id="rename-key">Rename</button>
-        </form>
-        <button type="button" class="key delete" id="delete">Delete</button>
-      </section>
-
-      <section class="panel" aria-labelledby="store-title">
-        <h2 id="store-title">Store</h2>
-        <p class="hint">
-          Set the fixtures on their pages, then store what they do as a scene. A fixture that is
-          dark stays dark in the scene.
-        </p>
-        <form class="name-row" id="store-new">
-          <label for="new-name">Name of the new scene</label>
-          <input class="field" id="new-name" type="text" maxlength="40" autocomplete="off" />
-          <button type="submit" class="key" id="store-key">Store as new scene</button>
-        </form>
-        <button type="button" class="key store-over" id="store-over" hidden></button>
-      </section>
+      </div>
     </main>
 
     <script type="module" src="/deck.js"></script>

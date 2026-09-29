@@ -6,8 +6,10 @@
  *
  * A laser of this power must go dark when asked. The `gate` control keeps it closed
  * while it rests at its idle value, and the blackout of the console holds it there
- * whatever the state says. It starts closed, and `darken` closes it for good when
- * lightdeck stops.
+ * whatever the state says. So does the grand master at 0: the laser has no dimmer, so
+ * it is closed at 0 and shows what it is set to above 0. It starts closed, and `darken`
+ * closes it for good when lightdeck stops: a change that comes after it is kept, and
+ * does not reach the fixture.
  *
  * While an effect is chosen and the laser is in the mode the effects count in, a ticker
  * renders the effect 40 times per second, on the beat of the console's tempo. The effect
@@ -26,6 +28,7 @@ import {
   UNIVERSE_SIZE,
   writeFixture,
 } from '../fixtures/profile.js';
+import { clamp01 } from '../model/fixture.js';
 import type { UniverseOutput } from '../outputs/patch.js';
 import { type FixtureController, PatchError, readObject } from './fixture.js';
 import type { Tempo } from './tempo.js';
@@ -93,6 +96,10 @@ export class LaserController extends EventEmitter implements FixtureController {
   private state: LaserState;
   /** The blackout of the console. It is not part of the state of the fixture. */
   private blackout = false;
+  /** The grand master of the console, 0 to 1. It is not part of the state either. */
+  private master = 1;
+  /** True from the moment lightdeck stops. Nothing opens the laser after that. */
+  private stopped = false;
 
   constructor(options: LaserOptions) {
     super();
@@ -222,8 +229,21 @@ export class LaserController extends EventEmitter implements FixtureController {
     this.push();
   }
 
-  /** Closes the laser and forgets the mode, so that nothing opens it again by itself. */
+  /** Closes the laser at 0. Above 0 it shows what the state says: it has no dimmer. */
+  setMaster(level: number): void {
+    const master = clamp01(level);
+    if (master === this.master) return;
+    this.master = master;
+    this.push();
+  }
+
+  /**
+   * Closes the laser for good. It forgets the mode, and a change, a scene, the master or
+   * the blackout that comes after this does not open it: the bridge holds the last frame
+   * it got, and a request that was under way is still handled while lightdeck stops.
+   */
   darken(): void {
+    this.stopped = true;
     this.state = { ...this.state, raw: { ...this.state.raw, [this.gate]: this.closed } };
     this.runTicker();
     this.push();
@@ -292,12 +312,13 @@ export class LaserController extends EventEmitter implements FixtureController {
         if (byte !== undefined) raw[name] = byte;
       }
     }
-    if (this.blackout) raw[this.gate] = this.closed;
+    // Open only when the master is known to be above 0, so that nothing else opens it.
+    if (this.stopped || this.blackout || !(this.master > 0)) raw[this.gate] = this.closed;
     return { raw };
   }
 
   private runTicker(): void {
-    const wanted = this.showing() !== undefined;
+    const wanted = !this.stopped && this.showing() !== undefined;
     if (wanted && !this.ticker) {
       this.ticker = setInterval(() => this.tick(), TICK_MS);
     } else if (!wanted && this.ticker) {

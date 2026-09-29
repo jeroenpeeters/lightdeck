@@ -121,12 +121,132 @@ describe('LaserController', () => {
     expect(seen).toHaveLength(1);
   });
 
+  it('is closed while the master is at 0, and as it is set above 0', () => {
+    laser.update({ raw: { mode: MANUAL, program: 57, size: 200, colour: 70 } });
+    const set = [MANUAL, 57, 0, 0, 0, 0, 0, 200, 70, 0];
+
+    laser.setMaster(0);
+    expect(ch(output, LASER_AT)).toBe(0);
+    expect(laser.getDmx()).toEqual([0, ...set.slice(1)]);
+    expect(laser.getState().raw.mode).toBe(MANUAL);
+
+    for (const master of [0.01, 0.5, 1]) {
+      laser.setMaster(master);
+      expect(laser.getDmx()).toEqual(set);
+      expect([...output.last.slice(LASER_AT - 1, LASER_AT + 9)]).toEqual(set);
+    }
+  });
+
+  it('stays closed when the mode changes while the master is at 0', () => {
+    laser.setMaster(0);
+    laser.update({ raw: { mode: 223 } });
+    expect(ch(output, LASER_AT)).toBe(0);
+    laser.update({ raw: { mode: MANUAL } });
+    expect(ch(output, LASER_AT)).toBe(0);
+    for (const { data } of output.frames) expect(data[LASER_AT - 1]).toBe(0);
+    laser.setMaster(0.01);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('is not opened by the master: it stays closed when that is what is set', () => {
+    laser.update({ raw: { program: 57 } });
+    laser.setMaster(0);
+    laser.setMaster(1);
+    expect(ch(output, LASER_AT)).toBe(0);
+    for (const { data } of output.frames) expect(data[LASER_AT - 1]).toBe(0);
+  });
+
+  it('keeps what is set whatever the master says', () => {
+    laser.update({ raw: { mode: MANUAL, program: 57 }, effect: { id: 'pulse' } });
+    const state = laser.getState();
+    const kept = laser.snapshot();
+    for (const master of [0.5, 0, 0.01, 1]) {
+      laser.setMaster(master);
+      expect(laser.getState()).toEqual(state);
+      expect(laser.snapshot()).toEqual(kept);
+    }
+    expect(kept).toEqual({ raw: { mode: MANUAL, program: 57 }, effect: { id: 'pulse' } });
+  });
+
+  it('sends and tells nothing when the master does not change', () => {
+    laser.update({ raw: { mode: MANUAL } });
+    const seen: unknown[] = [];
+    laser.on('state', (state, origin) => seen.push([state, origin, laser.getDmx()[0]]));
+    laser.setMaster(1);
+    expect(output.frames).toHaveLength(2);
+    laser.setMaster(0);
+    laser.setMaster(0);
+    expect(output.frames).toHaveLength(3);
+    expect(seen).toEqual([[laser.getState(), undefined, 0]]);
+  });
+
+  it('is closed by a master that is no number from 0 to 1, unless it is above 1', () => {
+    laser.update({ raw: { mode: MANUAL } });
+    for (const master of [Number.NaN, -1, Number.NEGATIVE_INFINITY]) {
+      laser.setMaster(1);
+      expect(ch(output, LASER_AT)).toBe(MANUAL);
+      laser.setMaster(master);
+      expect(ch(output, LASER_AT)).toBe(0);
+    }
+    laser.setMaster(7);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('is closed in a blackout whatever the master says, and by the master after it', () => {
+    laser.update({ raw: { mode: MANUAL } });
+
+    laser.setBlackout(true);
+    laser.setMaster(0.5);
+    expect(ch(output, LASER_AT)).toBe(0);
+    laser.setBlackout(false);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+
+    laser.setMaster(0);
+    expect(ch(output, LASER_AT)).toBe(0);
+    laser.setBlackout(true);
+    laser.setMaster(1);
+    expect(ch(output, LASER_AT)).toBe(0);
+    laser.setMaster(0);
+    laser.setBlackout(false);
+    expect(ch(output, LASER_AT)).toBe(0);
+    laser.setMaster(1);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+
+    laser.setMaster(0);
+    laser.setBlackout(true);
+    laser.setBlackout(false);
+    expect(ch(output, LASER_AT)).toBe(0);
+  });
+
   it('closes for good when lightdeck stops', () => {
     laser.update({ raw: { mode: MANUAL, program: 57 } });
     laser.darken();
     expect(ch(output, LASER_AT)).toBe(0);
     expect(laser.getState().raw.mode).toBe(0);
     expect(laser.getState().raw.program).toBe(57);
+  });
+
+  it('is not opened by a change that comes after lightdeck stopped', () => {
+    laser.update({ raw: { mode: MANUAL } });
+    laser.darken();
+    laser.close();
+    // A request that was under way when lightdeck was told to stop is still handled.
+    laser.update({ raw: { mode: MANUAL, program: 57 } }, 'tablet');
+    expect(ch(output, LASER_AT)).toBe(0);
+    expect(laser.getDmx()[0]).toBe(0);
+    laser.update({ raw: { mode: AUTO } });
+    expect(ch(output, LASER_AT)).toBe(0);
+    for (const { data } of output.frames.slice(-2)) expect(data[LASER_AT - 1]).toBe(0);
+  });
+
+  it('is not opened by the master or the blackout after lightdeck stopped', () => {
+    laser.setMaster(0);
+    laser.setBlackout(true);
+    laser.darken();
+    laser.update({ raw: { mode: MANUAL } });
+    laser.setMaster(1);
+    laser.setBlackout(false);
+    expect(ch(output, LASER_AT)).toBe(0);
   });
 
   it('can do nothing by name', () => {
@@ -276,6 +396,44 @@ describe('LaserController effects', () => {
     expect(ch(output, LASER_AT)).toBe(MANUAL);
   });
 
+  it('stays closed while the master is at 0, while the effect keeps running', () => {
+    const frames: number[][] = [];
+    laser.on('frame', (dmx) => frames.push(dmx));
+    laser.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+    laser.setMaster(0);
+    const before = output.frames.length;
+    advance(BEAT_MS);
+    expect(ch(output, LASER_AT + 5)).toBeGreaterThan(125);
+    expect(output.frames.length).toBeGreaterThan(before + 10);
+    for (const { data } of output.frames.slice(before)) expect(data[LASER_AT - 1]).toBe(0);
+    expect(frames.length).toBeGreaterThan(5);
+    for (const dmx of frames) expect(dmx[0]).toBe(0);
+
+    laser.setMaster(0.01);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+    advance(100);
+    expect(frames[frames.length - 1]?.[0]).toBe(MANUAL);
+  });
+
+  it('is not opened by anything while the master is at 0', () => {
+    laser.setMaster(0);
+    laser.update({ effect: { id: 'pulse' } });
+    laser.update({ raw: { mode: MANUAL } });
+    advance(BEAT_MS);
+    for (const id of ['patterns', 'colours', 'pulse', 'sweep', 'twist']) {
+      laser.update({ effect: { id } });
+      advance(BEAT_MS);
+    }
+    laser.recall({ raw: { mode: MANUAL, program: 57 }, effect: { id: 'twist' } });
+    advance(BEAT_MS);
+    laser.setBlackout(true);
+    laser.setBlackout(false);
+    advance(BEAT_MS);
+    expect(output.frames.length).toBeGreaterThan(100);
+    for (const { data } of output.frames) expect(data[LASER_AT - 1]).toBe(0);
+    expect(laser.getState().raw.mode).toBe(MANUAL);
+  });
+
   it('closes and stops sending when lightdeck stops', () => {
     laser.update({ raw: { mode: MANUAL }, effect: { id: 'twist' } });
     advance(200);
@@ -284,6 +442,17 @@ describe('LaserController effects', () => {
     const before = output.frames.length;
     advance(500);
     expect(output.frames.length).toBe(before);
+  });
+
+  it('starts no effect and stays closed after lightdeck stopped', () => {
+    laser.darken();
+    laser.close();
+    laser.update({ raw: { mode: MANUAL }, effect: { id: 'pulse' } });
+    expect(ch(output, LASER_AT)).toBe(0);
+    const before = output.frames.length;
+    advance(500);
+    expect(output.frames.length).toBe(before);
+    for (const { data } of output.frames) expect(data[LASER_AT - 1]).not.toBe(MANUAL);
   });
 
   it('stops sending when it is closed', () => {
@@ -421,6 +590,23 @@ describe('LaserController in a scene', () => {
     expect(ch(output, LASER_AT)).toBe(0);
     laser.setBlackout(false);
     expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('stays closed while the master is at 0, whatever is recalled', () => {
+    laser.setMaster(0);
+    laser.recall({ raw: { mode: MANUAL } });
+    expect(ch(output, LASER_AT)).toBe(0);
+    expect(laser.snapshot()).toEqual({ raw: { mode: MANUAL } });
+    laser.setMaster(0.01);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('stays closed after lightdeck stopped, whatever is recalled', () => {
+    laser.darken();
+    laser.close();
+    laser.recall({ raw: { mode: MANUAL, program: 57 }, effect: { id: 'twist' } }, 'deck');
+    expect(ch(output, LASER_AT)).toBe(0);
+    expect(ch(output, LASER_AT + 1)).toBe(57);
   });
 
   it('refuses a part it cannot take, and stays as it is', () => {

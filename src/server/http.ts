@@ -2,25 +2,33 @@
  * HTTP side of the control pages, on Node's own http module.
  *
  *   GET  /                            goes to the deck
- *   GET  /deck                        the deck: the scenes of the show
+ *   GET  /deck                        the deck: the groups of the show with their scenes
  *   GET  /fixtures/<id>               the page of a fixture: the file
  *                                     `fixtures/<kind>.html` from `publicDir`
  *   GET  /...                         the other static files from `publicDir`
  *   GET  /api/state                   everything a browser needs to draw itself
  *   GET  /api/events                  server-sent events: `fixture`, `tempo`, `blackout`,
- *                                     `status`, `show`, `playback` and, while a fixture
- *                                     animates, `frame` with the bytes being sent and
- *                                     the beat
+ *                                     `master`, `status`, `show`, `playback` and, while a
+ *                                     fixture animates, `frame` with the bytes being sent
+ *                                     and the beat
  *   POST /api/tempo                   `bpm`, `rate`, `sync`
  *   POST /api/blackout                `blackout`: true or false, for every fixture
+ *   POST /api/master                  `master`: the grand master, 0 to 1, for every fixture
  *   POST /api/fixtures/<id>/update    partial state change of one fixture
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
- *   POST /api/playback                `scene`: the id of the scene to set the fixtures to
- *   POST /api/scenes                  `label`: stores the fixtures as they are as a new
- *                                     scene, and answers with its `id`
- *   POST /api/scenes/<id>/store       stores the fixtures as they are in this scene
- *   POST /api/scenes/<id>/rename      `label`
- *   POST /api/scenes/<id>/delete
+ *   POST /api/playback                `group` with `scene`, the id of the scene to set the
+ *                                     fixtures of the group to, or with `off`: true to
+ *                                     darken them
+ *   POST /api/groups                  `label` and `fixtures`, the ids of its fixtures:
+ *                                     makes a group, and answers with its `id`
+ *   POST /api/groups/<group>/rename   `label`
+ *   POST /api/groups/<group>/delete   takes the group away, and its scenes with it
+ *   POST /api/groups/<group>/scenes   `label`: stores the fixtures of the group as they
+ *                                     are as a new scene, and answers with its `id`
+ *   POST /api/groups/<group>/scenes/<scene>/store    stores the fixtures of the group as
+ *                                                    they are in this scene
+ *   POST /api/groups/<group>/scenes/<scene>/rename   `label`
+ *   POST /api/groups/<group>/scenes/<scene>/delete
  *
  * Every POST takes JSON and may carry `client`, which comes back as `origin` in the
  * event, so that a browser can skip its own echo.
@@ -32,7 +40,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, relative, sep } from 'node:path';
-import { PatchError } from './fixture.js';
+import { PatchError, readObject } from './fixture.js';
 import type { PlaybackState, ShowSummary } from './playback.js';
 import type { LinkStatus, Rig, RigFixture } from './rig.js';
 import { MAX_BPM, MIN_BPM, RATES, type TempoState } from './tempo.js';
@@ -51,7 +59,8 @@ const MAX_BODY_BYTES = 64 * 1024;
 const KEEP_ALIVE_MS = 15_000;
 const FIXTURE_PAGE = /^\/fixtures\/([a-z0-9-]+)$/;
 const FIXTURE_POST = /^\/api\/fixtures\/([a-z0-9-]+)\/([a-z]+)$/;
-const SCENE_POST = /^\/api\/scenes\/([a-z0-9-]+)\/(store|rename|delete)$/;
+const GROUP_POST = /^\/api\/groups\/([a-z0-9-]+)\/(rename|delete|scenes)$/;
+const SCENE_POST = /^\/api\/groups\/([a-z0-9-]+)\/scenes\/([a-z0-9-]+)\/(store|rename|delete)$/;
 const DECK = '/deck';
 
 export interface HttpOptions {
@@ -157,6 +166,7 @@ function describe({ rig, bridgeUrl }: HttpOptions) {
     fixtures: rig.fixtures.map(describeFixture),
     tempo: { ...describeTempo(rig), min: MIN_BPM, max: MAX_BPM, rates: RATES },
     blackout: rig.getBlackout(),
+    master: rig.getMaster(),
     status: rig.getStatus(),
     show: rig.playback.getShow(),
     playback: rig.playback.getState(),
@@ -186,6 +196,9 @@ export function createHttpServer(options: HttpOptions): Server {
   });
   rig.on('blackout', (blackout: boolean, origin?: string) => {
     broadcast('blackout', { blackout, origin: origin ?? null });
+  });
+  rig.on('master', (master: number, origin?: string) => {
+    broadcast('master', { master, origin: origin ?? null });
   });
   rig.on('status', (status: LinkStatus) => broadcast('status', status));
   rig.on('show', (show: ShowSummary) => broadcast('show', show));
@@ -238,6 +251,7 @@ export function createHttpServer(options: HttpOptions): Server {
       }
       res.write(message('tempo', { ...describeTempo(rig), origin: null }));
       res.write(message('blackout', { blackout: rig.getBlackout(), origin: null }));
+      res.write(message('master', { master: rig.getMaster(), origin: null }));
       res.write(message('status', rig.getStatus()));
       res.write(message('show', rig.playback.getShow()));
       res.write(message('playback', rig.playback.getState()));
@@ -259,26 +273,54 @@ export function createHttpServer(options: HttpOptions): Server {
       return;
     }
 
-    if (req.method === 'POST' && path === '/api/playback') {
+    if (req.method === 'POST' && path === '/api/master') {
       const body = await readJson(req);
-      rig.playback.recall(body.scene, split(body).origin);
+      rig.setMaster(body.master, split(body).origin);
       sendJson(res, 200, { ok: true });
       return;
     }
 
-    if (req.method === 'POST' && path === '/api/scenes') {
+    if (req.method === 'POST' && path === '/api/playback') {
+      const { change, origin } = split(await readJson(req));
+      const { group, scene, off } = readObject(change, 'the playback', ['group', 'scene', 'off']);
+      if (off === undefined) {
+        rig.playback.recall(group, scene, origin);
+      } else {
+        if (off !== true) throw new PatchError('"off" can only be true');
+        if (scene !== undefined) throw new PatchError('say a scene or off, not both');
+        rig.playback.off(group, origin);
+      }
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/groups') {
       const body = await readJson(req);
-      sendJson(res, 200, { ok: true, id: rig.playback.store(body.label) });
+      sendJson(res, 200, { ok: true, id: rig.playback.addGroup(body.label, body.fixtures) });
+      return;
+    }
+
+    const group = req.method === 'POST' ? GROUP_POST.exec(path) : null;
+    if (group) {
+      const id = group[1] ?? '';
+      const body = await readJson(req);
+      if (group[2] === 'scenes') {
+        sendJson(res, 200, { ok: true, id: rig.playback.store(id, body.label) });
+        return;
+      }
+      if (group[2] === 'rename') rig.playback.renameGroup(id, body.label);
+      else rig.playback.removeGroup(id);
+      sendJson(res, 200, { ok: true });
       return;
     }
 
     const scene = req.method === 'POST' ? SCENE_POST.exec(path) : null;
     if (scene) {
-      const id = scene[1] ?? '';
+      const [, of = '', id = '', action] = scene;
       const body = await readJson(req);
-      if (scene[2] === 'store') rig.playback.storeOver(id);
-      else if (scene[2] === 'rename') rig.playback.rename(id, body.label);
-      else rig.playback.remove(id);
+      if (action === 'store') rig.playback.storeOver(of, id);
+      else if (action === 'rename') rig.playback.rename(of, id, body.label);
+      else rig.playback.remove(of, id);
       sendJson(res, 200, { ok: true });
       return;
     }

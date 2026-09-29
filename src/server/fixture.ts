@@ -25,7 +25,7 @@ export interface FixtureController {
 
   /** What the fixture is set to, as plain data for the page. */
   getState(): unknown;
-  /** The fixture's bytes as they are being sent, channel 1 first. */
+  /** The fixture's bytes as they are being sent, with blackout and master in them. */
   getDmx(): number[];
   /** What the page of this kind of fixture needs to know besides the profile. */
   describe(): Record<string, unknown>;
@@ -54,8 +54,15 @@ export interface FixtureController {
   /** The blackout of the console. While on, the fixture is dark and keeps its state. */
   setBlackout(blackout: boolean): void;
   /**
+   * The grand master of the console, 0 to 1. What goes out is the brightness the fixture
+   * is set to times the master; a fixture without a dimmer is dark while the master is at
+   * 0. Like the blackout it is not part of the state, and no scene keeps it.
+   */
+  setMaster(level: number): void;
+  /**
    * Called when lightdeck stops. The bridge holds the last frame, so a fixture that must
-   * not stay on without anybody at the controls goes dark here.
+   * not stay on without anybody at the controls goes dark here, and stays dark whatever
+   * is set or recalled after it: a request that was under way is still handled.
    */
   darken(): void;
   close(): void;

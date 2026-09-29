@@ -9,6 +9,10 @@
  * Changes from the deck are made in the document as it was read, so that comments and
  * the order of a file edited by hand stay.
  *
+ * Reading never writes. A file from before there were groups, or no file at all, is read
+ * as the groups a show starts with. The first change from the deck writes those groups
+ * out, with the scenes that were in the file in the group of all fixtures.
+ *
  * Without a path the show is kept in memory only.
  *
  * Events: `show`, after the show or the problem changed.
@@ -19,12 +23,18 @@ import { type FSWatcher, readFileSync, renameSync, watch, writeFileSync } from '
 import { basename, dirname, resolve } from 'node:path';
 import { Document, isMap, isScalar, parseDocument, visit } from 'yaml';
 import { PatchError } from '../server/fixture.js';
-import { type CheckPart, readShow, type Show, ShowError } from './show.js';
+import {
+  type KnownFixtures,
+  readShow,
+  type Show,
+  ShowError,
+  type ShowFixture,
+  startingGroups,
+} from './show.js';
 
-export interface ShowFileOptions {
+export interface ShowFileOptions extends KnownFixtures {
   /** Where the file is. It does not have to exist yet, the directory does. */
   path?: string;
-  check: CheckPart;
 }
 
 /** How long the file is left alone after a change, for an editor to finish writing. */
@@ -32,22 +42,154 @@ const SETTLE_MS = 150;
 /** Maps this small are written on one line. */
 const ONE_LINE_KEYS = 4;
 
-/** Puts small maps of plain values on one line, such as a colour. */
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** The id that a key of a map is. A key that was read is a node, one that was added is not. */
+function idOf(key: unknown): string | undefined {
+  const id: unknown = isScalar(key) ? key.value : key;
+  return typeof id === 'string' ? id : undefined;
+}
+
+/**
+ * Makes the ids in a map of the document what was typed. YAML reads a key such as `12`
+ * or `true` as a number or a yes, and the document would not find it under its id.
+ * `what` says what the ids name: `group`, or `scene` with ` of group "x"` as its place.
+ * Throws a `ShowError` when two of them come to the same id.
+ */
+function asTyped(map: unknown, what: string, place = ''): void {
+  if (!isMap(map)) return;
+  const seen = new Set<string>();
+  for (const { key } of map.items) {
+    if (isScalar(key) && typeof key.value !== 'string') {
+      key.value = key.source ?? String(key.value);
+    }
+    const id = idOf(key);
+    if (id === undefined) continue;
+    if (seen.has(id)) throw new ShowError(`${what} "${id}"${place} is in the file twice`);
+    seen.add(id);
+  }
+}
+
+/** Does that for the groups and their scenes, and for scenes from before there were groups. */
+function idsAsTyped(document: Document): void {
+  const top = document.contents;
+  if (!isMap(top)) return;
+  asTyped(top.get('scenes', true), 'scene');
+  const groups = top.get('groups', true);
+  asTyped(groups, 'group');
+  if (!isMap(groups)) return;
+  for (const { key, value } of groups.items) {
+    if (isMap(value)) asTyped(value.get('scenes', true), 'scene', ` of group "${idOf(key)}"`);
+  }
+}
+
+/** What was read of a map, in the order of the file: a plain object puts numbers first. */
+function inOrder(map: unknown, read: unknown): unknown {
+  if (!isMap(map) || !isObject(read)) return read;
+  const ordered = new Map<string, unknown>();
+  for (const { key } of map.items) {
+    const id = idOf(key);
+    if (id !== undefined && Object.hasOwn(read, id)) ordered.set(id, read[id]);
+  }
+  // What did not come from a key of its own, such as what a merge brought in.
+  for (const [id, value] of Object.entries(read)) {
+    if (!ordered.has(id)) ordered.set(id, value);
+  }
+  return ordered;
+}
+
+/**
+ * What the document holds, to be read as a show. The groups and the scenes of a group
+ * are in the order of the file.
+ */
+function dataOf(document: Document): unknown {
+  const data: unknown = document.toJS();
+  const top = document.contents;
+  if (!isObject(data) || !isMap(top)) return data;
+  data.scenes = inOrder(top.get('scenes', true), data.scenes);
+  const groups = top.get('groups', true);
+  data.groups = inOrder(groups, data.groups);
+  if (!isMap(groups) || !(data.groups instanceof Map)) return data;
+  for (const [id, group] of data.groups) {
+    const node = groups.get(id, true);
+    if (!isObject(group) || !isMap(node)) continue;
+    group.scenes = inOrder(node.get('scenes', true), group.scenes);
+  }
+  return data;
+}
+
+/** Puts small maps of plain values on one line, such as a colour, and lists of names. */
 function tidy(document: Document): void {
   visit(document, {
     Map(_key, node) {
       const plain = node.items.every((pair) => isScalar(pair.value));
       if (plain && node.items.length > 0 && node.items.length <= ONE_LINE_KEYS) node.flow = true;
     },
+    Seq(_key, node) {
+      if (node.items.every((item) => isScalar(item))) node.flow = true;
+    },
   });
 }
 
-/** Sets a value in the document, making the maps on the way there. */
+/**
+ * Gives a document without groups the groups a show starts with. The scenes of a file
+ * from before there were groups go to the group of all fixtures, as they are in the
+ * document, so that their comments come along.
+ */
+function addGroups(document: Document, fixtures: readonly ShowFixture[]): void {
+  if (!isMap(document.contents)) document.contents = document.createNode({});
+  const top = document.contents;
+  if (!isMap(top) || top.has('groups')) return;
+  // A file that holds `{}` only: what is added does not go on that one line.
+  top.flow = false;
+
+  const starting = startingGroups(fixtures);
+  const groups = document.createNode(
+    Object.fromEntries(
+      starting.map((group) => [
+        group.id,
+        { label: group.label, fixtures: group.fixtures, scenes: {} },
+      ]),
+    ),
+    { aliasDuplicateObjects: false },
+  );
+  const old = top.items.find((pair) => isScalar(pair.key) && pair.key.value === 'scenes');
+  if (!old) {
+    top.add(document.createPair('groups', groups));
+    return;
+  }
+  const all = starting[starting.length - 1];
+  if (all && isMap(old.value)) groups.setIn([all.id, 'scenes'], old.value);
+  // The place in the file and the comment above it stay: "scenes" becomes "groups".
+  if (isScalar(old.key)) old.key.value = 'groups';
+  old.value = groups;
+}
+
+/**
+ * Sets a value in the document, making the maps on the way there. A scene or a group
+ * that is added gets lines of its own: a map on the way there that was written on one
+ * line, such as the `scenes: {}` of a group without scenes, is no longer.
+ */
 export function setIn(document: Document, path: readonly string[], value: unknown): void {
   if (!isMap(document.contents)) document.contents = document.createNode({});
   for (let depth = 1; depth < path.length; depth++) {
     const above = path.slice(0, depth);
     if (!isMap(document.getIn(above))) document.setIn(above, document.createNode({}));
+  }
+  const there = document.getIn(path, true);
+  if (isScalar(there) && (value === null || typeof value !== 'object')) {
+    // A name takes the place of a name: the comment behind it stays.
+    there.value = value;
+    return;
+  }
+  if (isObject(value)) {
+    for (let depth = 0; depth < path.length; depth++) {
+      const above: unknown = depth === 0 ? document.contents : document.getIn(path.slice(0, depth));
+      if (isMap(above)) above.flow = false;
+    }
   }
   // Two colours that are the same are written twice, not as a reference to each other.
   document.setIn(path, document.createNode(value, { aliasDuplicateObjects: false }));
@@ -55,9 +197,9 @@ export function setIn(document: Document, path: readonly string[], value: unknow
 
 export class ShowFile extends EventEmitter {
   readonly path: string | undefined;
-  private readonly check: CheckPart;
+  private readonly known: KnownFixtures;
   private document = new Document();
-  private show: Show = { scenes: [] };
+  private show: Show;
   /** The file as it was last read or written. */
   private seen: string | undefined;
   private problem: string | null = null;
@@ -67,7 +209,8 @@ export class ShowFile extends EventEmitter {
   constructor(options: ShowFileOptions) {
     super();
     this.path = options.path === undefined ? undefined : resolve(options.path);
-    this.check = options.check;
+    this.known = { fixtures: options.fixtures, check: options.check };
+    this.show = readShow(null, this.known);
     this.refresh();
   }
 
@@ -83,8 +226,12 @@ export class ShowFile extends EventEmitter {
   /**
    * Changes the show and writes it to the file. Throws a `PatchError` and changes
    * nothing when the file has a problem or the result would not be a show.
+   *
+   * The change gets the document and the show as the file has them at this moment, and
+   * what it gives is given back. What it looks up, such as an id that is still free,
+   * it must look up in that show: the file may have changed by hand a moment ago.
    */
-  edit(change: (document: Document) => void): void {
+  edit<Given>(change: (document: Document, show: Show) => Given): Given {
     // The file may have changed without the watcher having said so yet.
     this.refresh();
     if (this.problem !== null) {
@@ -93,13 +240,14 @@ export class ShowFile extends EventEmitter {
       );
     }
     const document = this.document.clone();
-    change(document);
+    addGroups(document, this.known.fixtures);
+    const given = change(document, this.show);
     tidy(document);
     let show: Show;
     try {
-      show = readShow(document.toJS(), this.check);
+      show = readShow(dataOf(document), this.known);
     } catch (error) {
-      throw new PatchError(error instanceof Error ? error.message : String(error));
+      throw new PatchError(message(error));
     }
     const text = document.toString({ lineWidth: 0 });
     if (this.path !== undefined) {
@@ -108,15 +256,14 @@ export class ShowFile extends EventEmitter {
         writeFileSync(partial, text);
         renameSync(partial, this.path);
       } catch (error) {
-        throw new PatchError(
-          `The show file cannot be written: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        throw new PatchError(`The show file cannot be written: ${message(error)}`);
       }
     }
     this.document = document;
     this.show = show;
     this.seen = text;
     this.emit('show');
+    return given;
   }
 
   /** Follows the file from now on. */
@@ -155,7 +302,9 @@ export class ShowFile extends EventEmitter {
         }
         return;
       }
-      this.fail(`It cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+      // When it can be read again it is read anew, also when it still says the same.
+      this.seen = undefined;
+      this.fail(`It cannot be read: ${message(error)}`);
       return;
     }
     if (text === this.seen) return;
@@ -168,10 +317,12 @@ export class ShowFile extends EventEmitter {
       return;
     }
     try {
-      this.show = readShow(document.toJS(), this.check);
+      idsAsTyped(document);
+      this.show = readShow(dataOf(document), this.known);
     } catch (error) {
-      if (!(error instanceof ShowError)) throw error;
-      this.fail(error.message);
+      // Whatever it is, it is a mistake in the file, such as a reference to nothing. It
+      // must not stop lightdeck: the show that runs stays.
+      this.fail(message(error));
       return;
     }
     this.document = document;

@@ -4,11 +4,12 @@
  * The rig owns the patch, so it is the one place where universes are put together:
  * each fixture controller encodes its own channels, and the rig hands the whole
  * universe to the output. It also holds what belongs to no single fixture: the tempo,
- * the blackout, the playback of the show and the state of the link to the LR512.
+ * the blackout, the grand master, the playback of the show and the state of the link to
+ * the LR512.
  *
  * Events: `fixture` (id, state, dmx, origin), `frame` (id, dmx, beat),
- * `tempo` (state, beat, origin), `blackout` (blackout, origin), `status` (status),
- * `show` (summary), `playback` (state).
+ * `tempo` (state, beat, origin), `blackout` (blackout, origin), `master` (level, origin),
+ * `status` (status), `show` (summary), `playback` (state).
  */
 
 import { EventEmitter } from 'node:events';
@@ -64,6 +65,8 @@ export class Rig extends EventEmitter {
   readonly playback: Playback;
 
   private blackout = false;
+  /** The grand master. It starts at full every time, and the show file does not keep it. */
+  private master = 1;
   private link: LinkStatus = { bridge: false, device: 'unknown', universes: 0, channels: [] };
 
   /** Throws when a fixture is unknown, named twice, or does not fit where it is put. */
@@ -131,6 +134,23 @@ export class Rig extends EventEmitter {
     this.blackout = blackout;
     for (const { controller } of this.fixtures) controller.setBlackout(blackout);
     this.emit('blackout', blackout, origin);
+  }
+
+  getMaster(): number {
+    return this.master;
+  }
+
+  /**
+   * Sets the grand master, 0 to 1. Every fixture sends its brightness times the master;
+   * what the fixtures are set to stays what it is.
+   */
+  setMaster(level: unknown, origin?: string): void {
+    if (typeof level !== 'number' || !Number.isFinite(level) || level < 0 || level > 1) {
+      throw new PatchError('the master must be a number between 0 and 1');
+    }
+    this.master = level;
+    for (const { controller } of this.fixtures) controller.setMaster(level);
+    this.emit('master', level, origin);
   }
 
   getStatus(): LinkStatus {

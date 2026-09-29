@@ -10,6 +10,9 @@
  * moves; brightness, strobe and motor speed stay with the operator. Rendered frames
  * are not state: browsers get them as `frame` events, at a lower rate, only to draw
  * what the fixture shows.
+ *
+ * The blackout and the grand master of the console are not state either. They change
+ * what goes out and leave what is set: the master scales the dimmer and nothing else.
  */
 
 import { EventEmitter } from 'node:events';
@@ -83,6 +86,8 @@ export interface SpiderOptions {
 
 /** Controls that a blackout forces to zero. Position and colour are left alone. */
 const BLACKOUT_CONTROLS = ['dimmer', 'strobe'];
+/** The attribute of the controls that the grand master scales. */
+const MASTER_ATTRIBUTE = 'dimmer';
 const RESET_CONTROL = 'reset';
 const RESET_VALUE = 255;
 /** Effect frames per second sent to the fixture. */
@@ -120,6 +125,8 @@ export class SpiderController extends EventEmitter implements FixtureController 
   private readonly output: UniverseOutput;
   private readonly tempo: Tempo;
   private readonly resetHoldMs: number;
+  /** Names of the controls that the grand master scales. */
+  private readonly dimmers: readonly string[];
   private readonly frame = new Uint8Array(UNIVERSE_SIZE);
   private resetTimer: ReturnType<typeof setTimeout> | undefined;
   private ticker: ReturnType<typeof setInterval> | undefined;
@@ -128,6 +135,8 @@ export class SpiderController extends EventEmitter implements FixtureController 
   private state: SpiderState;
   /** The blackout of the console. It is not part of the state of the fixture. */
   private blackout = false;
+  /** The grand master of the console, 0 to 1. It is not part of the state either. */
+  private master = 1;
 
   constructor(options: SpiderOptions) {
     super();
@@ -138,6 +147,9 @@ export class SpiderController extends EventEmitter implements FixtureController 
     this.universe = options.universe;
     this.address = options.address;
     this.resetHoldMs = options.resetHoldMs ?? 3500;
+    this.dimmers = this.profile.controls
+      .filter((control) => control.kind === 'level' && control.attribute === MASTER_ATTRIBUTE)
+      .map((control) => control.name);
 
     const rest = this.rest();
     for (const name of this.cellControls()) {
@@ -282,6 +294,14 @@ export class SpiderController extends EventEmitter implements FixtureController 
     this.push();
   }
 
+  /** Dims what goes out. The brightness that is set stays what it is. */
+  setMaster(level: number): void {
+    const master = clamp01(level);
+    if (master === this.master) return;
+    this.master = master;
+    this.push();
+  }
+
   /** The spider may stay as it is when lightdeck stops. */
   darken(): void {}
 
@@ -370,6 +390,7 @@ export class SpiderController extends EventEmitter implements FixtureController 
         if (name !== undefined) levels[name] = clamp01(tilt);
       });
     }
+    for (const name of this.dimmers) levels[name] = (levels[name] ?? 0) * this.master;
     if (this.blackout) {
       for (const name of BLACKOUT_CONTROLS) if (name in levels) levels[name] = 0;
     }
