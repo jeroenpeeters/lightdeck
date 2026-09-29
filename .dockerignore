@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.idea
+*.pcap
+*.pcapng
+*.apk
+android-bridge
+vendor
+docs
+tools

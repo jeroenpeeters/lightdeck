@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d1613" />
+    <title>Spider</title>
+    <link rel="preload" href="/fonts/im-fell-english-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="masthead-title">
+        <h1>Spider</h1>
+        <p class="where" id="where"></p>
+      </div>
+      <ul class="links" id="links" aria-label="Connection">
+        <li class="link" id="link-bridge" data-state="unknown">
+          <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
+        </li>
+        <li class="link" id="link-device" data-state="unknown">
+          <span class="lamp" aria-hidden="true"></span><span class="link-text">LR512</span>
+        </li>
+      </ul>
+    </header>
+
+    <p class="notice" id="notice" role="status" hidden></p>
+
+    <main class="faceplate">
+      <section class="stage" aria-labelledby="stage-title">
+        <h2 id="stage-title">Lenses</h2>
+        <p class="hint">Tap the lenses you want to colour.</p>
+        <div class="fixture" id="fixture"></div>
+        <fieldset class="picks" id="picks">
+          <legend class="visually-hidden">Choose lenses</legend>
+        </fieldset>
+      </section>
+
+      <section class="mixer" aria-labelledby="mixer-title">
+        <h2 id="mixer-title">Colour</h2>
+        <p class="hint" id="mixer-hint"></p>
+        <div class="sliders" id="colour-sliders"></div>
+        <fieldset class="swatches" id="swatches">
+          <legend class="visually-hidden">Ready-made colours</legend>
+        </fieldset>
+      </section>
+
+      <section class="effects" aria-labelledby="effects-title">
+        <div class="effects-choice">
+          <h2 id="effects-title">Effects</h2>
+          <p class="hint" id="effect-hint"></p>
+          <fieldset class="effect-list" id="effect-list">
+            <legend class="visually-hidden">Choose an effect</legend>
+          </fieldset>
+          <button type="button" class="stop" id="effect-stop">Stop the effect</button>
+        </div>
+
+        <div class="effects-settings">
+          <div class="sliders" id="tempo-sliders"></div>
+          <div class="tap-row">
+            <button type="button" class="tap" id="tap">Tap the beat</button>
+            <ol class="beats" id="beats" aria-hidden="true">
+              <li></li>
+              <li></li>
+              <li></li>
+              <li></li>
+            </ol>
+          </div>
+          <p class="hint">Tap along with the music. Your last tap becomes the first beat of the bar.</p>
+
+          <fieldset class="choice" id="rates">
+            <legend>Speed</legend>
+          </fieldset>
+          <fieldset class="choice" id="colour-a">
+            <legend>First colour</legend>
+          </fieldset>
+          <fieldset class="choice" id="colour-b">
+            <legend>Second colour</legend>
+          </fieldset>
+          <p class="hint" id="palette-hint" hidden></p>
+        </div>
+      </section>
+
+      <section class="master" aria-labelledby="master-title">
+        <h2 id="master-title">Light</h2>
+        <div class="sliders" id="master-sliders"></div>
+        <button type="button" class="blackout" id="blackout" aria-pressed="false">Blackout</button>
+      </section>
+
+      <section class="motion" aria-labelledby="motion-title">
+        <h2 id="motion-title">Movement</h2>
+        <p class="hint" id="motion-hint" hidden></p>
+        <div class="sliders" id="motion-sliders"></div>
+        <label class="check">
+          <input type="checkbox" id="link-bars" checked />
+          <span>Move both bars together</span>
+        </label>
+      </section>
+
+      <details class="programs" id="programs">
+        <summary>Built-in programs and what is being sent</summary>
+        <p class="hint">
+          The spider can run its own programs. Keep both program sliders at 0 to control the
+          lights yourself.
+        </p>
+        <div class="sliders" id="program-sliders"></div>
+
+        <div class="reset">
+          <button type="button" class="reset-button" id="reset">Hold to restart the spider</button>
+          <p class="hint" id="reset-hint">Hold the button for one second. The spider restarts.</p>
+        </div>
+
+        <h3>Channels being sent</h3>
+        <ol class="readout" id="readout"></ol>
+      </details>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

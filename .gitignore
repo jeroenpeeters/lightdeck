@@ -1,0 +1,20 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+*.pcap
+*.pcapng
+*.apk
+*.idsig
+
+# IDE settings
+.idea/
+*.iml
+
+# Android bridge build artifacts
+android-bridge/work/
+android-bridge/tools/
+android-bridge/bridge-gate.apk
+vendor/

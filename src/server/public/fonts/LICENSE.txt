@@ -1,0 +1,13 @@
+The font files in this directory are redistributed under the SIL Open Font
+License, Version 1.1 (https://openfontlicense.org).
+
+IM Fell English
+  Digitally reproduced by Igino Marini (www.iginomarini.com).
+  im-fell-english-400.woff2, im-fell-english-400-italic.woff2
+
+Alegreya Sans
+  Copyright 2013 The Alegreya Sans Project Authors
+  (https://github.com/huertatipografica/Alegreya-Sans).
+  alegreya-sans-400.woff2, alegreya-sans-500.woff2, alegreya-sans-700.woff2
+
+Both sets are the Latin subsets as served by Google Fonts.
