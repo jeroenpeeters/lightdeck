@@ -331,8 +331,24 @@ export async function start({ page = 'fixture' } = {}) {
     }
   }
 
+  /**
+   * The event stream, while this page is on screen. A browser has six connections to
+   * lightdeck for all its tabs together, and a stream keeps one for as long as it is
+   * open. With a stream per tab, a few tabs leave none to load a page with, and going
+   * from one page to another takes half a minute. So a page that is not on screen gives
+   * its stream back, and asks for it again when it is: the stream starts with what is
+   * real, so nothing is missed.
+   */
+  let events;
+
+  function hush() {
+    events?.close();
+    events = undefined;
+  }
+
   function listen() {
-    const events = new EventSource('/api/events');
+    if (events) return;
+    events = new EventSource('/api/events');
     const on = (name, handler) =>
       events.addEventListener(name, (event) => handler(JSON.parse(event.data)));
     events.addEventListener('open', () => {
@@ -596,7 +612,16 @@ export async function start({ page = 'fixture' } = {}) {
   }
 
   render();
-  listen();
+  if (!document.hidden) listen();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hush();
+    else listen();
+  });
+  // A page that the browser keeps for the way back is not on screen either.
+  window.addEventListener('pagehide', hush);
+  window.addEventListener('pageshow', () => {
+    if (!document.hidden) listen();
+  });
   requestAnimationFrame(drawBeat);
 
   return {
