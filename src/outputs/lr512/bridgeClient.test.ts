@@ -42,23 +42,30 @@ describe('Lr512BridgeClient with a fake socket', () => {
   let sockets: FakeSocket[];
   let client: Lr512BridgeClient;
   let statuses: BridgeStatus[];
+  let connections: boolean[];
+  let logs: string[];
 
   beforeEach(() => {
     vi.useFakeTimers();
     sockets = [];
     statuses = [];
+    connections = [];
+    logs = [];
     client = new Lr512BridgeClient({
       url: 'ws://bridge:9010',
       fps: 40,
       maxBufferedFrames: 2,
       reconnectMinMs: 500,
       reconnectMaxMs: 2000,
+      connectTimeoutMs: 1000,
       socketFactory: () => {
         const s = new FakeSocket();
         sockets.push(s);
         return s;
       },
       onStatus: (s) => statuses.push(s),
+      onConnection: (c) => connections.push(c),
+      log: (m) => logs.push(m),
     });
   });
 
@@ -156,6 +163,113 @@ describe('Lr512BridgeClient with a fake socket', () => {
     expect(client.stats.connections).toBe(2);
   });
 
+  // Node's WebSocket does not send `close` after an attempt that fails: it sends `error` and
+  // nothing else. Waiting for a `close` that never comes left the client stuck for good, so
+  // a bridge that was not there yet when lightdeck started, or that was not back yet at the
+  // first retry, was never found.
+  it('tries again after an attempt that failed with an error and no close', () => {
+    client.start();
+    expect(sockets).toHaveLength(1);
+    latest().emit('error');
+    vi.advanceTimersByTime(499);
+    expect(sockets).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(sockets).toHaveLength(2);
+    // And again, with the backoff doubling up to its limit, for as long as it takes.
+    latest().emit('error');
+    vi.advanceTimersByTime(1000);
+    expect(sockets).toHaveLength(3);
+    latest().emit('error');
+    vi.advanceTimersByTime(2000);
+    expect(sockets).toHaveLength(4);
+    latest().emit('error');
+    vi.advanceTimersByTime(2000);
+    expect(sockets).toHaveLength(5);
+    latest().emit('open');
+    expect(client.connected).toBe(true);
+  });
+
+  it('tries again after a connection that dropped with an error and no close', () => {
+    client.start();
+    latest().emit('open');
+    latest().emit('error');
+    expect(client.connected).toBe(false);
+    expect(connections).toEqual([true, false]);
+    vi.advanceTimersByTime(500);
+    expect(sockets).toHaveLength(2);
+  });
+
+  it('tries once, not twice, when an error is followed by a close', () => {
+    client.start();
+    latest().emit('open');
+    latest().emit('error');
+    latest().emit('close');
+    vi.advanceTimersByTime(500);
+    expect(sockets).toHaveLength(2);
+    vi.advanceTimersByTime(499);
+    expect(sockets).toHaveLength(2);
+    // The late close of the first socket must not touch the second.
+    sockets[0]?.emit('close');
+    latest().emit('open');
+    expect(client.connected).toBe(true);
+    vi.advanceTimersByTime(10_000);
+    expect(sockets).toHaveLength(2);
+  });
+
+  it('gives up on an attempt that never answers, which is a bridge that is not reachable', () => {
+    client.start();
+    vi.advanceTimersByTime(999);
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]?.closed).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(sockets[0]?.closed).toBe(true);
+    vi.advanceTimersByTime(500);
+    expect(sockets).toHaveLength(2);
+    // What the first socket says when it finally fails is not heard.
+    sockets[0]?.emit('error');
+    sockets[0]?.emit('close');
+    vi.advanceTimersByTime(499);
+    expect(sockets).toHaveLength(2);
+  });
+
+  it('does not give up on a connection that opened because it is quiet', () => {
+    client.start();
+    latest().emit('open');
+    vi.advanceTimersByTime(60_000);
+    expect(client.connected).toBe(true);
+    expect(sockets).toHaveLength(1);
+  });
+
+  it('tells that it is connected, and that it is not, only when that changes', () => {
+    client.start();
+    latest().emit('error');
+    vi.advanceTimersByTime(500);
+    latest().emit('error');
+    expect(connections).toEqual([]);
+    vi.advanceTimersByTime(1000);
+    latest().emit('open');
+    latest().emit('close');
+    expect(connections).toEqual([true, false]);
+  });
+
+  it('says once that the bridge cannot be reached, not at every try, and when it is back', () => {
+    client.start();
+    for (let i = 0; i < 6; i++) {
+      latest().emit('error');
+      vi.advanceTimersByTime(2000);
+    }
+    const unreachable = logs.filter((line) => line.includes('cannot reach'));
+    expect(unreachable).toHaveLength(1);
+    expect(unreachable[0]).toContain('ws://bridge:9010');
+    latest().emit('open');
+    expect(logs.at(-1)).toContain('connected to ws://bridge:9010');
+    // A new drop says it again.
+    latest().emit('close');
+    vi.advanceTimersByTime(500);
+    latest().emit('error');
+    expect(logs.filter((line) => line.includes('cannot reach')).length).toBeGreaterThanOrEqual(1);
+  });
+
   it('frames set while disconnected are sent once connected', () => {
     client.start();
     client.setUniverse(0, universeOf(5));
@@ -204,8 +318,18 @@ describe('Lr512BridgeClient with a fake socket', () => {
  * handshake, a status text frame, and parsing of masked client frames. It lets the
  * client run against Node's real WebSocket instead of the fake.
  */
-function miniBridge(onFrame: (payload: Buffer) => void): Promise<{ server: Server; port: number }> {
+interface MiniBridge {
+  server: Server;
+  port: number;
+  /** Goes away the way a bridge does when its app is closed: the connections are cut. */
+  stop(): Promise<void>;
+}
+
+function miniBridge(onFrame: (payload: Buffer) => void, atPort = 0): Promise<MiniBridge> {
+  const open = new Set<Socket>();
   const server = createServer((socket: Socket) => {
+    open.add(socket);
+    socket.on('close', () => open.delete(socket));
     let buffer = Buffer.alloc(0);
     let upgraded = false;
     socket.on('error', () => {});
@@ -255,11 +379,27 @@ function miniBridge(onFrame: (payload: Buffer) => void): Promise<{ server: Serve
     });
   });
   return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(atPort, '127.0.0.1', () => {
       const address = server.address();
-      resolve({ server, port: typeof address === 'object' && address ? address.port : 0 });
+      resolve({
+        server,
+        port: typeof address === 'object' && address ? address.port : 0,
+        stop: () =>
+          new Promise<void>((done) => {
+            for (const socket of open) socket.destroy();
+            server.close(() => done());
+          }),
+      });
     });
   });
+}
+
+/** A port that nothing listens on: it was free a moment ago. */
+async function freePort(): Promise<number> {
+  const probe = await miniBridge(() => {});
+  const { port } = probe;
+  await probe.stop();
+  return port;
 }
 
 describe('Lr512BridgeClient over a real WebSocket', () => {
@@ -296,6 +436,67 @@ describe('Lr512BridgeClient over a real WebSocket', () => {
     } finally {
       client.stop();
       server.close();
+    }
+  });
+
+  it('connects when the bridge was not there yet at the start, and keeps trying until it is', async () => {
+    const port = await freePort();
+    const frames: Buffer[] = [];
+    const lines: string[] = [];
+    const client = new Lr512BridgeClient({
+      url: `ws://127.0.0.1:${port}`,
+      reconnectMinMs: 20,
+      reconnectMaxMs: 80,
+      log: (line) => lines.push(line),
+    });
+    let bridge: MiniBridge | undefined;
+    try {
+      client.setUniverse(0, new Uint8Array(512).fill(9));
+      client.start();
+      // Several attempts fail while nothing listens. This was where it gave up for good.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(client.connected).toBe(false);
+      bridge = await miniBridge((payload) => frames.push(payload), port);
+      await vi.waitFor(() => expect(client.connected).toBe(true), { timeout: 3000 });
+      await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0), { timeout: 3000 });
+      expect(frames[0]?.[1]).toBe(9);
+      expect(lines.filter((line) => line.includes('cannot reach'))).toHaveLength(1);
+    } finally {
+      client.stop();
+      await bridge?.stop();
+    }
+  });
+
+  it('finds the bridge again after it went away and came back, and sends what it last had', async () => {
+    const firstFrames: Buffer[] = [];
+    const secondFrames: Buffer[] = [];
+    const first = await miniBridge((payload) => firstFrames.push(payload));
+    const { port } = first;
+    const connections: boolean[] = [];
+    const client = new Lr512BridgeClient({
+      url: `ws://127.0.0.1:${port}`,
+      reconnectMinMs: 20,
+      reconnectMaxMs: 80,
+      onConnection: (connected) => connections.push(connected),
+    });
+    let second: MiniBridge | undefined;
+    try {
+      client.setUniverse(0, new Uint8Array(512).fill(5));
+      client.start();
+      await vi.waitFor(() => expect(client.connected).toBe(true), { timeout: 3000 });
+
+      await first.stop();
+      await vi.waitFor(() => expect(client.connected).toBe(false), { timeout: 3000 });
+      // The app is still starting: the first tries at the new bridge find no one.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      second = await miniBridge((payload) => secondFrames.push(payload), port);
+      await vi.waitFor(() => expect(client.connected).toBe(true), { timeout: 3000 });
+      await vi.waitFor(() => expect(secondFrames.length).toBeGreaterThan(0), { timeout: 3000 });
+      expect(secondFrames[0]?.[1]).toBe(5);
+      expect(connections).toEqual([true, false, true]);
+    } finally {
+      client.stop();
+      await second?.stop();
     }
   });
 });

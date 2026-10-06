@@ -13,6 +13,10 @@
  *                                       after a spider at 1), or "none" to run without it
  *   --show           SHOW_FILE          the show file, which the deck writes
  *                                       (default show.yaml, where lightdeck is started)
+ *   --tempo          TEMPO_SOURCE       who sets the tempo at the start: `manual` (default) or
+ *                                       `audio`, which follows the music the listen page hears
+ *   --audio-record  AUDIO_RECORD_DIR   a directory to write the sound that the listen page
+ *                                       hears to, as WAV files (default: not written)
  *   --port           PORT               port of the web page (default 8080)
  *   --host           HOST               address to listen on (default 0.0.0.0)
  */
@@ -45,6 +49,8 @@ const { values: args } = parseArgs({
     'laser-universe': { type: 'string' },
     'laser-address': { type: 'string' },
     show: { type: 'string' },
+    tempo: { type: 'string' },
+    'audio-record': { type: 'string' },
     port: { type: 'string' },
     host: { type: 'string' },
   },
@@ -67,6 +73,11 @@ const laserUniverse = wholeNumber(
   'laser universe',
 );
 const showFile = args.show ?? process.env.SHOW_FILE ?? 'show.yaml';
+const tempoSourceText = args.tempo ?? process.env.TEMPO_SOURCE ?? 'manual';
+if (tempoSourceText !== 'manual' && tempoSourceText !== 'audio') {
+  fail(`--tempo must be manual or audio, got "${tempoSourceText}"`);
+}
+const audioRecordDir = args['audio-record'] ?? process.env.AUDIO_RECORD_DIR;
 const port = wholeNumber(args.port ?? process.env.PORT ?? '8080', 'port');
 const host = args.host ?? process.env.HOST ?? '0.0.0.0';
 
@@ -107,7 +118,14 @@ const bridge = new Lr512BridgeClient({
 });
 
 try {
-  rig = new Rig({ output: bridge, fixtures, show: showFile });
+  rig = new Rig({
+    output: bridge,
+    fixtures,
+    show: showFile,
+    tempoSource: tempoSourceText,
+    ...(audioRecordDir === undefined ? {} : { audioRecordDir }),
+    log: (message) => log(`audio: ${message}`),
+  });
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }

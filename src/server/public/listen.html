@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f1114" />
+    <title>Listen</title>
+    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/listen.css" />
+  </head>
+  <body>
+    <!-- The shell puts the status bar and the tempo above this. Its notice goes below. -->
+    <main class="console" id="console">
+      <header class="fixture-head">
+        <h1>Listen</h1>
+        <p class="where" id="where">Microphone of the laptop</p>
+      </header>
+
+      <section class="panel" aria-label="Microphone">
+        <div class="listen-controls">
+          <button type="button" class="key listen-key" id="listen" aria-pressed="false">
+            Start listening
+          </button>
+          <div class="input-row">
+            <label for="device">Input</label>
+            <select class="field" id="device" aria-label="Input"></select>
+          </div>
+        </div>
+
+        <meter
+          class="meter"
+          id="meter"
+          aria-label="Input level"
+          min="-60"
+          max="0"
+          value="-60"
+        ></meter>
+
+        <dl class="facts" id="facts">
+          <div class="fact"><dt>Level</dt><dd id="fact-level">–</dd></div>
+          <div class="fact"><dt>Sent</dt><dd id="fact-sent">–</dd></div>
+          <div class="fact"><dt>Lost on the way</dt><dd id="fact-dropped">–</dd></div>
+          <div class="fact"><dt>Sample rate</dt><dd id="fact-rate">–</dd></div>
+        </dl>
+
+        <p class="hint" id="listen-hint">
+          This page listens to the room through the microphone of this laptop and sends the
+          sound to lightdeck. Keep it open while the music plays. It has to be opened on the
+          lightdeck laptop itself, as localhost.
+        </p>
+      </section>
+
+      <section class="panel" id="behaviour" aria-labelledby="behaviour-title">
+        <h2 id="behaviour-title">What the tempo does</h2>
+        <p class="hint">
+          This counts while the tempo is on Auto. The numbers are for rehearsal: set them while
+          real music plays.
+        </p>
+        <fieldset class="choice" id="choice-silence"><legend>When the music stops</legend></fieldset>
+        <fieldset class="choice" id="choice-nobeat">
+          <legend>When there is music but no beat</legend>
+        </fieldset>
+        <fieldset class="choice" id="choice-phase"><legend>When the beat drifts</legend></fieldset>
+        <div class="sliders" id="behaviour-sliders"></div>
+      </section>
+
+      <!--
+        Kept at the bottom of the screen, like on the deck: a notice moves no key when it comes.
+        The page puts the notice of the shell here too.
+      -->
+      <div class="notices">
+        <div class="notices-stack" id="notices">
+          <p class="notice" id="listen-notice" data-level="alarm" role="alert" hidden></p>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="/listen.js"></script>
+  </body>
+</html>

@@ -11,6 +11,15 @@
  * socket's send buffer backs up, frames are held back instead of queued, so a slow
  * or stalled bridge costs freshness for a moment and never memory or latency.
  * After a reconnect the last known state of every universe is sent again.
+ *
+ * The bridge may be away when lightdeck starts, or go away and come back later, as an app
+ * on a phone does. The client polls for it for as long as it is not there: every way an
+ * attempt or a connection can end leads to another try, a little later each time, up to
+ * `reconnectMaxMs`. Node's WebSocket sends `error` and no `close` when an attempt fails, and
+ * nothing at all when the host does not answer, so an attempt is given `connectTimeoutMs`.
+ * A connection that dies without a word, as when the Wi-Fi of the phone drops, is only
+ * noticed when the operating system gives up on it: the bridge would have to send something
+ * at intervals for that to be quicker.
  */
 
 import { UNIVERSE_SIZE } from '../../fixtures/profile.js';
@@ -50,6 +59,8 @@ export interface BridgeClientOptions {
   maxBufferedFrames?: number;
   reconnectMinMs?: number;
   reconnectMaxMs?: number;
+  /** How long an attempt to connect may go without an answer before it is given up. Default 4000. */
+  connectTimeoutMs?: number;
   socketFactory?: SocketFactory;
   onStatus?: (status: BridgeStatus) => void;
   onConnection?: (connected: boolean) => void;
@@ -78,6 +89,7 @@ export class Lr512BridgeClient {
   private readonly maxBufferedBytes: number;
   private readonly reconnectMinMs: number;
   private readonly reconnectMaxMs: number;
+  private readonly connectTimeoutMs: number;
   private readonly socketFactory: SocketFactory;
   private readonly onStatus: ((status: BridgeStatus) => void) | undefined;
   private readonly onConnection: ((connected: boolean) => void) | undefined;
@@ -89,6 +101,10 @@ export class Lr512BridgeClient {
   private backoffMs: number;
   private pump: ReturnType<typeof setInterval> | undefined;
   private reconnect: ReturnType<typeof setTimeout> | undefined;
+  /** The deadline of the attempt that is going on. */
+  private attempt: ReturnType<typeof setTimeout> | undefined;
+  /** That the log has said that the bridge cannot be reached, so it does not say it at every try. */
+  private unreachableLogged = false;
   private counters: BridgeClientStats = { sent: 0, heldBack: 0, connections: 0 };
 
   /** Last status the bridge reported, if any. */
@@ -100,6 +116,7 @@ export class Lr512BridgeClient {
     this.maxBufferedBytes = (options.maxBufferedFrames ?? 2) * FRAME_SIZE;
     this.reconnectMinMs = options.reconnectMinMs ?? 500;
     this.reconnectMaxMs = options.reconnectMaxMs ?? 5000;
+    this.connectTimeoutMs = options.connectTimeoutMs ?? 4000;
     this.socketFactory = options.socketFactory ?? defaultSocketFactory;
     this.onStatus = options.onStatus;
     this.onConnection = options.onConnection;
@@ -144,8 +161,10 @@ export class Lr512BridgeClient {
     this.running = false;
     if (this.pump) clearInterval(this.pump);
     if (this.reconnect) clearTimeout(this.reconnect);
+    if (this.attempt) clearTimeout(this.attempt);
     this.pump = undefined;
     this.reconnect = undefined;
+    this.attempt = undefined;
     const socket = this.socket;
     this.socket = undefined;
     socket?.close();
@@ -175,19 +194,50 @@ export class Lr512BridgeClient {
 
   private connect(): void {
     if (!this.running) return;
+    this.reconnect = undefined;
     let socket: SocketLike;
     try {
       socket = this.socketFactory(this.url);
     } catch (error) {
-      this.log(`cannot open ${this.url}: ${String(error)}`);
+      this.noteUnreachable(String(error));
       this.scheduleReconnect();
       return;
     }
     socket.binaryType = 'arraybuffer';
     this.socket = socket;
+    let opened = false;
+
+    // Every way this socket can end comes here, and only the first counts: an error and a
+    // close for the same socket, or what a socket says after it was given up on, do nothing.
+    const end = (why: string) => {
+      if (this.attempt) clearTimeout(this.attempt);
+      this.attempt = undefined;
+      if (this.socket !== socket) return;
+      this.socket = undefined;
+      this.status = undefined;
+      try {
+        socket.close();
+      } catch {
+        // It is gone already.
+      }
+      if (opened) {
+        this.log(`disconnected from ${this.url}`);
+        this.unreachableLogged = false;
+        this.onConnection?.(false);
+      } else {
+        this.noteUnreachable(why);
+      }
+      this.scheduleReconnect();
+    };
+
+    this.attempt = setTimeout(() => end('no answer'), this.connectTimeoutMs);
 
     socket.addEventListener('open', () => {
       if (this.socket !== socket) return;
+      if (this.attempt) clearTimeout(this.attempt);
+      this.attempt = undefined;
+      opened = true;
+      this.unreachableLogged = false;
       this.backoffMs = this.reconnectMinMs;
       this.counters.connections++;
       // Bring the bridge back to the state the engine believes it is in.
@@ -196,21 +246,20 @@ export class Lr512BridgeClient {
       this.onConnection?.(true);
     });
     socket.addEventListener('message', (event) => this.handleMessage(event.data));
-    socket.addEventListener('error', () => {
-      // A close event follows; reconnecting is handled there.
-    });
-    socket.addEventListener('close', () => {
-      if (this.socket !== socket) return;
-      this.socket = undefined;
-      this.status = undefined;
-      this.log(`disconnected from ${this.url}`);
-      this.onConnection?.(false);
-      this.scheduleReconnect();
-    });
+    socket.addEventListener('error', () => end('the connection failed'));
+    socket.addEventListener('close', () => end('the connection closed'));
+  }
+
+  /** Says once, until it is connected again, that the bridge is not there. */
+  private noteUnreachable(why: string): void {
+    if (this.unreachableLogged) return;
+    this.unreachableLogged = true;
+    this.log(`cannot reach ${this.url} (${why}). Trying again every few seconds.`);
   }
 
   private scheduleReconnect(): void {
     if (!this.running) return;
+    if (this.reconnect) clearTimeout(this.reconnect);
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, this.reconnectMaxMs);
     this.reconnect = setTimeout(() => this.connect(), delay);

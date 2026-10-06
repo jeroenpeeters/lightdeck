@@ -17,39 +17,6 @@
   max-width: 80ch;
 }
 
-/*
- * What there is to say stays at the bottom of the screen: the notice of the shell and
- * under it the one of the deck. There it is in sight wherever the page is scrolled to.
- * It takes no room of its own, so that the page is as long with it as without it and no
- * key moves when it comes or goes. The room above it is kept free at the end of the
- * page, where a notice then lies under the last group and not over it.
- */
-.notices {
-  position: sticky;
-  bottom: 0.5rem;
-  z-index: 1;
-  height: 0;
-  margin-top: 5rem;
-}
-.notices-stack {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-}
-.notices-stack > .notice {
-  margin-top: 0;
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--signal);
-  background: var(--key);
-}
-.notices-stack > .notice[data-level="alarm"] {
-  border-left-color: var(--stop);
-}
-
 /* ---- the masters ---- */
 
 /* The master of the brightness, and next to it the master of the speed of the effects. */
@@ -266,17 +233,6 @@
   font-size: var(--small);
   font-weight: 600;
   letter-spacing: 0.02em;
-}
-.field {
-  min-width: 0;
-  min-height: var(--touch);
-  padding: 0 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--ground);
-}
-.field:disabled {
-  opacity: 0.4;
 }
 
 /* ---- what Program adds to a group ---- */

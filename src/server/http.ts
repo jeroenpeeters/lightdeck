@@ -3,15 +3,25 @@
  *
  *   GET  /                            goes to the deck
  *   GET  /deck                        the deck: the groups of the show with their scenes
+ *   GET  /listen                      the listen page: the microphone of the laptop, which
+ *                                     the browser only gives to localhost
  *   GET  /fixtures/<id>               the page of a fixture: the file
  *                                     `fixtures/<kind>.html` from `publicDir`
  *   GET  /...                         the other static files from `publicDir`
  *   GET  /api/state                   everything a browser needs to draw itself
  *   GET  /api/events                  server-sent events: `fixture`, `tempo`, `blackout`,
- *                                     `master`, `status`, `show`, `playback` and, while a
+ *                                     `master`, `status`, `show`, `playback`, `audio` (what
+ *                                     is heard, see `Follower`) and, while a
  *                                     fixture animates, `frame` with the bytes being sent
  *                                     and the beat
- *   POST /api/tempo                   `bpm`, `rate`, `sync`
+ *   POST /api/tempo                   `bpm`, `rate`, `sync`, `source` (`manual` or `audio`)
+ *   POST /api/audio                   about 100 ms of sound from the listen page: raw 16-bit
+ *                                     mono samples as the body, with the headers `x-rate`,
+ *                                     `x-index` (where the first sample lies in the feed) and
+ *                                     `x-feed` (the name of the feed). Answers 204
+ *   POST /api/audio/settings          how the listening behaves: any of `onSilence`, `onNoBeat`,
+ *                                     `silenceAfter`, ... see `AudioSettings`. Answers with
+ *                                     all the settings
  *   POST /api/blackout                `blackout`: true or false, for every fixture
  *   POST /api/master                  `master`: the grand master, 0 to 1, for every fixture
  *   POST /api/fixtures/<id>/update    partial state change of one fixture
@@ -30,8 +40,8 @@
  *   POST /api/groups/<group>/scenes/<scene>/rename   `label`
  *   POST /api/groups/<group>/scenes/<scene>/delete
  *
- * Every POST takes JSON and may carry `client`, which comes back as `origin` in the
- * event, so that a browser can skip its own echo.
+ * Every POST but the one with sound takes JSON and may carry `client`, which comes back as
+ * `origin` in the event, so that a browser can skip its own echo.
  *
  * Browsers send changes with POST and hear about everyone's changes over the
  * event stream. There is no login: this is meant for the home network only.
@@ -41,6 +51,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, relative, sep } from 'node:path';
 import { MAX_FLASH_HZ } from '../engine/effects.js';
+import type { AudioState } from '../inputs/audio/follower.js';
 import { PatchError, readObject } from './fixture.js';
 import type { PlaybackState, ShowSummary } from './playback.js';
 import type { LinkStatus, Rig, RigFixture } from './rig.js';
@@ -57,12 +68,15 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 const MAX_BODY_BYTES = 64 * 1024;
+/** A block of sound is about 10 KB, so this is more than two seconds of it. */
+const MAX_AUDIO_BYTES = 256 * 1024;
 const KEEP_ALIVE_MS = 15_000;
 const FIXTURE_PAGE = /^\/fixtures\/([a-z0-9-]+)$/;
 const FIXTURE_POST = /^\/api\/fixtures\/([a-z0-9-]+)\/([a-z]+)$/;
 const GROUP_POST = /^\/api\/groups\/([a-z0-9-]+)\/(rename|delete|scenes)$/;
 const SCENE_POST = /^\/api\/groups\/([a-z0-9-]+)\/scenes\/([a-z0-9-]+)\/(store|rename|delete)$/;
 const DECK = '/deck';
+const LISTEN = '/listen';
 
 export interface HttpOptions {
   rig: Rig;
@@ -105,35 +119,42 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(text);
 }
 
-function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+function readBytes(req: IncomingMessage, limit: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
+    // A body over the limit is read and thrown away, so that the answer can reach the sender.
     req.on('data', (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new PatchError('request body is too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
+      if (size > limit) chunks.length = 0;
+      else chunks.push(chunk);
     });
     req.on('end', () => {
-      let body: unknown;
-      try {
-        body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-      } catch {
-        reject(new PatchError('request body is not valid JSON'));
-        return;
-      }
-      if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-        reject(new PatchError('expected a JSON object'));
-        return;
-      }
-      resolve(body as Record<string, unknown>);
+      if (size > limit) reject(new PatchError('request body is too large'));
+      else resolve(Buffer.concat(chunks));
     });
     req.on('error', reject);
   });
+}
+
+async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const bytes = await readBytes(req, MAX_BODY_BYTES);
+  let body: unknown;
+  try {
+    body = JSON.parse(bytes.toString('utf8') || '{}');
+  } catch {
+    throw new PatchError('request body is not valid JSON');
+  }
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new PatchError('expected a JSON object');
+  }
+  return body as Record<string, unknown>;
+}
+
+/** A header as a number. Gives NaN when it is missing, which the source then refuses. */
+function headerNumber(req: IncomingMessage, name: string): number {
+  const value = req.headers[name];
+  return typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
 }
 
 /** What came with the request, without the name of the browser that sent it. */
@@ -176,6 +197,7 @@ function describe({ rig, bridgeUrl }: HttpOptions) {
     blackout: rig.getBlackout(),
     master: rig.getMaster(),
     status: rig.getStatus(),
+    audio: rig.audio.getState(),
     show: rig.playback.getShow(),
     playback: rig.playback.getState(),
     bridgeUrl,
@@ -211,6 +233,7 @@ export function createHttpServer(options: HttpOptions): Server {
   rig.on('status', (status: LinkStatus) => broadcast('status', status));
   rig.on('show', (show: ShowSummary) => broadcast('show', show));
   rig.on('playback', (state: PlaybackState) => broadcast('playback', state));
+  rig.on('audio', (state: AudioState) => broadcast('audio', state));
 
   const keepAlive = setInterval(() => {
     for (const stream of streams) stream.write(': keep-alive\n\n');
@@ -263,7 +286,28 @@ export function createHttpServer(options: HttpOptions): Server {
       res.write(message('status', rig.getStatus()));
       res.write(message('show', rig.playback.getShow()));
       res.write(message('playback', rig.playback.getState()));
+      res.write(message('audio', rig.audio.getState()));
       req.on('close', () => streams.delete(res));
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/audio') {
+      const bytes = await readBytes(req, MAX_AUDIO_BYTES);
+      const feed = req.headers['x-feed'];
+      rig.mic.push({
+        bytes,
+        sampleRate: headerNumber(req, 'x-rate'),
+        index: headerNumber(req, 'x-index'),
+        feed: typeof feed === 'string' ? feed : '',
+      });
+      res.writeHead(204, { 'cache-control': 'no-store' });
+      res.end();
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/audio/settings') {
+      const { change } = split(await readJson(req));
+      sendJson(res, 200, { ok: true, settings: rig.audio.update(change) });
       return;
     }
 
@@ -351,6 +395,7 @@ export function createHttpServer(options: HttpOptions): Server {
         return;
       }
       if (path === DECK && sendFile(req, res, '/deck.html')) return;
+      if (path === LISTEN && sendFile(req, res, '/listen.html')) return;
       const page = FIXTURE_PAGE.exec(path);
       const shown = page ? rig.find(page[1] ?? '') : undefined;
       if (shown && sendFile(req, res, `/fixtures/${shown.kind}.html`)) return;

@@ -255,3 +255,7 @@ must be on the same network, or be the same laptop.
 
 It would attach to `Tempo` as a second source of bpm and beat origin. Nothing else has to
 know.
+
+Since 2026-10-02 there is a plan for a source that listens to the room instead:
+`auto-beat-plan.md`. It adds `source` and `running` to the tempo. Where this document says
+the tempo is set by hand or by tapping, the newer plan wins once it is built.

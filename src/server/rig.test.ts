@@ -35,6 +35,43 @@ describe('Rig', () => {
   });
   afterEach(() => rig.close());
 
+  describe('listening', () => {
+    it('starts by hand, and with the listening as the source when asked', () => {
+      expect(rig.tempo.getState().source).toBe('manual');
+      expect(rig.audio.getState()).toMatchObject({ following: false, heard: 'none' });
+      const listening = new Rig({ output, fixtures: [SPIDER], tempoSource: 'audio' });
+      try {
+        expect(listening.tempo.getState().source).toBe('audio');
+        expect(listening.audio.getState().following).toBe(true);
+      } finally {
+        listening.close();
+      }
+    });
+
+    it('starts with the settings it was given', () => {
+      const own = new Rig({
+        output,
+        fixtures: [SPIDER],
+        audioSettings: { onSilence: 'hold', latencyMs: 25 },
+      });
+      try {
+        expect(own.audio.getState().settings).toMatchObject({ onSilence: 'hold', latencyMs: 25 });
+      } finally {
+        own.close();
+      }
+    });
+
+    it('tells what is heard when it changes', () => {
+      const seen: unknown[] = [];
+      rig.on('audio', (state) => seen.push(state));
+      rig.audio.update({ silenceAfter: 4 });
+      expect(seen).toHaveLength(1);
+      rig.tempo.update({ source: 'audio' });
+      expect(seen).toHaveLength(2);
+      expect(seen[1]).toMatchObject({ following: true });
+    });
+  });
+
   it('has the fixtures in the order they were given, each with its controller', () => {
     expect(rig.fixtures.map((f) => [f.id, f.kind, f.controller.profile.footprint])).toEqual([
       ['spider', 'spider', 43],
@@ -227,7 +264,7 @@ describe('Rig', () => {
     timed.on('frame', (id, _dmx, beat) => frames.push([id, beat]));
     try {
       timed.tempo.update({ bpm: 120, sync: true }, 'tablet');
-      expect(seen).toEqual([[{ bpm: 120, rate: 1 }, 0, 'tablet']]);
+      expect(seen).toEqual([[{ bpm: 120, rate: 1, source: 'manual', running: true }, 0, 'tablet']]);
       timed.find('spider')?.controller.update({ effect: { id: 'chase' } });
       for (let i = 0; i < 20; i++) {
         clock += 25;

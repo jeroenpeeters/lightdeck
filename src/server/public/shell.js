@@ -14,7 +14,8 @@
 // A page starts the shell and gets back what it needs:
 //
 //   const shell = await start();          null when the page cannot be shown
-//   const shell = await start({ page: 'deck' });        for a page about no fixture
+//   const shell = await start({ page: 'deck' });        for a page about no fixture, such as
+//                                          the deck or the listen page
 //   shell.fixture                          the fixture as /api/state describes it
 //   shell.fixtures                         every fixture of the console
 //   shell.show                             the show: its file, what is wrong with it, and
@@ -33,6 +34,10 @@
 //                                          what the server says with what is pending
 //                                          over it, so a page can take it as it is
 //   shell.on('frame', ({ dmx, beat }) => ...)           what is being sent, while it animates
+//   shell.audio                            what lightdeck hears and the settings of the
+//                                          listening: { source, following, heard, bpm,
+//                                          confidence, settings }
+//   shell.on('audio', (audio) => ...)      what is heard, or its settings, changed
 //   shell.on('change', () => ...)          blackout, master or tempo changed
 //   shell.notes(() => [{ text, level, urgent }])        what the page has to say
 //   shell.refresh()                        show the notes again
@@ -85,6 +90,13 @@ const FRAME = `
   </header>
 
   <section class="panel desk" aria-label="Tempo">
+    <div class="tempo-source">
+      <fieldset class="source-keys" aria-label="Who sets the tempo">
+        <button type="button" class="pick" id="source-manual" aria-pressed="true">By hand</button>
+        <button type="button" class="pick" id="source-audio" aria-pressed="false">Auto</button>
+      </fieldset>
+      <p class="heard" id="heard" data-state="off"></p>
+    </div>
     <div class="sliders" id="tempo-sliders"></div>
     <div class="desk-tap">
       <p class="hint">Your last tap is beat one of the bar.</p>
@@ -120,6 +132,16 @@ function alarm(text) {
   notice.hidden = false;
 }
 
+/** The part of what the server says about the tempo that this page keeps. */
+function readTempo(from) {
+  return { bpm: from.bpm, rate: from.rate, source: from.source, running: from.running };
+}
+
+/** Where the listen page is, as it is written on the laptop. */
+function listenAddress() {
+  return `localhost${location.port ? `:${location.port}` : ''}/listen`;
+}
+
 export async function start({ page = 'fixture' } = {}) {
   const frame = document.createElement('template');
   frame.innerHTML = FRAME;
@@ -144,7 +166,9 @@ export async function start({ page = 'fixture' } = {}) {
   let show = initial.show;
   let playback = initial.playback;
   const limits = initial.tempo;
-  let tempo = { bpm: initial.tempo.bpm, rate: initial.tempo.rate };
+  let tempo = readTempo(initial.tempo);
+  /** What lightdeck hears through the microphone, and what it does with it. */
+  let audio = initial.audio;
   let blackout = initial.blackout;
   let master = initial.master;
   /** How many changes of the master by this page the event stream has yet to tell of. */
@@ -160,7 +184,7 @@ export async function start({ page = 'fixture' } = {}) {
   let pageNotes = () => [];
   /** A beat number and the moment it was true, to count on from between messages. */
   let beatBase = { beat: initial.tempo.beat, at: performance.now() };
-  const handlers = { fixture: [], frame: [], change: [], show: [], playback: [] };
+  const handlers = { fixture: [], frame: [], change: [], show: [], playback: [], audio: [] };
   const tell = (name, message) => {
     for (const handler of handlers[name]) handler(message);
   };
@@ -172,6 +196,7 @@ export async function start({ page = 'fixture' } = {}) {
       href: `/fixtures/${each.id}`,
       here: each.id === id,
     })),
+    { name: 'Listen', href: '/listen', here: page === 'listen' },
   ];
   for (const each of pages) {
     const link = element('a', 'page-link', each.name);
@@ -196,7 +221,8 @@ export async function start({ page = 'fixture' } = {}) {
 
   async function reload() {
     const fresh = await (await fetch('/api/state')).json();
-    tempo = { bpm: fresh.tempo.bpm, rate: fresh.tempo.rate };
+    tempo = readTempo(fresh.tempo);
+    audio = fresh.audio;
     setBeat(fresh.tempo.beat);
     blackout = fresh.blackout;
     master = fresh.master;
@@ -207,6 +233,7 @@ export async function start({ page = 'fixture' } = {}) {
     tell('show', show);
     tell('playback', playback);
     render();
+    tell('audio', audio);
     tell('change');
   }
 
@@ -377,10 +404,15 @@ export async function start({ page = 'fixture' } = {}) {
     });
     on('tempo', (message) => {
       if (message.origin === clientId) return;
-      tempo = { bpm: message.bpm, rate: message.rate };
+      tempo = readTempo(message);
       setBeat(message.beat);
       render();
       tell('change');
+    });
+    on('audio', (message) => {
+      audio = message;
+      render();
+      tell('audio', audio);
     });
     on('blackout', (message) => {
       if (message.origin === clientId) return;
@@ -425,7 +457,8 @@ export async function start({ page = 'fixture' } = {}) {
   let litBeat = -1;
   function drawBeat() {
     const beat = Math.floor(beatNow());
-    const index = ((beat % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR;
+    // While the tempo does not run, the effects are idle and so is the beat.
+    const index = tempo.running ? ((beat % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR : -1;
     if (index !== litBeat) {
       litBeat = index;
       [...$('beats').children].forEach((lamp, i) => {
@@ -444,6 +477,8 @@ export async function start({ page = 'fixture' } = {}) {
     }
     const { sync: _sync, ...kept } = patch;
     tempo = { ...tempo, ...kept };
+    // By hand the effects always run.
+    if (tempo.source === 'manual') tempo.running = true;
     sendTempo(patch);
     render();
     tell('change');
@@ -457,7 +492,8 @@ export async function start({ page = 'fixture' } = {}) {
     if (taps.length > TAPS_KEPT) taps.shift();
 
     const patch = { sync: true };
-    if (taps.length >= 2) {
+    // Auto has the tempo: a tap only says where beat one is.
+    if (taps.length >= 2 && tempo.source !== 'audio') {
       const interval = (now - taps[0]) / (taps.length - 1);
       patch.bpm = Math.min(limits.max, Math.max(limits.min, Math.round(60_000 / interval)));
     }
@@ -466,7 +502,12 @@ export async function start({ page = 'fixture' } = {}) {
 
   function nudgeTempo(step) {
     const bpm = Math.round(tempo.bpm) + step;
-    setTempo({ bpm: Math.min(limits.max, Math.max(limits.min, bpm)) });
+    setTempo(byHand({ bpm: Math.min(limits.max, Math.max(limits.min, bpm)) }));
+  }
+
+  /** A tempo set by hand is the tempo, so it takes the tempo back from Auto. */
+  function byHand(patch) {
+    return tempo.source === 'audio' ? { ...patch, source: 'manual' } : patch;
   }
 
   function setMaster(level) {
@@ -484,7 +525,7 @@ export async function start({ page = 'fixture' } = {}) {
     min: limits.min,
     max: limits.max,
     read: () => Math.round(tempo.bpm),
-    write: (number) => setTempo({ bpm: number }),
+    write: (number) => setTempo(byHand({ bpm: number })),
   });
   $('tempo-sliders').append(tempoRow);
 
@@ -494,6 +535,12 @@ export async function start({ page = 'fixture' } = {}) {
   });
   $('tap').addEventListener('click', (event) => {
     if (event.detail === 0) tap();
+  });
+  $('source-manual').addEventListener('click', () => {
+    if (tempo.source !== 'manual') setTempo({ source: 'manual' });
+  });
+  $('source-audio').addEventListener('click', () => {
+    if (tempo.source !== 'audio') setTempo({ source: 'audio' });
   });
   $('tempo-down').addEventListener('click', () => nudgeTempo(-1));
   $('tempo-up').addEventListener('click', () => nudgeTempo(1));
@@ -564,6 +611,66 @@ export async function start({ page = 'fixture' } = {}) {
     };
   }
 
+  /** Auto is on and nothing is listening: the tempo holds, and the operator has to do something. */
+  function audioNote() {
+    if (tempo.source !== 'audio' || page === 'listen') return '';
+    const where = listenAddress();
+    if (audio.source.status === 'lost') {
+      return `The microphone page stopped sending. The tempo runs on at ${Math.round(tempo.bpm)}. Open ${where} on the laptop and press Start listening.`;
+    }
+    if (audio.source.status === 'waiting') {
+      return `Auto is on, but no microphone page is sending. The tempo stays at ${Math.round(tempo.bpm)}. Open ${where} on the laptop and press Start listening.`;
+    }
+    return '';
+  }
+
+  /** What is heard, in a line, and whether it is something to look at. */
+  function heardLine() {
+    const following = tempo.source === 'audio';
+    const bpm = audio.bpm === undefined ? '' : String(Math.round(audio.bpm));
+    if (audio.source.status === 'lost')
+      return { text: 'Microphone page not sending', state: following ? 'down' : 'off' };
+    if (audio.source.status === 'waiting') {
+      return {
+        text: following ? 'Waiting for the microphone page' : 'Listening is off',
+        state: following ? 'down' : 'off',
+      };
+    }
+    const quiet = !tempo.running;
+    switch (audio.heard) {
+      case 'beat':
+        return { text: `Beat · ${bpm} bpm`, state: following ? 'beat' : 'off' };
+      case 'music':
+        return {
+          text: bpm ? `Music, no beat · ${bpm} bpm held` : 'Music, no beat',
+          state: following ? 'music' : 'off',
+        };
+      case 'silent':
+        return {
+          text: quiet ? 'Silent · effects idle' : 'Silent',
+          state: following ? 'silent' : 'off',
+        };
+      default:
+        return { text: 'Listening…', state: 'off' };
+    }
+  }
+
+  function renderSource() {
+    $('source-manual').setAttribute('aria-pressed', String(tempo.source === 'manual'));
+    $('source-audio').setAttribute('aria-pressed', String(tempo.source === 'audio'));
+    const { text, state } = heardLine();
+    const heard = $('heard');
+    heard.textContent =
+      tempo.source === 'manual' &&
+      state === 'off' &&
+      audio.heard !== 'none' &&
+      audio.source.status === 'live'
+        ? `Hears: ${text}`
+        : text;
+    heard.dataset.state = state;
+    $('beats').dataset.idle = String(!tempo.running);
+  }
+
   function renderNotice() {
     const notes = pageNotes();
     const patch = watched.map(patchNote).find((note) => note !== '');
@@ -581,6 +688,8 @@ export async function start({ page = 'fixture' } = {}) {
     } else if (status.device === 'lost') {
       text =
         'The bridge cannot find the LR512 and keeps searching. Check that the LR512 has power and is on the Wi-Fi.';
+    } else if (audioNote()) {
+      text = audioNote();
     } else if (patch) {
       text = patch;
     } else {
@@ -600,6 +709,7 @@ export async function start({ page = 'fixture' } = {}) {
 
   function render() {
     tempoRow.refresh();
+    renderSource();
     $('speed-level').dataset.full = String(tempo.rate === 1);
     $('speed-value').textContent = speedName(tempo.rate);
     $('blackout').setAttribute('aria-pressed', String(blackout));
@@ -636,6 +746,9 @@ export async function start({ page = 'fixture' } = {}) {
     },
     get playback() {
       return playback;
+    },
+    get audio() {
+      return audio;
     },
     on: (name, handler) => handlers[name].push(handler),
     notes: (say) => {

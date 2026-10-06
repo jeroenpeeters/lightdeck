@@ -2,6 +2,12 @@
 
 export const $ = (id) => document.getElementById(id);
 
+/** An answer of the server as a sentence: it starts with a capital and ends with a stop. */
+export function sentence(text) {
+  const made = text.charAt(0).toUpperCase() + text.slice(1);
+  return /[.!?]$/.test(made) ? made : `${made}.`;
+}
+
 export function percent(level) {
   return Math.round(level * 100);
 }

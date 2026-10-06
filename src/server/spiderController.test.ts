@@ -536,6 +536,23 @@ describe('SpiderController effects', () => {
     expect(headAfter(2, { bpm: 60 })).toBe(1);
   });
 
+  it('is idle while the tempo does not run: the fixture shows what is set under the effect', () => {
+    const reds = () => Array.from({ length: 8 }, (_, i) => ch(output, 7 + i * 4) ?? 0);
+    tempo.update({ source: 'audio', bpm: 120, sync: true });
+    controller.update({ levels: { dimmer: 1, red1: 0.5 }, effect: { id: 'chase' } });
+    advance(1050);
+    expect(Math.max(...reds())).toBeGreaterThan(200);
+
+    tempo.follow({ running: false });
+    advance(50);
+    expect(reds()).toEqual([128, 0, 0, 0, 0, 0, 0, 0]);
+    // It is still the chosen effect, and it is back by itself when the tempo runs.
+    expect(controller.getState().effect.id).toBe('chase');
+    tempo.follow({ running: true });
+    advance(50);
+    expect(Math.max(...reds())).toBeGreaterThan(200);
+  });
+
   it('keeps its speed when another effect is chosen, and tells it with the state', () => {
     controller.update({ effect: { id: 'chase', speed: 0.5 } });
     controller.update({ effect: { id: 'wave' } });

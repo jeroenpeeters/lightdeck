@@ -356,6 +356,37 @@ describe('LaserController effects', () => {
     expect(ch(output, LASER_AT + 1)).toBe(2); // pattern 1
   });
 
+  it('is idle while the tempo does not run: it shows what is set, and is neither opened nor closed', () => {
+    tempo.update({ source: 'audio', sync: true });
+    laser.update({ raw: { mode: MANUAL }, effect: { id: 'patterns' } });
+    advance(BEAT_MS * 2 + 25);
+    expect(ch(output, LASER_AT + 1)).toBe(12); // pattern 3
+
+    tempo.follow({ running: false });
+    advance(50);
+    // The effect drives nothing: the pattern is what the operator set, which is nothing.
+    expect(ch(output, LASER_AT + 1)).toBe(0);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+
+    // The effect is still chosen: it drives again by itself, and the ticker did not stop.
+    tempo.follow({ running: true });
+    advance(25);
+    expect(ch(output, LASER_AT + 1)).toBeGreaterThan(0);
+    expect(ch(output, LASER_AT)).toBe(MANUAL);
+  });
+
+  it('is idle in the tempo even when something is changed meanwhile, and comes back after', () => {
+    tempo.update({ source: 'audio', sync: true });
+    laser.update({ raw: { mode: MANUAL, program: 57 }, effect: { id: 'patterns' } });
+    tempo.follow({ running: false });
+    laser.update({ raw: { size: 100 } });
+    advance(100);
+    expect(ch(output, LASER_AT + 1)).toBe(57);
+    tempo.follow({ running: true });
+    advance(BEAT_MS * 2);
+    expect(ch(output, LASER_AT + 1)).not.toBe(57);
+  });
+
   it('runs faster or slower with the speed of the effect, times the speed of the console', () => {
     /** The pattern that shows a little after two beats. */
     const patternAfterTwoBeats = (speed: number, rate: number) => {

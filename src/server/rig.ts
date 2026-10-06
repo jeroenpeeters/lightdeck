@@ -9,16 +9,20 @@
  *
  * Events: `fixture` (id, state, dmx, origin), `frame` (id, dmx, beat),
  * `tempo` (state, beat, origin), `blackout` (blackout, origin), `master` (level, origin),
- * `status` (status), `show` (summary), `playback` (state).
+ * `status` (status), `show` (summary), `playback` (state), `audio` (what is heard).
  */
 
 import { EventEmitter } from 'node:events';
+import { BrowserMicSource } from '../inputs/audio/browserMic.js';
+import { type AudioState, Follower } from '../inputs/audio/follower.js';
+import { FeedRecorder } from '../inputs/audio/recorder.js';
+import type { AudioSettings } from '../inputs/audio/settings.js';
 import type { BridgeStatus } from '../outputs/lr512/bridgeClient.js';
 import { Patch, type UniverseOutput } from '../outputs/patch.js';
 import { type FixtureController, PatchError } from './fixture.js';
 import { FIXTURE_KINDS, type FixtureKind } from './kinds.js';
 import { Playback, type PlaybackState, type ShowSummary } from './playback.js';
-import { Tempo, type TempoState } from './tempo.js';
+import { Tempo, type TempoSource, type TempoState } from './tempo.js';
 
 export interface FixtureDefinition {
   /** Names the fixture in addresses of pages and of the API: `spider`, `spider-2`. */
@@ -55,12 +59,24 @@ export interface RigOptions {
   show?: string;
   /** Monotonic clock in milliseconds. Tests pass their own. */
   now?: () => number;
+  /** Where the sound the console hears is written to, as WAV files. Off without it. */
+  audioRecordDir?: string;
+  /** Who sets the tempo at the start. Default `manual`. */
+  tempoSource?: TempoSource;
+  /** Settings of the listening that differ from the defaults. */
+  audioSettings?: Partial<AudioSettings>;
+  /** For the one-line messages of the recorder. */
+  log?: (message: string) => void;
 }
 
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 
 export class Rig extends EventEmitter {
   readonly tempo: Tempo;
+  /** The microphone of the browser on the laptop. The listen page posts its sound to it. */
+  readonly mic: BrowserMicSource;
+  /** What is heard through the microphone, and what the tempo does with it. */
+  readonly audio: Follower;
   readonly fixtures: readonly RigFixture[];
   readonly playback: Playback;
 
@@ -68,6 +84,7 @@ export class Rig extends EventEmitter {
   /** The grand master. It starts at full every time, and the show file does not keep it. */
   private master = 1;
   private link: LinkStatus = { bridge: false, device: 'unknown', universes: 0, channels: [] };
+  private readonly recorder: FeedRecorder | undefined;
 
   /** Throws when a fixture is unknown, named twice, or does not fit where it is put. */
   constructor(options: RigOptions) {
@@ -99,6 +116,23 @@ export class Rig extends EventEmitter {
       throw error;
     }
     this.fixtures = fixtures;
+
+    this.mic = new BrowserMicSource(options.now ? { now: options.now } : {});
+    this.mic.start();
+    this.audio = new Follower({
+      tempo: this.tempo,
+      source: this.mic,
+      ...(options.audioSettings ? { settings: options.audioSettings } : {}),
+    });
+    this.audio.on('audio', (state: AudioState) => this.emit('audio', state));
+    if (options.tempoSource) this.tempo.update({ source: options.tempoSource });
+    if (options.audioRecordDir !== undefined) {
+      this.recorder = new FeedRecorder({
+        directory: options.audioRecordDir,
+        ...(options.log ? { log: options.log } : {}),
+      });
+      this.recorder.attach(this.mic);
+    }
 
     for (const { id, controller } of fixtures) {
       controller.on('state', (state: unknown, origin?: string) => {
@@ -182,6 +216,10 @@ export class Rig extends EventEmitter {
   close(): void {
     this.playback.close();
     for (const { controller } of this.fixtures) controller.close();
+    this.recorder?.detach();
+    this.audio.close();
+    this.mic.stop();
+    this.mic.removeAllListeners();
     this.tempo.removeAllListeners();
     this.removeAllListeners();
   }

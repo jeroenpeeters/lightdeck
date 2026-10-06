@@ -388,6 +388,8 @@ export class SpiderController extends EventEmitter implements FixtureController 
     const { id, colourA, colourB, speed: wanted } = this.state.effect;
     const effect = id === null ? undefined : findEffect(id);
     if (!effect) return undefined;
+    // An idle effect drives nothing: the fixture shows what is set under it. It stays chosen.
+    if (!this.tempo.isRunning()) return undefined;
     const { bpm, rate } = this.tempo.getState();
     const speed = limitSpeed(bpm, wanted * rate);
     return effect.render({

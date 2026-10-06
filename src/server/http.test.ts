@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SPIDER_43CH } from '../fixtures/spider.js';
+import type { AudioBlock } from '../inputs/audio/source.js';
+import { toInt16 } from '../inputs/audio/wav.js';
 import { createHttpServer } from './http.js';
 import { Rig } from './rig.js';
 import { ch, RecordingOutput } from './testing.js';
@@ -23,6 +25,7 @@ describe('HTTP server', () => {
     mkdirSync(join(publicDir, 'fixtures'));
     writeFileSync(join(publicDir, 'shell.js'), 'export {};');
     writeFileSync(join(publicDir, 'deck.html'), '<!doctype html><title>Deck</title>');
+    writeFileSync(join(publicDir, 'listen.html'), '<!doctype html><title>Listen</title>');
     writeFileSync(
       join(publicDir, 'fixtures', 'spider.html'),
       '<!doctype html><title>Spider</title>',
@@ -89,6 +92,63 @@ describe('HTTP server', () => {
     expect(script.status).toBe(200);
     expect(script.headers.get('content-type')).toContain('text/javascript');
     expect((await fetch(`${base}/shell.js`)).status).toBe(200);
+  });
+
+  it('serves the listen page', async () => {
+    const page = await fetch(`${base}/listen`);
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain('<title>Listen</title>');
+  });
+
+  describe('sound from the listen page', () => {
+    const sound = (count = 4800) => toInt16(new Float32Array(count).fill(0.5));
+    const audio = (
+      body: Uint8Array,
+      headers: Record<string, string> = { 'x-rate': '48000', 'x-index': '0', 'x-feed': 'f1' },
+    ) =>
+      fetch(`${base}/api/audio`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/octet-stream', ...headers },
+        body,
+      });
+
+    it('takes a block of sound and hands it to the microphone source', async () => {
+      const blocks: AudioBlock[] = [];
+      rig.mic.on('block', (block: AudioBlock) => blocks.push(block));
+      const response = await audio(sound(), {
+        'x-rate': '48000',
+        'x-index': '9600',
+        'x-feed': 'f1',
+      });
+      expect(response.status).toBe(204);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]?.samples.length).toBe(4800);
+      expect(blocks[0]?.index).toBe(9600);
+      expect(blocks[0]?.sampleRate).toBe(48_000);
+      expect(rig.mic.getStatus()).toBe('live');
+    });
+
+    it('says what is wrong with sound that cannot be used, and keeps nothing of it', async () => {
+      const blocks: AudioBlock[] = [];
+      rig.mic.on('block', (block: AudioBlock) => blocks.push(block));
+      const noRate = await audio(sound(), { 'x-index': '0', 'x-feed': 'f1' });
+      expect(noRate.status).toBe(400);
+      expect(await error(noRate)).toMatch(/x-rate/);
+      const noFeed = await audio(sound(), { 'x-rate': '48000', 'x-index': '0' });
+      expect(noFeed.status).toBe(400);
+      expect(await error(noFeed)).toMatch(/x-feed/);
+      const odd = await audio(new Uint8Array(3));
+      expect(odd.status).toBe(400);
+      expect(await error(odd)).toMatch(/even/);
+      expect(blocks).toHaveLength(0);
+      expect(rig.mic.getStatus()).toBe('waiting');
+    });
+
+    it('refuses a body that is too large', async () => {
+      const response = await audio(new Uint8Array(300 * 1024));
+      expect(response.status).toBe(400);
+      expect(await error(response)).toMatch(/too large/);
+    });
   });
 
   it('serves nothing outside the public files', async () => {
@@ -356,6 +416,75 @@ describe('HTTP server', () => {
     await readUntil('"bridge":true');
     expect(text).toContain('"bridge":true');
     abort.abort();
+  });
+
+  describe('listening', () => {
+    it('describes who sets the tempo and what is heard', async () => {
+      const got = await state();
+      expect(got.tempo).toMatchObject({ source: 'manual', running: true });
+      expect(got.audio).toMatchObject({
+        following: false,
+        heard: 'none',
+        source: { id: 'browser-mic', status: 'waiting' },
+      });
+      expect(got.audio.settings).toMatchObject({ onSilence: 'stop', onNoBeat: 'hold' });
+    });
+
+    it('hands the tempo to the listening and takes it back', async () => {
+      expect((await post('/api/tempo', { source: 'audio' })).status).toBe(200);
+      let got = await state();
+      expect(got.tempo.source).toBe('audio');
+      expect(got.audio.following).toBe(true);
+      expect((await post('/api/tempo', { source: 'manual', bpm: 130 })).status).toBe(200);
+      got = await state();
+      expect(got.tempo).toMatchObject({ source: 'manual', bpm: 130, running: true });
+      expect(got.audio.following).toBe(false);
+    });
+
+    it('refuses a source it does not know, and changes nothing', async () => {
+      const response = await post('/api/tempo', { source: 'link' });
+      expect(response.status).toBe(400);
+      expect(await error(response)).toMatch(/manual or audio/);
+      expect((await state()).tempo.source).toBe('manual');
+    });
+
+    it('changes the settings and answers with all of them', async () => {
+      const response = await post('/api/audio/settings', { onSilence: 'hold', silenceAfter: 4 });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { settings: Record<string, unknown> };
+      expect(body.settings).toMatchObject({ onSilence: 'hold', silenceAfter: 4, onNoBeat: 'hold' });
+      expect((await state()).audio.settings).toMatchObject({ onSilence: 'hold', silenceAfter: 4 });
+    });
+
+    it('says what is wrong with a setting, and changes nothing', async () => {
+      const response = await post('/api/audio/settings', { silenceAfter: 4, onSilence: 'dim' });
+      expect(response.status).toBe(400);
+      expect(await error(response)).toMatch(/stop or hold/);
+      const unknown = await post('/api/audio/settings', { colour: 'red' });
+      expect(unknown.status).toBe(400);
+      expect((await state()).audio.settings.silenceAfter).toBe(2);
+    });
+
+    it('streams what is heard, now and when it changes', async () => {
+      const abort = new AbortController();
+      const response = await fetch(`${base}/api/events`, { signal: abort.signal });
+      const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      const readUntil = async (needle: string) => {
+        while (!text.includes(needle)) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          text += decoder.decode(value, { stream: true });
+        }
+      };
+      await readUntil('event: audio');
+      expect(text).toContain('"heard":"none"');
+      await post('/api/audio/settings', { silenceAfter: 7 });
+      await readUntil('"silenceAfter":7');
+      expect(text).toContain('"silenceAfter":7');
+      abort.abort();
+    });
   });
 
   it('streams what an effect shows, with the name of the fixture', async () => {

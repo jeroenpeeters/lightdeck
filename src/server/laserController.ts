@@ -312,7 +312,9 @@ export class LaserController extends EventEmitter implements FixtureController {
 
   private outputValues() {
     const raw = { ...this.state.raw };
-    const effect = this.showing();
+    // An idle effect drives nothing, and does not open or close the laser: the laser shows
+    // what it is set to. The ticker keeps asking, so the effect is back when the tempo runs.
+    const effect = this.tempo.isRunning() ? this.showing() : undefined;
     if (effect) {
       const { bpm, rate } = this.tempo.getState();
       const speed = limitSpeed(bpm, this.state.effect.speed * rate);

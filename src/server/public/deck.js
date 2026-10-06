@@ -31,7 +31,7 @@
 // screen here, with the one of the deck, so that no key moves when it comes or goes.
 
 import { masterPercent, start } from './shell.js';
-import { $, button, element, slider, speedKeys } from './ui.js';
+import { $, button, element, sentence, slider, speedKeys } from './ui.js';
 
 /** How long a delete key waits for the second press. */
 const SURE_MS = 3000;
@@ -97,12 +97,6 @@ function onIn(group) {
 function setsOf(scene, group) {
   if (scene.fixtures.length === 0) return 'Dark';
   return group.fixtures.length > 1 ? scene.fixtures.map(labelOf).join(', ') : '';
-}
-
-/** An answer of the server as a sentence. */
-function sentence(text) {
-  const made = text.charAt(0).toUpperCase() + text.slice(1);
-  return /[.!?]$/.test(made) ? made : `${made}.`;
 }
 
 async function ask(url, body) {
