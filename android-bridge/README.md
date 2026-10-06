@@ -14,6 +14,10 @@ a fixture responds to frames sent through the WebSocket. The automatic
 reconnect described below builds and is unit-tested on the engine side, but has
 not yet been seen recovering a real device drop.
 
+**Not yet run on the phone (2026-10-07):** the pump that wakes on a frame, the
+change test, the rate cap, `copyBuffer`, the `alive` and `limits` messages and
+the idle limit build, and have not run on the phone and the LR512.
+
 ## What the app does
 
 - **Startup** mirrors the real Light Rider app: `libXHW()`, `setSoftware(
@@ -31,7 +35,8 @@ not yet been seen recovering a real device drop.
   The library closes the device itself when the network fails, and that is
   what the supervisor reacts to.
 - **State is kept.** The bridge remembers the latest frame per universe and
-  replays it after a reconnect.
+  replays it after a reconnect. It also holds the last frame when the engine goes
+  away: nothing is switched off by the bridge.
 - **Ports are set to output mode** on attach. Without it `sendDmx` is accepted
   and nothing leaves the DMX port.
 - **The screen stays on** while the app is visible, and the app holds Wi-Fi and
@@ -52,11 +57,26 @@ reopening the screen does not start a second copy.
 | Direction | Type | Content |
 |---|---|---|
 | engine to bridge | binary | `[universe: 1 byte][512 DMX bytes]`, 513 bytes |
+| engine to bridge | text | `{"type":"limits","maxFps":25}`, sent right after connecting and whenever the setting changes |
 | bridge to engine | text | `{"type":"status","device":"open"\|"lost","universes":N,"channels":[512,0]}` |
+| bridge to engine | text | `{"type":"alive","device":"open"\|"lost","frames":N}`, every second while an engine is connected |
 
 The universe byte is a 0-based index. The status message is sent on connect and
 whenever the device is attached or detached. `channels` is how many channels
 the device's licence allows per universe.
+
+`alive` says the bridge is there and its pump runs. `frames` is every frame the
+bridge has handed to the vendor library since the app started, refreshes and
+failed sends included, so it counts up by about 10 a second even when nothing
+changes. An engine that does not know the message ignores it, and an APK from
+before it never sends it, so an engine must not take its absence for a fault
+before it has seen the first one.
+
+`limits` is the most frames per second the bridge may hand to the device, per
+universe. The first valid one also arms the idle limit above. It is clamped to 1..60. A message that cannot be read is ignored and
+the connection stays. Without one (an older engine), and again after the engine
+has disconnected, the cap is 25 per second, which is what the device is known to
+take.
 
 **Only universe 0 works on an LR512.** The device reports two universes, but it
 is licensed for 512 channels and the vendor library hands those out in order:
@@ -65,14 +85,40 @@ a universe with 0 channels. The bridge ignores such frames and says so in the
 log, once.
 
 **Throttling.** Receiving never waits for DMX. A frame overwrites the pending
-frame of its universe. A pump sends the newest frame per universe at up to 40
-per second, so a flood is reduced to the latest state and nothing queues up.
+frame of its universe and wakes the pump, which waits for exactly that or for
+its next deadline and does not poll. A frame is handed to the device at once
+when the cap allows it, and otherwise waits for the end of the gap; whatever is
+waiting then is the newest. Two sends on one universe, new frame or refresh, are
+at least `1000 / maxFps` ms apart, 40 ms by default.
 
-**Refresh.** A universe that has received data is sent again every 100 ms even
-when it did not change. A universe that never received data is left alone, so
-starting the bridge does not black out fixtures.
+**Only changes.** A frame that is byte for byte the frame last sent on that
+universe is not sent again. It is counted as skipped in the stats line. After a
+send that failed, or on a new device, the same frame is sent again.
 
-One engine connection at a time. A new connection replaces the old one.
+**Refresh.** A universe that has been sent is sent again, unchanged, every
+100 ms (or the gap of the cap if that is longer). A universe that never
+received data is left alone, so starting the bridge does not black out
+fixtures.
+
+**The vendor buffer.** A new frame is copied into it with one `copyBuffer(int[])`
+call. In the vendor library that is a `setValue(i, value)` for every element of
+the array, which is what the bridge used to do in 512 calls. A refresh sends the
+buffer as it is. The original app does the same: one buffer per universe that
+`sendDmx` takes by const reference and does not change.
+
+One engine connection at a time. A second connection is not accepted until the
+first has closed: the accept loop serves the client itself.
+
+**A client that goes quiet.** A client that has sent a valid `limits` message
+promises to keep talking: lightdeck sends something at least once a second. When
+no byte at all has come from it for 6 seconds (`CLIENT_IDLE_MS`; a frame, a
+text, a ping, even half a frame all count as bytes), the bridge takes the
+connection for dead, which is what a half-open one looks like after a Wi-Fi
+drop. It logs `Bridge: client silent for 6 s, closing the connection so that it
+can reconnect.`, sends a close frame, closes the socket, goes back to the
+default cap and accepts again, so that the engine can reconnect. A client that
+never sent `limits` (an older engine, `tools/lr512-send.mjs`) has no limit. The
+pump, the held last frame, the refresh and the device are not touched.
 
 ## Build
 
@@ -149,8 +195,17 @@ Searching for the LR512 (DasNet)...
 >>> Device open and attached. DMX is live.
 ```
 
-Every 10 seconds with traffic the bridge logs received, sent and failed frame
-counts. The same log is on screen and in
+Every 10 seconds with traffic the bridge logs what it received, sent and
+skipped:
+
+```
+Bridge: 10s stats: rx=21 sent=52 (new=1 refresh=51) skipped=20 failed=0 cap=25fps
+```
+
+`rx` is what the engine sent, `sent` what the device was handed (`new` frames and
+`refresh`es), `skipped` the received frames that were the same as the last one
+sent. The line `Bridge: frame cap is now N fps.` says when the engine set another
+cap, and again when it has gone. The same log is on screen and in
 `/sdcard/Android/data/com.lightingsoft.djapp/files/lr512-gate.log`.
 
 Send from the engine side, in the repository root:
@@ -189,7 +244,8 @@ path that is known to work.
 
 - `src/nl/lightdeck/bridge/BridgeCore.java`: vendor startup, supervisor,
   reconnect, logging.
-- `src/nl/lightdeck/bridge/BridgeServer.java`: WebSocket server and DMX pump.
+- `src/nl/lightdeck/bridge/BridgeServer.java`: WebSocket server, DMX pump, the
+  change test, the cap and the alive message.
 - `src/nl/lightdeck/bridge/OpenGateActivity.java`: the screen with the lamps
   and the log.
 - `build.sh`: repackaging pipeline.
