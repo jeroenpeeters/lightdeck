@@ -80,7 +80,7 @@ export function sendToBridge(options: SendOptions): void {
     onConnection: (connected) => {
       if (!connected || !once) return;
       // Give the frame time to leave the socket, then exit.
-      client.tick();
+      client.flush();
       setTimeout(() => {
         client.stop();
         process.exit(0);

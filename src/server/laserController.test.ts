@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LASER_EFFECTS, LASER_EFFECTS_MODE, type LaserEffect } from '../engine/laserEffects.js';
 import { ALIEN_LASER_10CH, LASER_GATE } from '../fixtures/laser.js';
+import { Engine } from './engine.js';
 import { PatchError } from './fixture.js';
 import { LaserController, type LaserState } from './laserController.js';
 import { Tempo } from './tempo.js';
@@ -284,6 +285,7 @@ describe('LaserController effects', () => {
   let output: RecordingOutput;
   let laser: LaserController;
   let tempo: Tempo;
+  let engine: Engine;
   let clock: number;
 
   const advance = (ms: number) => {
@@ -309,17 +311,49 @@ describe('LaserController effects', () => {
     output = new RecordingOutput();
     tempo = new Tempo({ now: () => clock });
     laser = make(EFFECTS);
+    // The controller has no timer of its own: the engine asks it for a frame on the grid of the beat.
+    engine = new Engine({ tempo });
+    engine.add(laser);
   });
   afterEach(() => {
+    engine.close();
     laser.close();
     vi.useRealTimers();
   });
 
-  it('sends a new frame forty times per second while an effect shows', () => {
+  it('sends a frame at every point of the grid while an effect shows, and never more than 25 a second', () => {
     laser.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
     const before = output.frames.length;
     advance(1000);
-    expect(output.frames.length - before).toBe(40);
+    // 126 beats per minute and 25 per second at most: 11 points per beat, 23 a second.
+    const made = output.frames.length - before;
+    expect(made).toBeGreaterThanOrEqual(22);
+    expect(made).toBeLessThanOrEqual(25);
+  });
+
+  it('has no timer of its own', () => {
+    laser.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+    engine.close();
+    expect(vi.getTimerCount()).toBe(0);
+    const before = output.frames.length;
+    advance(500);
+    expect(output.frames.length).toBe(before);
+  });
+
+  it('wants frames only while an effect shows, the tempo runs and it was not darkened', () => {
+    expect(laser.wantsFrames()).toBe(false);
+    laser.update({ effect: { id: 'sweep' } });
+    // The effect only counts in manual mode.
+    expect(laser.wantsFrames()).toBe(false);
+    laser.update({ raw: { mode: MANUAL } });
+    expect(laser.wantsFrames()).toBe(true);
+    tempo.update({ source: 'audio' });
+    tempo.follow({ running: false });
+    expect(laser.wantsFrames()).toBe(false);
+    tempo.follow({ running: true });
+    expect(laser.wantsFrames()).toBe(true);
+    laser.darken();
+    expect(laser.wantsFrames()).toBe(false);
   });
 
   it('sends nothing on its own without an effect', () => {
@@ -348,9 +382,12 @@ describe('LaserController effects', () => {
     laser.update({ raw: { mode: MANUAL }, effect: { id: 'patterns' } });
     advance(BEAT_MS * 2 + 25);
     expect(ch(output, LASER_AT + 1)).toBe(12); // pattern 3
+    // The master speed is pressed: the pattern stays where it is, and goes on from there at ×2.
     tempo.update({ rate: 2 });
     advance(25);
-    expect(ch(output, LASER_AT + 1)).toBe(22); // pattern 5
+    expect(ch(output, LASER_AT + 1)).toBe(12); // still pattern 3
+    advance(BEAT_MS);
+    expect(ch(output, LASER_AT + 1)).toBe(22); // pattern 5, two steps in a beat
     tempo.update({ sync: true });
     advance(25);
     expect(ch(output, LASER_AT + 1)).toBe(2); // pattern 1
@@ -370,7 +407,7 @@ describe('LaserController effects', () => {
 
     // The effect is still chosen: it drives again by itself, and the ticker did not stop.
     tempo.follow({ running: true });
-    advance(25);
+    // At once, not at the next point of the grid.
     expect(ch(output, LASER_AT + 1)).toBeGreaterThan(0);
     expect(ch(output, LASER_AT)).toBe(MANUAL);
   });
@@ -466,7 +503,7 @@ describe('LaserController effects', () => {
     const before = output.frames.length;
     advance(BEAT_MS);
     expect(ch(output, LASER_AT + 5)).toBeGreaterThan(125);
-    expect(output.frames.length).toBeGreaterThan(before + 10);
+    expect(output.frames.length).toBeGreaterThan(before + 8);
     for (const { data } of output.frames.slice(before)) expect(data[LASER_AT - 1]).toBe(0);
     expect(frames.length).toBeGreaterThan(5);
     for (const dmx of frames) expect(dmx[0]).toBe(0);
@@ -491,7 +528,7 @@ describe('LaserController effects', () => {
     laser.setBlackout(true);
     laser.setBlackout(false);
     advance(BEAT_MS);
-    expect(output.frames.length).toBeGreaterThan(100);
+    expect(output.frames.length).toBeGreaterThan(60);
     for (const { data } of output.frames) expect(data[LASER_AT - 1]).toBe(0);
     expect(laser.getState().raw.mode).toBe(MANUAL);
   });
@@ -525,14 +562,31 @@ describe('LaserController effects', () => {
     expect(output.frames.length).toBe(before);
   });
 
-  it('shows browsers what is being sent, twenty times per second', () => {
+  it('tells browsers every frame it sends, with the beat the frame is for', () => {
     const frames: { dmx: number[]; beat: number }[] = [];
     laser.on('frame', (dmx, beat) => frames.push({ dmx, beat }));
     laser.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+    const before = output.frames.length;
     advance(1000);
-    expect(frames).toHaveLength(20);
+    expect(frames).toHaveLength(output.frames.length - before);
     expect(frames[0]?.dmx).toHaveLength(10);
-    expect(frames[19]?.beat).toBeCloseTo(2.1, 1);
+    expect(frames.at(-1)?.beat).toBeCloseTo(2.1, 1);
+    // And it is the frame that went out, byte for byte.
+    expect(frames.at(-1)?.dmx).toEqual(Array.from(output.last.slice(LASER_AT - 1, LASER_AT + 9)));
+    for (const { beat } of frames) {
+      expect(Math.abs(beat * 11 - Math.round(beat * 11))).toBeLessThan(1e-6);
+    }
+  });
+
+  it('stays on the step it is on when the speed is pressed', () => {
+    tempo.update({ bpm: 120, sync: true });
+    laser.update({ raw: { mode: MANUAL }, effect: { id: 'patterns', speed: 1 } });
+    advance(1500);
+    const before = laser.getDmx()[1];
+    laser.update({ effect: { speed: 2 } });
+    expect(laser.getDmx()[1]).toBe(before);
+    tempo.update({ rate: 4 });
+    expect(laser.getDmx()[1]).toBe(before);
   });
 
   it('tells the state with the effect in it', () => {

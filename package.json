@@ -22,7 +22,8 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "spider": "tsx src/cli/spider.ts",
     "laser": "tsx src/cli/laser.ts",
-    "beat-eval": "tsx src/cli/beat-eval.ts"
+    "beat-eval": "tsx src/cli/beat-eval.ts",
+    "perf": "tsx tools/perf/perf.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.0",

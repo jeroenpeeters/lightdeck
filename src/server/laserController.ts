@@ -11,18 +11,19 @@
  * closes it for good when lightdeck stops: a change that comes after it is kept, and
  * does not reach the fixture.
  *
- * While an effect is chosen and the laser is in the mode the effects count in, a ticker
- * renders the effect 40 times per second, on the beat of the console's tempo. The effect
- * sets the channels it drives, the others stay with the operator. An effect never opens
- * the laser: the gate is not for effects to drive. Rendered frames are not state:
- * browsers get them as `frame` events, at a lower rate, to draw what is being sent.
+ * While an effect is chosen, the laser is in the mode the effects count in and the tempo
+ * runs, the engine of the console asks for a frame at every point of the grid of the beat
+ * (`render`). The controller has no timer of its own. The effect sets the channels it
+ * drives, the others stay with the operator. An effect never opens the laser: the gate is
+ * not for effects to drive. Rendered frames are not state: browsers get them as `frame`
+ * events, to draw what is being sent, and what they get is the frame that was sent.
  */
 
 import { EventEmitter } from 'node:events';
-import { limitSpeed, SPEEDS } from '../engine/effects.js';
+import { EffectClock } from '../engine/effectClock.js';
+import { SPEEDS } from '../engine/effects.js';
 import type { LaserEffect } from '../engine/laserEffects.js';
 import {
-  encodeFixture,
   type FixtureProfile,
   findControl,
   rangeAt,
@@ -77,11 +78,6 @@ export interface LaserOptions {
   address: number;
 }
 
-/** Effect frames per second sent to the fixture. */
-const TICK_MS = 25;
-/** Effect frames per second shown to browsers. */
-const FRAME_EVENT_MS = 50;
-
 export class LaserController extends EventEmitter implements FixtureController {
   readonly profile: FixtureProfile;
   readonly gate: string;
@@ -94,8 +90,10 @@ export class LaserController extends EventEmitter implements FixtureController {
   private readonly effectsMode: string | undefined;
   private readonly frame = new Uint8Array(UNIVERSE_SIZE);
   private readonly closed: number;
-  private ticker: ReturnType<typeof setInterval> | undefined;
-  private lastFrameEvent = 0;
+  /** Keeps the beat of the effect continuous when its speed changes. */
+  private readonly effectClock = new EffectClock();
+  /** True once the controller was closed: the engine then stops asking it for frames. */
+  private disposed = false;
   private state: LaserState;
   /** The blackout of the console. It is not part of the state of the fixture. */
   private blackout = false;
@@ -157,7 +155,28 @@ export class LaserController extends EventEmitter implements FixtureController {
 
   /** The fixture's bytes as they are being sent, channel 1 first. */
   getDmx(): number[] {
-    return [...encodeFixture(this.profile, this.outputValues())];
+    return Array.from(
+      this.frame.subarray(this.address - 1, this.address - 1 + this.profile.footprint),
+    );
+  }
+
+  /**
+   * True while an effect shows and the tempo runs: the engine then asks for frames. A laser
+   * that was darkened for good wants none.
+   */
+  wantsFrames(): boolean {
+    return (
+      !this.disposed && !this.stopped && this.tempo.isRunning() && this.showing() !== undefined
+    );
+  }
+
+  /**
+   * Makes the frame for the moment `at`, on the clock of the tempo, hands it to the patch and
+   * tells the browsers what it is. The engine calls this on the grid of the beat.
+   */
+  render(at: number): void {
+    this.send(at);
+    this.emit('frame', this.getDmx(), this.tempo.beatAt(at));
   }
 
   /**
@@ -166,7 +185,7 @@ export class LaserController extends EventEmitter implements FixtureController {
    */
   update(change: unknown, origin?: string): void {
     this.state = this.apply(this.state, change, 'a change of the laser');
-    this.runTicker();
+    this.emit('wants');
     this.push(origin);
   }
 
@@ -194,7 +213,7 @@ export class LaserController extends EventEmitter implements FixtureController {
    */
   recall(part: unknown, origin?: string): void {
     this.state = this.apply(this.rest(), part ?? {}, 'the laser in a scene');
-    this.runTicker();
+    this.emit('wants');
     this.push(origin);
   }
 
@@ -249,13 +268,14 @@ export class LaserController extends EventEmitter implements FixtureController {
   darken(): void {
     this.stopped = true;
     this.state = { ...this.state, raw: { ...this.state.raw, [this.gate]: this.closed } };
-    this.runTicker();
+    this.emit('wants');
     this.push();
   }
 
   close(): void {
-    if (this.ticker) clearInterval(this.ticker);
-    this.ticker = undefined;
+    // The engine stops asking for frames from a laser that is closed.
+    this.disposed = true;
+    this.emit('wants');
     this.removeAllListeners();
   }
 
@@ -310,16 +330,24 @@ export class LaserController extends EventEmitter implements FixtureController {
     return this.effects.find((effect) => effect.id === id);
   }
 
-  private outputValues() {
+  private outputValues(at: number) {
     const raw = { ...this.state.raw };
     // An idle effect drives nothing, and does not open or close the laser: the laser shows
-    // what it is set to. The ticker keeps asking, so the effect is back when the tempo runs.
+    // what it is set to. The engine asks again when the tempo runs, so the effect is back.
     const effect = this.tempo.isRunning() ? this.showing() : undefined;
     if (effect) {
       const { bpm, rate } = this.tempo.getState();
-      const speed = limitSpeed(bpm, this.state.effect.speed * rate);
+      // The beat of the output, a little ahead of the beat itself by the lead. Its speed is
+      // limited, and the effect goes on from where it is when the speed changes.
+      const { beat, speed } = this.effectClock.read({
+        beat: this.tempo.outputBeat(at),
+        bpm,
+        wanted: this.state.effect.speed * rate,
+        epoch: this.tempo.epoch,
+        key: effect.id,
+      });
       const rendered = effect.render({
-        beat: this.tempo.getBeat() * speed,
+        beat,
         bpm: bpm * speed,
         raw: this.state.raw,
       });
@@ -333,27 +361,8 @@ export class LaserController extends EventEmitter implements FixtureController {
     return { raw };
   }
 
-  private runTicker(): void {
-    const wanted = !this.stopped && this.showing() !== undefined;
-    if (wanted && !this.ticker) {
-      this.ticker = setInterval(() => this.tick(), TICK_MS);
-    } else if (!wanted && this.ticker) {
-      clearInterval(this.ticker);
-      this.ticker = undefined;
-    }
-  }
-
-  private tick(): void {
-    this.send();
-    const now = this.tempo.now();
-    if (now - this.lastFrameEvent >= FRAME_EVENT_MS) {
-      this.lastFrameEvent = now;
-      this.emit('frame', this.getDmx(), this.tempo.getBeat());
-    }
-  }
-
-  private send(): void {
-    writeFixture(this.frame, this.address, this.profile, this.outputValues());
+  private send(at: number = this.tempo.now()): void {
+    writeFixture(this.frame, this.address, this.profile, this.outputValues(at));
     this.output.setUniverse(this.universe, this.frame);
   }
 

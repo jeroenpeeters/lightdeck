@@ -418,6 +418,60 @@ describe('HTTP server', () => {
     abort.abort();
   });
 
+  describe('the output settings', () => {
+    it('are in the state', async () => {
+      expect((await state()).output).toEqual({ maxFps: 25, leadMs: 0 });
+    });
+
+    it('change, and the answer has all of them', async () => {
+      const response = await post('/api/output', { maxFps: 30, leadMs: 25 });
+      expect(response.status).toBe(200);
+      expect(((await response.json()) as { output: unknown }).output).toEqual({
+        maxFps: 30,
+        leadMs: 25,
+      });
+      expect((await state()).output).toEqual({ maxFps: 30, leadMs: 25 });
+      const part = await post('/api/output', { leadMs: 10 });
+      expect(((await part.json()) as { output: unknown }).output).toEqual({
+        maxFps: 30,
+        leadMs: 10,
+      });
+    });
+
+    it('say what is wrong with a change, and keep what they were', async () => {
+      const tooFast = await post('/api/output', { maxFps: 500 });
+      expect(tooFast.status).toBe(400);
+      expect(await error(tooFast)).toMatch(/frames per second/);
+      const lead = await post('/api/output', { leadMs: 'now' });
+      expect(lead.status).toBe(400);
+      expect(await error(lead)).toMatch(/lead/);
+      const unknown = await post('/api/output', { colour: 'red' });
+      expect(unknown.status).toBe(400);
+      expect((await state()).output).toEqual({ maxFps: 25, leadMs: 0 });
+    });
+
+    it('are streamed, now and when they change', async () => {
+      const abort = new AbortController();
+      const response = await fetch(`${base}/api/events`, { signal: abort.signal });
+      const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      const readUntil = async (needle: string) => {
+        while (!text.includes(needle)) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          text += decoder.decode(value, { stream: true });
+        }
+      };
+      await readUntil('event: output');
+      expect(text).toContain('"maxFps":25');
+      await post('/api/output', { maxFps: 20 });
+      await readUntil('"maxFps":20');
+      expect(text).toContain('"maxFps":20');
+      abort.abort();
+    });
+  });
+
   describe('listening', () => {
     it('describes who sets the tempo and what is heard', async () => {
       const got = await state();

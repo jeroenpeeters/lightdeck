@@ -5,31 +5,21 @@
  * fixture profile and handed to the output. Browsers hear about it through `state`
  * events and so stay in sync with each other.
  *
- * While an effect is chosen, a ticker renders it 40 times per second, on the beat of
- * the console's tempo. The effect sets the colours of the cells, and the tilt when it
- * moves; brightness, strobe and motor speed stay with the operator. Rendered frames
- * are not state: browsers get them as `frame` events, at a lower rate, only to draw
- * what the fixture shows.
+ * While an effect is chosen and the tempo runs, the engine of the console asks for a frame
+ * at every point of the grid of the beat (`render`). The controller has no timer of its
+ * own. The effect sets the colours of the cells, and the tilt when it moves; brightness,
+ * strobe and motor speed stay with the operator. Rendered frames are not state: browsers
+ * get them as `frame` events, only to draw what the fixture shows, and what they get is
+ * the frame that was sent.
  *
  * The blackout and the grand master of the console are not state either. They change
  * what goes out and leave what is set: the master scales the dimmer and nothing else.
  */
 
 import { EventEmitter } from 'node:events';
-import {
-  EFFECTS,
-  type EffectFrame,
-  findEffect,
-  limitSpeed,
-  type Rgbw,
-  SPEEDS,
-} from '../engine/effects.js';
-import {
-  encodeFixture,
-  type FixtureProfile,
-  UNIVERSE_SIZE,
-  writeFixture,
-} from '../fixtures/profile.js';
+import { EffectClock } from '../engine/effectClock.js';
+import { EFFECTS, type EffectFrame, findEffect, type Rgbw, SPEEDS } from '../engine/effects.js';
+import { type FixtureProfile, UNIVERSE_SIZE, writeFixture } from '../fixtures/profile.js';
 import { clamp01 } from '../model/fixture.js';
 import type { UniverseOutput } from '../outputs/patch.js';
 import { type FixtureController, PatchError, readObject } from './fixture.js';
@@ -100,11 +90,6 @@ const BLACKOUT_CONTROLS = ['dimmer', 'strobe'];
 const MASTER_ATTRIBUTE = 'dimmer';
 const RESET_CONTROL = 'reset';
 const RESET_VALUE = 255;
-/** Effect frames per second sent to the fixture. */
-const TICK_MS = 25;
-/** Effect frames per second shown to browsers. */
-const FRAME_EVENT_MS = 50;
-
 const DEFAULT_EFFECT: EffectSettings = {
   id: null,
   colourA: { red: 1, green: 0.58, blue: 0, white: 0 },
@@ -140,8 +125,10 @@ export class SpiderController extends EventEmitter implements FixtureController 
   private readonly dimmers: readonly string[];
   private readonly frame = new Uint8Array(UNIVERSE_SIZE);
   private resetTimer: ReturnType<typeof setTimeout> | undefined;
-  private ticker: ReturnType<typeof setInterval> | undefined;
-  private lastFrameEvent = 0;
+  /** Keeps the beat of the effect continuous when its speed changes. */
+  private readonly effectClock = new EffectClock();
+  /** True once the controller was closed: the engine then stops asking it for frames. */
+  private disposed = false;
 
   private state: SpiderState;
   /** The blackout of the console. It is not part of the state of the fixture. */
@@ -204,7 +191,23 @@ export class SpiderController extends EventEmitter implements FixtureController 
 
   /** The fixture's bytes as they are being sent, channel 1 first. */
   getDmx(): number[] {
-    return [...encodeFixture(this.profile, this.outputValues())];
+    return Array.from(
+      this.frame.subarray(this.address - 1, this.address - 1 + this.profile.footprint),
+    );
+  }
+
+  /** True while an effect is chosen and the tempo runs: the engine then asks for frames. */
+  wantsFrames(): boolean {
+    return !this.disposed && this.state.effect.id !== null && this.tempo.isRunning();
+  }
+
+  /**
+   * Makes the frame for the moment `at`, on the clock of the tempo, hands it to the patch and
+   * tells the browsers what it is. The engine calls this on the grid of the beat.
+   */
+  render(at: number): void {
+    this.send(at);
+    this.emit('frame', this.getDmx(), this.tempo.beatAt(at));
   }
 
   /**
@@ -213,7 +216,7 @@ export class SpiderController extends EventEmitter implements FixtureController 
    */
   update(change: unknown, origin?: string): void {
     this.state = { ...this.state, ...this.apply(this.state, change, 'a change of the spider') };
-    this.runTicker();
+    this.emit('wants');
     this.push(origin);
   }
 
@@ -246,7 +249,7 @@ export class SpiderController extends EventEmitter implements FixtureController 
     const reset = this.state.raw[RESET_CONTROL];
     if (reset !== undefined) look.raw[RESET_CONTROL] = reset;
     this.state = { ...this.state, ...look };
-    this.runTicker();
+    this.emit('wants');
     this.push(origin);
   }
 
@@ -341,9 +344,10 @@ export class SpiderController extends EventEmitter implements FixtureController 
 
   close(): void {
     if (this.resetTimer) clearTimeout(this.resetTimer);
-    if (this.ticker) clearInterval(this.ticker);
     this.resetTimer = undefined;
-    this.ticker = undefined;
+    // The engine stops asking for frames from a spider that is closed.
+    this.disposed = true;
+    this.emit('wants');
     this.removeAllListeners();
   }
 
@@ -384,16 +388,24 @@ export class SpiderController extends EventEmitter implements FixtureController 
     return names;
   }
 
-  private renderEffect(): EffectFrame | undefined {
+  private renderEffect(at: number): EffectFrame | undefined {
     const { id, colourA, colourB, speed: wanted } = this.state.effect;
     const effect = id === null ? undefined : findEffect(id);
     if (!effect) return undefined;
     // An idle effect drives nothing: the fixture shows what is set under it. It stays chosen.
     if (!this.tempo.isRunning()) return undefined;
     const { bpm, rate } = this.tempo.getState();
-    const speed = limitSpeed(bpm, wanted * rate);
+    // The beat of the output, a little ahead of the beat itself by the lead. Its speed is
+    // limited, and the effect goes on from where it is when the speed changes.
+    const { beat, speed } = this.effectClock.read({
+      beat: this.tempo.outputBeat(at),
+      bpm,
+      wanted: wanted * rate,
+      epoch: this.tempo.epoch,
+      key: effect.id,
+    });
     return effect.render({
-      beat: this.tempo.getBeat() * speed,
+      beat,
       bpm: bpm * speed,
       cells: this.layout.cells,
       bars: this.layout.bars,
@@ -402,9 +414,9 @@ export class SpiderController extends EventEmitter implements FixtureController 
     });
   }
 
-  private outputValues() {
+  private outputValues(at: number) {
     const levels = { ...this.state.levels };
-    const frame = this.renderEffect();
+    const frame = this.renderEffect(at);
     if (frame) {
       frame.cells.forEach((colour, index) => {
         for (const part of this.layout.colours) {
@@ -423,27 +435,8 @@ export class SpiderController extends EventEmitter implements FixtureController 
     return { levels, raw: this.state.raw };
   }
 
-  private runTicker(): void {
-    const wanted = this.state.effect.id !== null;
-    if (wanted && !this.ticker) {
-      this.ticker = setInterval(() => this.tick(), TICK_MS);
-    } else if (!wanted && this.ticker) {
-      clearInterval(this.ticker);
-      this.ticker = undefined;
-    }
-  }
-
-  private tick(): void {
-    this.send();
-    const now = this.tempo.now();
-    if (now - this.lastFrameEvent >= FRAME_EVENT_MS) {
-      this.lastFrameEvent = now;
-      this.emit('frame', this.getDmx(), this.tempo.getBeat());
-    }
-  }
-
-  private send(): void {
-    writeFixture(this.frame, this.address, this.profile, this.outputValues());
+  private send(at: number = this.tempo.now()): void {
+    writeFixture(this.frame, this.address, this.profile, this.outputValues(at));
     this.output.setUniverse(this.universe, this.frame);
   }
 

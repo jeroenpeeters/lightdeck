@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PatchError } from './fixture.js';
-import { Tempo, type TempoState } from './tempo.js';
+import { readLead, Tempo, type TempoState } from './tempo.js';
 
 describe('Tempo', () => {
   let clock: number;
@@ -191,5 +191,128 @@ describe('Tempo that follows the music', () => {
     clock += 2000;
     tempo.follow({ beatAt: clock - 20, snap: true });
     expect(Math.floor(tempo.getBeat() + 0.5)).toBe(4);
+  });
+});
+
+describe('Tempo grid, taps and lead', () => {
+  let clock: number;
+  let tempo: Tempo;
+
+  beforeEach(() => {
+    clock = 1000;
+    tempo = new Tempo({ now: () => clock });
+    tempo.update({ bpm: 120, sync: true });
+  });
+
+  it('says the beat at any moment, and the moment of any beat, as the tempo is now', () => {
+    expect(tempo.beatAt(1000)).toBeCloseTo(0, 9);
+    expect(tempo.beatAt(2500)).toBeCloseTo(3, 9);
+    expect(tempo.beatAt(500)).toBeCloseTo(-1, 9);
+    expect(tempo.timeOfBeat(0)).toBeCloseTo(1000, 9);
+    expect(tempo.timeOfBeat(3)).toBeCloseTo(2500, 9);
+    expect(tempo.timeOfBeat(0.5)).toBeCloseTo(1250, 9);
+    for (const beat of [-2.5, 0, 0.3, 7, 1234.5]) {
+      expect(tempo.beatAt(tempo.timeOfBeat(beat))).toBeCloseTo(beat, 6);
+    }
+  });
+
+  it('counts the beat at the moment it is asked for, as before', () => {
+    clock += 1750;
+    expect(tempo.getBeat()).toBeCloseTo(3.5, 9);
+    expect(tempo.getBeat()).toBe(tempo.beatAt(clock));
+  });
+
+  it('keeps the grid with the beat it is on when the bpm changes', () => {
+    clock += 1250;
+    const beat = tempo.getBeat();
+    tempo.update({ bpm: 150 });
+    expect(tempo.beatAt(clock)).toBeCloseTo(beat, 9);
+    expect(tempo.timeOfBeat(beat)).toBeCloseTo(clock, 9);
+    expect(tempo.timeOfBeat(beat + 1)).toBeCloseTo(clock + 400, 9);
+  });
+
+  it('counts the taps, and only the taps', () => {
+    const first = tempo.epoch;
+    tempo.update({ bpm: 130 });
+    tempo.update({ rate: 2 });
+    expect(tempo.epoch).toBe(first);
+    tempo.update({ sync: true });
+    expect(tempo.epoch).toBe(first + 1);
+    tempo.update({ source: 'audio' });
+    tempo.follow({ beatAt: clock + 30, snap: true, bpm: 131 });
+    expect(tempo.epoch).toBe(first + 1);
+    tempo.update({ bpm: 120, sync: true });
+    expect(tempo.epoch).toBe(first + 2);
+  });
+
+  describe('the lead', () => {
+    it('is nothing to start with, and the output beat is then the beat', () => {
+      expect(tempo.leadMs).toBe(0);
+      expect(tempo.outputBeat(2000)).toBeCloseTo(tempo.beatAt(2000), 9);
+      clock += 300;
+      expect(tempo.outputBeat()).toBeCloseTo(tempo.getBeat(), 9);
+    });
+
+    it('makes the output for a little later, by the lead', () => {
+      tempo.setLead(50);
+      expect(tempo.leadMs).toBe(50);
+      // 50 ms is a tenth of a beat at 120 beats per minute.
+      expect(tempo.outputBeat(2000)).toBeCloseTo(tempo.beatAt(2000) + 0.1, 9);
+      expect(tempo.getBeat()).toBe(tempo.beatAt(clock));
+    });
+
+    it('can be negative, to make up for an output that is early', () => {
+      tempo.setLead(-30);
+      expect(tempo.outputBeat(2000)).toBeCloseTo(tempo.beatAt(2000) - 0.06, 9);
+    });
+
+    it('refuses what makes no sense, and keeps what it had', () => {
+      tempo.setLead(40);
+      for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, '40', null, 600, -200, undefined]) {
+        expect(() => tempo.setLead(bad)).toThrow(PatchError);
+      }
+      expect(tempo.leadMs).toBe(40);
+      expect(readLead(0)).toBe(0);
+      expect(readLead(-100)).toBe(-100);
+      expect(readLead(500)).toBe(500);
+    });
+  });
+});
+
+describe('Tempo at the points of the grid', () => {
+  // A frame is made for a point of the grid, which is worked out as a moment. Turning the moment
+  // back into a beat has to give the beat it was made from, or a flash that belongs to the beat
+  // comes out as the end of the beat before it: 12.999999999999998 is on beat 12.
+  it('gives back a whole beat for the moment of a whole beat, at any tempo and origin', () => {
+    for (const bpm of [60, 90, 120, 126, 133.3, 140, 150.1, 170, 187.5, 200]) {
+      for (const origin of [0, 1000, 123456.789, 987654.321]) {
+        const tempo = new Tempo({ now: () => origin });
+        tempo.update({ bpm, sync: true });
+        for (let beat = 0; beat <= 600; beat++) {
+          expect(Math.floor(tempo.beatAt(tempo.timeOfBeat(beat)))).toBe(beat);
+          expect(tempo.beatAt(tempo.timeOfBeat(beat))).toBe(beat);
+        }
+      }
+    }
+  });
+
+  it('gives back a whole beat for a point on the grid too, and the lead does not undo it', () => {
+    const tempo = new Tempo({ now: () => 5000 });
+    tempo.update({ bpm: 170, sync: true });
+    for (let k = 0; k <= 8 * 300; k++) {
+      const beat = tempo.beatAt(tempo.timeOfBeat(k / 8));
+      expect(beat).toBe(k / 8);
+    }
+    // Ahead by a whole number of beats, which is 352.94... ms at 170 beats per minute.
+    tempo.setLead(0);
+    expect(tempo.outputBeat(tempo.timeOfBeat(41))).toBe(41);
+  });
+
+  it('still tells a moment a hair before a beat from the beat', () => {
+    const tempo = new Tempo({ now: () => 0 });
+    tempo.update({ bpm: 120, sync: true });
+    expect(Math.floor(tempo.beatAt(499.99))).toBe(0);
+    expect(Math.floor(tempo.beatAt(500))).toBe(1);
+    expect(Math.floor(tempo.beatAt(500.01))).toBe(1);
   });
 });

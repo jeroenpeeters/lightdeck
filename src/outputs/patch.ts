@@ -13,6 +13,8 @@ import { UNIVERSE_SIZE } from '../fixtures/profile.js';
 /** Where the frames go. `Lr512BridgeClient` fits. */
 export interface UniverseOutput {
   setUniverse(index: number, data: Uint8Array): void;
+  /** Changes the most frames per second the output sends, when it has such a limit. */
+  setMaxFps?(fps: number): void;
 }
 
 interface Claim {

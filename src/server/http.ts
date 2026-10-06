@@ -11,7 +11,8 @@
  *   GET  /api/state                   everything a browser needs to draw itself
  *   GET  /api/events                  server-sent events: `fixture`, `tempo`, `blackout`,
  *                                     `master`, `status`, `show`, `playback`, `audio` (what
- *                                     is heard, see `Follower`) and, while a
+ *                                     is heard, see `Follower`), `output` (the settings of
+ *                                     the output) and, while a
  *                                     fixture animates, `frame` with the bytes being sent
  *                                     and the beat
  *   POST /api/tempo                   `bpm`, `rate`, `sync`, `source` (`manual` or `audio`)
@@ -19,6 +20,9 @@
  *                                     mono samples as the body, with the headers `x-rate`,
  *                                     `x-index` (where the first sample lies in the feed) and
  *                                     `x-feed` (the name of the feed). Answers 204
+ *   POST /api/output                  how the output is made: `maxFps`, the most frames per
+ *                                     second (default 25), and `leadMs`, how far ahead of
+ *                                     the beat it is made. Answers with both
  *   POST /api/audio/settings          how the listening behaves: any of `onSilence`, `onNoBeat`,
  *                                     `silenceAfter`, ... see `AudioSettings`. Answers with
  *                                     all the settings
@@ -54,7 +58,7 @@ import { MAX_FLASH_HZ } from '../engine/effects.js';
 import type { AudioState } from '../inputs/audio/follower.js';
 import { PatchError, readObject } from './fixture.js';
 import type { PlaybackState, ShowSummary } from './playback.js';
-import type { LinkStatus, Rig, RigFixture } from './rig.js';
+import type { LinkStatus, OutputSettings, Rig, RigFixture } from './rig.js';
 import { MAX_BPM, MIN_BPM, RATES, type TempoState } from './tempo.js';
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -198,6 +202,7 @@ function describe({ rig, bridgeUrl }: HttpOptions) {
     master: rig.getMaster(),
     status: rig.getStatus(),
     audio: rig.audio.getState(),
+    output: rig.getOutput(),
     show: rig.playback.getShow(),
     playback: rig.playback.getState(),
     bridgeUrl,
@@ -234,6 +239,7 @@ export function createHttpServer(options: HttpOptions): Server {
   rig.on('show', (show: ShowSummary) => broadcast('show', show));
   rig.on('playback', (state: PlaybackState) => broadcast('playback', state));
   rig.on('audio', (state: AudioState) => broadcast('audio', state));
+  rig.on('output', (settings: OutputSettings) => broadcast('output', settings));
 
   const keepAlive = setInterval(() => {
     for (const stream of streams) stream.write(': keep-alive\n\n');
@@ -287,6 +293,7 @@ export function createHttpServer(options: HttpOptions): Server {
       res.write(message('show', rig.playback.getShow()));
       res.write(message('playback', rig.playback.getState()));
       res.write(message('audio', rig.audio.getState()));
+      res.write(message('output', rig.getOutput()));
       req.on('close', () => streams.delete(res));
       return;
     }
@@ -302,6 +309,12 @@ export function createHttpServer(options: HttpOptions): Server {
       });
       res.writeHead(204, { 'cache-control': 'no-store' });
       res.end();
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/output') {
+      const { change } = split(await readJson(req));
+      sendJson(res, 200, { ok: true, output: rig.setOutput(change) });
       return;
     }
 

@@ -35,6 +35,128 @@ describe('Rig', () => {
   });
   afterEach(() => rig.close());
 
+  describe('the output', () => {
+    /** An output that has a limit on its rate, as the bridge client has. */
+    const limited = () => {
+      const seen: number[] = [];
+      const out = {
+        frames: [] as Uint8Array[],
+        setUniverse(_: number, data: Uint8Array) {
+          out.frames.push(data.slice());
+        },
+        setMaxFps(fps: number) {
+          seen.push(fps);
+        },
+      };
+      return { out, seen };
+    };
+
+    it('starts at 25 frames a second and no lead, and tells the output', () => {
+      const { out, seen } = limited();
+      const own = new Rig({ output: out, fixtures: [SPIDER] });
+      try {
+        expect(own.getOutput()).toEqual({ maxFps: 25, leadMs: 0 });
+        expect(own.engine.getMaxFps()).toBe(25);
+        expect(seen).toEqual([25]);
+      } finally {
+        own.close();
+      }
+    });
+
+    it('starts with what it was given', () => {
+      const { out, seen } = limited();
+      const own = new Rig({ output: out, fixtures: [SPIDER], maxFps: 40, leadMs: 35 });
+      try {
+        expect(own.getOutput()).toEqual({ maxFps: 40, leadMs: 35 });
+        expect(own.tempo.leadMs).toBe(35);
+        expect(seen).toEqual([40]);
+      } finally {
+        own.close();
+      }
+    });
+
+    it('refuses a start that makes no sense, before anything is made', () => {
+      const { out } = limited();
+      expect(() => new Rig({ output: out, fixtures: [SPIDER], maxFps: 0 })).toThrow(PatchError);
+      expect(() => new Rig({ output: out, fixtures: [SPIDER], leadMs: 9999 })).toThrow(PatchError);
+      expect(out.frames).toHaveLength(0);
+    });
+
+    it('changes the rate and the lead while it runs, and tells everyone', () => {
+      const { out, seen } = limited();
+      const own = new Rig({ output: out, fixtures: [SPIDER] });
+      const told: unknown[] = [];
+      own.on('output', (settings) => told.push(settings));
+      try {
+        expect(own.setOutput({ maxFps: 30 })).toEqual({ maxFps: 30, leadMs: 0 });
+        expect(own.setOutput({ leadMs: 20 })).toEqual({ maxFps: 30, leadMs: 20 });
+        expect(own.engine.getMaxFps()).toBe(30);
+        expect(own.tempo.leadMs).toBe(20);
+        expect(seen).toEqual([25, 30, 30]);
+        expect(told).toEqual([
+          { maxFps: 30, leadMs: 0 },
+          { maxFps: 30, leadMs: 20 },
+        ]);
+      } finally {
+        own.close();
+      }
+    });
+
+    it('changes nothing when any part of a change is wrong', () => {
+      const { out, seen } = limited();
+      const own = new Rig({ output: out, fixtures: [SPIDER], leadMs: 10 });
+      try {
+        expect(() => own.setOutput({ maxFps: 40, leadMs: 9999 })).toThrow(PatchError);
+        expect(() => own.setOutput({ maxFps: 'fast' })).toThrow(PatchError);
+        expect(() => own.setOutput({ speed: 3 })).toThrow(PatchError);
+        expect(() => own.setOutput(null)).toThrow(PatchError);
+        expect(own.getOutput()).toEqual({ maxFps: 25, leadMs: 10 });
+        expect(seen).toEqual([25]);
+      } finally {
+        own.close();
+      }
+    });
+
+    it('works with an output that has no limit of its own', () => {
+      expect(rig.setOutput({ maxFps: 12 })).toEqual({ maxFps: 12, leadMs: 0 });
+    });
+
+    it('makes the frames of the fixtures with one clock, and none of its own timers', () => {
+      vi.useFakeTimers();
+      let clock = 0;
+      const timed = new Rig({ output, fixtures: [SPIDER, LASER], now: () => clock });
+      try {
+        timed.find('spider')?.controller.update({ effect: { id: 'chase' } });
+        timed.find('laser')?.controller.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+        for (let i = 0; i < 40; i++) {
+          clock += 25;
+          vi.advanceTimersByTime(25);
+        }
+        // Both fixtures were made on every tick, for one frame of the universe.
+        expect(timed.engine.stats.ticks).toBeGreaterThanOrEqual(20);
+        expect(timed.engine.stats.skipped).toBe(0);
+      } finally {
+        timed.close();
+        vi.useRealTimers();
+      }
+    });
+
+    it('lets go of the clock when it is closed', () => {
+      vi.useFakeTimers();
+      let clock = 0;
+      const timed = new Rig({ output, fixtures: [SPIDER], now: () => clock });
+      timed.find('spider')?.controller.update({ effect: { id: 'chase' } });
+      timed.close();
+      const before = output.frames.length;
+      for (let i = 0; i < 20; i++) {
+        clock += 25;
+        vi.advanceTimersByTime(25);
+      }
+      expect(output.frames.length).toBe(before);
+      vi.useRealTimers();
+    });
+  });
+
   describe('listening', () => {
     it('starts by hand, and with the listening as the source when asked', () => {
       expect(rig.tempo.getState().source).toBe('manual');
@@ -292,23 +414,19 @@ describe('Rig', () => {
         clock += 25;
         vi.advanceTimersByTime(25);
       }
-      expect(frames).toEqual([
-        ['spider', 128],
-        ['laser', MANUAL],
-        ['spider', 128],
-        ['laser', MANUAL],
-      ]);
+      // The engine makes a frame at every point of the grid, for both fixtures, with the master in it.
+      const first = frames.length;
+      expect(first).toBeGreaterThanOrEqual(4);
+      expect(frames.filter(([id]) => id === 'spider')).toHaveLength(first / 2);
+      for (const [id, value] of frames) expect(value).toBe(id === 'spider' ? 128 : MANUAL);
       timed.setMaster(0);
       for (let i = 0; i < 4; i++) {
         clock += 25;
         vi.advanceTimersByTime(25);
       }
-      expect(frames.slice(4)).toEqual([
-        ['spider', 0],
-        ['laser', 0],
-        ['spider', 0],
-        ['laser', 0],
-      ]);
+      const later = frames.slice(first);
+      expect(later.length).toBeGreaterThanOrEqual(4);
+      for (const [id, value] of later) expect(value).toBe(id === 'spider' ? 0 : 0);
     } finally {
       timed.close();
       vi.useRealTimers();

@@ -13,6 +13,11 @@
  *                                       after a spider at 1), or "none" to run without it
  *   --show           SHOW_FILE          the show file, which the deck writes
  *                                       (default show.yaml, where lightdeck is started)
+ *   --max-fps        MAX_FPS            the most frames per second to send, 1 to 60 (default 25,
+ *                                       which is what the original Light Rider app sends)
+ *   --lead-ms        LEAD_MS            how far ahead of the beat the output is made, in
+ *                                       milliseconds, to make up for the path to the light
+ *                                       (default 0)
  *   --tempo          TEMPO_SOURCE       who sets the tempo at the start: `manual` (default) or
  *                                       `audio`, which follows the music the listen page hears
  *   --audio-record  AUDIO_RECORD_DIR   a directory to write the sound that the listen page
@@ -35,6 +40,12 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+function decimal(value: string, name: string): number {
+  const n = Number(value);
+  if (value.trim() === '' || !Number.isFinite(n)) fail(`${name} must be a number, got "${value}"`);
+  return n;
+}
+
 function wholeNumber(value: string, name: string): number {
   const n = Number(value);
   if (!Number.isInteger(n)) fail(`${name} must be a whole number, got "${value}"`);
@@ -49,6 +60,8 @@ const { values: args } = parseArgs({
     'laser-universe': { type: 'string' },
     'laser-address': { type: 'string' },
     show: { type: 'string' },
+    'max-fps': { type: 'string' },
+    'lead-ms': { type: 'string' },
     tempo: { type: 'string' },
     'audio-record': { type: 'string' },
     port: { type: 'string' },
@@ -73,6 +86,8 @@ const laserUniverse = wholeNumber(
   'laser universe',
 );
 const showFile = args.show ?? process.env.SHOW_FILE ?? 'show.yaml';
+const maxFps = decimal(args['max-fps'] ?? process.env.MAX_FPS ?? '25', 'max-fps');
+const leadMs = decimal(args['lead-ms'] ?? process.env.LEAD_MS ?? '0', 'lead-ms');
 const tempoSourceText = args.tempo ?? process.env.TEMPO_SOURCE ?? 'manual';
 if (tempoSourceText !== 'manual' && tempoSourceText !== 'audio') {
   fail(`--tempo must be manual or audio, got "${tempoSourceText}"`);
@@ -100,6 +115,7 @@ const log = (message: string) => console.log(`${new Date().toISOString()}  ${mes
 let rig: Rig | undefined;
 const bridge = new Lr512BridgeClient({
   url: bridgeUrl,
+  maxFps,
   log: (message) => log(`bridge: ${message}`),
   onConnection: (connected) => rig?.setBridgeConnected(connected),
   onStatus: (status) => {
@@ -122,6 +138,8 @@ try {
     output: bridge,
     fixtures,
     show: showFile,
+    maxFps,
+    leadMs,
     tempoSource: tempoSourceText,
     ...(audioRecordDir === undefined ? {} : { audioRecordDir }),
     log: (message) => log(`audio: ${message}`),
@@ -162,7 +180,7 @@ const shutdown = () => {
   // The bridge holds the last frame it got. A laser must not keep burning with nobody at
   // the controls: fixtures like that go dark now, and that frame gets time to leave.
   rig?.darken();
-  bridge.tick();
+  bridge.flush();
   rig?.close();
   // Open event streams keep the server alive; do not wait for them. A request that is
   // under way is cut off too: what it asks would come after the last frame.

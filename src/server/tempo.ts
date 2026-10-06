@@ -49,6 +49,25 @@ export interface TempoFollow {
   snap?: boolean;
 }
 
+/** The least and the most the output may be ahead of the beat, in milliseconds. */
+export const MIN_LEAD_MS = -100;
+export const MAX_LEAD_MS = 500;
+
+/** A lead in milliseconds, checked. Throws a `PatchError` for a value that makes no sense. */
+export function readLead(value: unknown): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    value < MIN_LEAD_MS ||
+    value > MAX_LEAD_MS
+  ) {
+    throw new PatchError(
+      `the lead must be a number of milliseconds between ${MIN_LEAD_MS} and ${MAX_LEAD_MS}`,
+    );
+  }
+  return value;
+}
+
 /** The part of the way to the heard beat that the origin moves per beat that is heard. */
 const PHASE_GAIN = 0.25;
 /** An origin that moves less than this, in milliseconds, is not worth telling anyone. */
@@ -65,6 +84,10 @@ export class Tempo extends EventEmitter {
   private state: TempoState = { bpm: DEFAULT_BPM, rate: 1, source: 'manual', running: true };
   /** Moment of beat 0, on the clock. */
   private beatOrigin: number;
+  /** How many times the beat count was restarted by a tap. */
+  private restarts = 0;
+  /** How far ahead of the beat the output is made, in milliseconds. */
+  private lead = 0;
 
   constructor(options: TempoOptions = {}) {
     super();
@@ -78,7 +101,49 @@ export class Tempo extends EventEmitter {
 
   /** Beats since the tempo was last synced, not scaled by the rate. */
   getBeat(): number {
-    return ((this.now() - this.beatOrigin) / 60_000) * this.state.bpm;
+    return this.beatAt(this.now());
+  }
+
+  /**
+   * The beat at a moment on `now()`, as the tempo is now. Rounded to a billionth of a beat, which
+   * is less than a nanosecond at any tempo: the moment of a beat, worked out from the beat, is
+   * a hair off it, and 12.999999999999998 is on beat 12. A flash that belongs to beat 13 would
+   * then show the end of beat 12, a whole step of the grid late.
+   */
+  beatAt(time: number): number {
+    const beat = ((time - this.beatOrigin) / 60_000) * this.state.bpm;
+    return Math.round(beat * 1e9) / 1e9;
+  }
+
+  /** The moment on `now()` at which the beat `beat` (a fraction) falls, as the tempo is now. */
+  timeOfBeat(beat: number): number {
+    return this.beatOrigin + (beat * 60_000) / this.state.bpm;
+  }
+
+  /**
+   * Counts the times the beat count was restarted by a tap. Whoever keeps a phase of its
+   * own against the beat starts over when this changes.
+   */
+  get epoch(): number {
+    return this.restarts;
+  }
+
+  /** How far ahead of the beat the output is made, in milliseconds. */
+  get leadMs(): number {
+    return this.lead;
+  }
+
+  /**
+   * Sets how far ahead of the beat the output is made. The path from here to the light takes
+   * time, so what is made for the beat has to leave early to land on it.
+   */
+  setLead(milliseconds: unknown): void {
+    this.lead = readLead(milliseconds);
+  }
+
+  /** The beat that an output made at `at` is made for: the beat of a little later, by the lead. */
+  outputBeat(at: number = this.now()): number {
+    return this.beatAt(at + this.lead);
   }
 
   /** Whether the effects are to run. The beat is counted whether they do or not. */
@@ -125,6 +190,7 @@ export class Tempo extends EventEmitter {
     const now = this.now();
     if (sync === true) {
       this.beatOrigin = now;
+      this.restarts += 1;
     } else if (next.bpm !== this.state.bpm) {
       // Keep the beat we are on, so a tempo change does not make the effects jump.
       const beat = this.getBeat();

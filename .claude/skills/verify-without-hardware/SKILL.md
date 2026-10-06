@@ -63,6 +63,22 @@ against the stand-in too: `pnpm spider 127.0.0.1 -p 9019 dimmer=100 --once`.
 lost. Stopping the stand-in is a bridge that does not answer. Check what the console
 says in both cases, and that it comes back by itself.
 
+**A bridge that goes quiet**: `kill -USR2 <pid>` switches the stand-in to silent and back.
+Silent is a half-open connection: TCP stays up, but no alive message, no status, no
+handshake is sent, and what arrives is queued until silent ends. Use it to check that
+lightdeck notices after a few seconds without a word and reconnects. `--no-alive` is the
+APK from before the alive message: the stand-in never sends it, and lightdeck must leave
+that connection alone. `--client-idle <ms>` makes the stand-in do what the real bridge
+does with a client that has sent `limits` and then goes quiet (the real one waits 6000):
+it closes that connection. Default off.
+
+**What the stand-in records**: it sends the alive message (`{"type":"alive","device",
+"frames"}`) every second and takes the client's `{"type":"limits","maxFps":N}`. The dump
+file has `limits` (as it came, `null` when none), `capFps` (what a real bridge applies:
+clamped to 1..60, 25 without a message), `silent`, and the frames received and the frames
+that differ from the one before, per universe. Every 5 seconds it prints the rates. The
+stand-in does not cap or skip anything itself: it shows what the client sends.
+
 **An LR512 has one usable universe.** The stand-in reports `[512, 0]` like the real one
 and says so when a frame goes to a universe without channels. If you see that line, the
 real device would have refused every frame.

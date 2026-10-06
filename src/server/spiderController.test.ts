@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SPIDER_43CH, SPIDER_LAYOUT } from '../fixtures/spider.js';
+import { Engine } from './engine.js';
 import { PatchError } from './fixture.js';
 import { SpiderController, type SpiderState } from './spiderController.js';
 import { Tempo } from './tempo.js';
@@ -303,6 +304,7 @@ describe('SpiderController effects', () => {
   let output: RecordingOutput;
   let tempo: Tempo;
   let controller: SpiderController;
+  let engine: Engine;
   let clock: number;
 
   /** Moves the clock of the tempo and the timers forward together. */
@@ -326,11 +328,21 @@ describe('SpiderController effects', () => {
       universe: 0,
       address: 1,
     });
+    // The controller has no timer of its own: the engine asks it for a frame on the grid of the beat.
+    engine = new Engine({ tempo });
+    engine.add(controller);
   });
   afterEach(() => {
+    engine.close();
     controller.close();
     vi.useRealTimers();
   });
+
+  /** Takes a second spider out of the clock and closes it. */
+  const release = (other: SpiderController) => {
+    engine.remove(other);
+    other.close();
+  };
 
   /** A second spider on the same tempo with the master at full, to compare with. */
   const undimmed = (change: unknown) => {
@@ -343,6 +355,7 @@ describe('SpiderController effects', () => {
       universe: 0,
       address: 1,
     });
+    engine.add(other);
     other.update(change);
     return { sent, other };
   };
@@ -356,13 +369,40 @@ describe('SpiderController effects', () => {
     expect(controller.getState().effect.id).toBeNull();
   });
 
-  it('sends a new frame forty times per second while an effect runs', () => {
+  it('sends a frame at every point of the grid while an effect runs, and never more than 25 a second', () => {
     controller.update({ levels: { dimmer: 1 }, effect: { id: 'wave' } });
     const before = output.frames.length;
     advance(1000);
-    expect(output.frames.length - before).toBe(40);
+    // 126 beats per minute and 25 per second at most: 11 points per beat, 23 a second.
+    const made = output.frames.length - before;
+    expect(made).toBeGreaterThanOrEqual(22);
+    expect(made).toBeLessThanOrEqual(25);
     const pictures = new Set(output.frames.slice(before).map((f) => f.data.slice(6, 38).join()));
-    expect(pictures.size).toBeGreaterThan(20);
+    expect(pictures.size).toBeGreaterThan(15);
+  });
+
+  it('has no timer of its own', () => {
+    controller.update({ levels: { dimmer: 1 }, effect: { id: 'wave' } });
+    engine.close();
+    expect(vi.getTimerCount()).toBe(0);
+    const before = output.frames.length;
+    advance(500);
+    expect(output.frames.length).toBe(before);
+  });
+
+  it('wants frames while an effect is chosen and the tempo runs, and says when that changes', () => {
+    const wants: boolean[] = [];
+    controller.on('wants', () => wants.push(controller.wantsFrames()));
+    expect(controller.wantsFrames()).toBe(false);
+    controller.update({ effect: { id: 'chase' } });
+    expect(controller.wantsFrames()).toBe(true);
+    tempo.update({ source: 'audio' });
+    tempo.follow({ running: false });
+    expect(controller.wantsFrames()).toBe(false);
+    tempo.follow({ running: true });
+    controller.update({ effect: { id: null } });
+    expect(controller.wantsFrames()).toBe(false);
+    expect(wants).toEqual([true, false]);
   });
 
   it('sends nothing on its own when no effect runs', () => {
@@ -449,13 +489,16 @@ describe('SpiderController effects', () => {
       const before = output.frames.length;
       const beforeOther = sent.frames.length;
       advance(1000);
-      other.close();
+      release(other);
 
       const dimmed = output.frames.slice(before);
       const full = sent.frames.slice(beforeOther);
-      expect(dimmed).toHaveLength(40);
-      expect(dimmed.map((f) => f.data[5])).toEqual(new Array(40).fill(128));
-      expect(full.map((f) => f.data[5])).toEqual(new Array(40).fill(255));
+      const made = dimmed.length;
+      expect(made).toBeGreaterThanOrEqual(22);
+      expect(made).toBeLessThanOrEqual(25);
+      expect(full).toHaveLength(made);
+      expect(dimmed.map((f) => f.data[5])).toEqual(new Array(made).fill(128));
+      expect(full.map((f) => f.data[5])).toEqual(new Array(made).fill(255));
       expect(dimmed.map((f) => butDimmer(f.data))).toEqual(full.map((f) => butDimmer(f.data)));
       expect(new Set(dimmed.map((f) => butDimmer(f.data).join())).size).toBeGreaterThan(5);
     }
@@ -474,13 +517,16 @@ describe('SpiderController effects', () => {
     advance(500);
     controller.setMaster(0);
     advance(500);
-    other.close();
+    release(other);
 
-    expect(frames).toHaveLength(20);
-    expect(frames.map((dmx) => dmx[5])).toEqual([
-      ...new Array(10).fill(128),
-      ...new Array(10).fill(0),
-    ]);
+    // A frame at every point of the grid, 23 a second, and each is what was sent.
+    expect(frames.length).toBeGreaterThanOrEqual(22);
+    expect(frames.length).toBeLessThanOrEqual(25);
+    const half = frames.filter((dmx) => dmx[5] === 128).length;
+    const dark = frames.filter((dmx) => dmx[5] === 0).length;
+    expect(half + dark).toBe(frames.length);
+    expect(half).toBeGreaterThanOrEqual(10);
+    expect(dark).toBeGreaterThanOrEqual(10);
     expect(frames.map(butDimmer)).toEqual(full.map(butDimmer));
     expect(Math.max(...frames.slice(10).flatMap((dmx) => dmx.slice(6, 38)))).toBeGreaterThan(200);
   });
@@ -577,16 +623,110 @@ describe('SpiderController effects', () => {
     expect(ch(output, 10)).toBe(0);
   });
 
-  it('tells browsers what is shown, at a lower rate than it sends', () => {
+  it('tells browsers every frame it sends, with the beat the frame is for', () => {
     const frames: { dmx: number[]; beat: number }[] = [];
     controller.on('frame', (dmx, beat) => frames.push({ dmx, beat }));
     tempo.update({ sync: true });
     controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase' } });
+    const before = output.frames.length;
     advance(1000);
-    expect(frames.length).toBeGreaterThanOrEqual(19);
-    expect(frames.length).toBeLessThanOrEqual(21);
+    // One frame event for every frame the engine made.
+    expect(frames.length).toBe(output.frames.length - before);
     expect(frames[0]?.dmx).toHaveLength(43);
     expect(frames[frames.length - 1]?.beat).toBeGreaterThan(1.9);
+    // And it is the frame that went out, byte for byte.
+    expect(frames.at(-1)?.dmx).toEqual(Array.from(output.last.slice(0, 43)));
+    // The beats are the points of the grid: 11 to a beat at 126 beats per minute.
+    for (const { beat } of frames)
+      expect(Math.abs(beat * 11 - Math.round(beat * 11))).toBeLessThan(1e-6);
+  });
+
+  it('shows the flash of a kick at its full level on every beat, at any tempo', () => {
+    const red = { red: 1, green: 0, blue: 0, white: 0 };
+    for (const bpm of [90, 120, 126, 133.3, 150, 170, 190]) {
+      const frames: { dmx: number[]; beat: number }[] = [];
+      const record = (dmx: number[], beat: number) => frames.push({ dmx, beat });
+      controller.on('frame', record);
+      tempo.update({ bpm, sync: true });
+      controller.update({
+        levels: { dimmer: 1 },
+        effect: { id: 'kick', speed: 1, colourA: red, colourB: red },
+      });
+      advance(30_000);
+      controller.off('frame', record);
+      const onTheBeat = frames.filter(({ beat }) => Number.isInteger(beat));
+      // A frame is made for every beat, and in each the first lens is at full level. If a point
+      // of the grid fell a hair short of its beat, the frame would show the end of the beat before.
+      expect(onTheBeat.length).toBeGreaterThan((30 * bpm) / 60 - 3);
+      for (const { dmx } of onTheBeat) expect(dmx[6]).toBe(255);
+    }
+  });
+
+  describe('when the speed is changed while the effect runs', () => {
+    /** The lens the chase is on. */
+    const head = () => {
+      const reds = Array.from({ length: 8 }, (_, i) => controller.getDmx()[6 + i * 4] ?? 0);
+      return reds.indexOf(Math.max(...reds));
+    };
+
+    it('stays on the lens it is on when the speed of the effect is pressed', () => {
+      tempo.update({ bpm: 120, sync: true });
+      controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase', speed: 1 } });
+      advance(3400);
+      const before = head();
+      expect(before).toBe(6);
+      controller.update({ effect: { speed: 2 } });
+      expect(head()).toBe(before);
+      controller.update({ effect: { speed: 0.5 } });
+      expect(head()).toBe(before);
+    });
+
+    it('stays on the lens it is on when the master speed is pressed', () => {
+      tempo.update({ bpm: 120, sync: true });
+      controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase', speed: 1 } });
+      advance(3400);
+      const before = head();
+      tempo.update({ rate: 4 });
+      expect(head()).toBe(before);
+      tempo.update({ rate: 1 });
+      expect(head()).toBe(before);
+    });
+
+    it('goes on from there on the beat, at the new speed', () => {
+      tempo.update({ bpm: 120, sync: true });
+      controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase', speed: 1 } });
+      advance(3400);
+      controller.update({ effect: { speed: 2 } });
+      const seen: number[] = [];
+      for (let i = 0; i < 24; i++) {
+        advance(25);
+        seen.push(head());
+      }
+      // At ×2 and 120 beats per minute a step comes every 250 ms, on the half beats.
+      const steps = seen.filter((lens, i) => i > 0 && lens !== seen[i - 1]).length;
+      expect(steps).toBeGreaterThanOrEqual(2);
+      expect(steps).toBeLessThanOrEqual(3);
+    });
+
+    it('keeps stepping at ×2 while the tempo wanders around 150 with ×4 chosen, and does not flap', () => {
+      tempo.update({ bpm: 150.2, sync: true });
+      controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase', speed: 4 } });
+      // 150 beats per minute at ×4 would be 10 steps a second; the limit takes it to ×2, 5 a second.
+      advance(2000);
+      let steps = 0;
+      let last = head();
+      for (let i = 0; i < 120; i++) {
+        // The tempo wanders either side of the threshold every 100 ms.
+        if (i % 4 === 0) tempo.update({ bpm: i % 8 === 0 ? 149.8 : 150.2 });
+        advance(25);
+        const now = head();
+        if (now !== last) steps++;
+        last = now;
+      }
+      // Three seconds at ×2 are 15 steps. A limit that flapped would average 7.5 a second.
+      expect(steps).toBeGreaterThanOrEqual(14);
+      expect(steps).toBeLessThanOrEqual(16);
+    });
   });
 
   it('refuses effect settings that make no sense, and changes nothing', () => {

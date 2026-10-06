@@ -9,7 +9,8 @@
  *
  * Events: `fixture` (id, state, dmx, origin), `frame` (id, dmx, beat),
  * `tempo` (state, beat, origin), `blackout` (blackout, origin), `master` (level, origin),
- * `status` (status), `show` (summary), `playback` (state), `audio` (what is heard).
+ * `status` (status), `show` (summary), `playback` (state), `audio` (what is heard),
+ * `output` (how often and how far ahead of the beat the output is made).
  */
 
 import { EventEmitter } from 'node:events';
@@ -19,10 +20,11 @@ import { FeedRecorder } from '../inputs/audio/recorder.js';
 import type { AudioSettings } from '../inputs/audio/settings.js';
 import type { BridgeStatus } from '../outputs/lr512/bridgeClient.js';
 import { Patch, type UniverseOutput } from '../outputs/patch.js';
-import { type FixtureController, PatchError } from './fixture.js';
+import { DEFAULT_MAX_FPS, Engine, isAnimated, readMaxFps } from './engine.js';
+import { type FixtureController, PatchError, readObject } from './fixture.js';
 import { FIXTURE_KINDS, type FixtureKind } from './kinds.js';
 import { Playback, type PlaybackState, type ShowSummary } from './playback.js';
-import { Tempo, type TempoSource, type TempoState } from './tempo.js';
+import { readLead, Tempo, type TempoSource, type TempoState } from './tempo.js';
 
 export interface FixtureDefinition {
   /** Names the fixture in addresses of pages and of the API: `spider`, `spider-2`. */
@@ -51,8 +53,20 @@ export interface LinkStatus {
   channels: number[];
 }
 
+/** How the output is made: how often, and how far ahead of the beat. */
+export interface OutputSettings {
+  /** The most frames per second, for the effects and for the output. */
+  maxFps: number;
+  /** Milliseconds by which the output is made ahead of the beat, to make up for the path to the light. */
+  leadMs: number;
+}
+
 export interface RigOptions {
   output: UniverseOutput;
+  /** The most frames per second. Default 25, which is what the original Light Rider app sends. */
+  maxFps?: number;
+  /** Milliseconds by which the output is made ahead of the beat. Default 0. */
+  leadMs?: number;
   fixtures: readonly FixtureDefinition[];
   kinds?: Readonly<Record<string, FixtureKind>>;
   /** Where the show file is. Without it the show is kept in memory only. */
@@ -73,6 +87,9 @@ const ID = /^[a-z0-9][a-z0-9-]*$/;
 
 export class Rig extends EventEmitter {
   readonly tempo: Tempo;
+  /** The one clock that makes the frames of the fixtures that animate. */
+  readonly engine: Engine;
+  private readonly output: UniverseOutput;
   /** The microphone of the browser on the laptop. The listen page posts its sound to it. */
   readonly mic: BrowserMicSource;
   /** What is heard through the microphone, and what the tempo does with it. */
@@ -91,6 +108,10 @@ export class Rig extends EventEmitter {
     super();
     const kinds = options.kinds ?? FIXTURE_KINDS;
     this.tempo = new Tempo(options.now ? { now: options.now } : {});
+    this.output = options.output;
+    // Checked before anything is made, so that nothing has to be taken down again.
+    const maxFps = readMaxFps(options.maxFps ?? DEFAULT_MAX_FPS);
+    this.tempo.setLead(options.leadMs ?? 0);
     const patch = new Patch(options.output);
 
     const fixtures: RigFixture[] = [];
@@ -116,6 +137,20 @@ export class Rig extends EventEmitter {
       throw error;
     }
     this.fixtures = fixtures;
+
+    this.engine = new Engine({
+      tempo: this.tempo,
+      maxFps,
+      ...(options.log
+        ? {
+            onError: (error) => options.log?.(`a fixture could not make a frame: ${String(error)}`),
+          }
+        : {}),
+    });
+    this.output.setMaxFps?.(maxFps);
+    for (const { controller } of fixtures) {
+      if (isAnimated(controller)) this.engine.add(controller);
+    }
 
     this.mic = new BrowserMicSource(options.now ? { now: options.now } : {});
     this.mic.start();
@@ -156,6 +191,26 @@ export class Rig extends EventEmitter {
 
   find(id: string): RigFixture | undefined {
     return this.fixtures.find((fixture) => fixture.id === id);
+  }
+
+  getOutput(): OutputSettings {
+    return { maxFps: this.engine.getMaxFps(), leadMs: this.tempo.leadMs };
+  }
+
+  /**
+   * Changes how the output is made. Throws a `PatchError`, and changes nothing, when any part
+   * of it is wrong.
+   */
+  setOutput(patch: unknown): OutputSettings {
+    const given = readObject(patch, 'the output settings', ['maxFps', 'leadMs']);
+    const maxFps = given.maxFps === undefined ? this.engine.getMaxFps() : readMaxFps(given.maxFps);
+    const leadMs = given.leadMs === undefined ? this.tempo.leadMs : readLead(given.leadMs);
+    this.engine.setMaxFps(maxFps);
+    this.output.setMaxFps?.(maxFps);
+    this.tempo.setLead(leadMs);
+    const settings = this.getOutput();
+    this.emit('output', settings);
+    return settings;
   }
 
   getBlackout(): boolean {
@@ -214,6 +269,7 @@ export class Rig extends EventEmitter {
   }
 
   close(): void {
+    this.engine.close();
     this.playback.close();
     for (const { controller } of this.fixtures) controller.close();
     this.recorder?.detach();
