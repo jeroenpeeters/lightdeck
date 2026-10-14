@@ -1,15 +1,29 @@
 /**
- * The show: what has been programmed. For now that is the groups with their scenes.
+ * The show: what has been programmed. That is the palettes, and the groups with their scenes
+ * and their looks.
+ *
+ * A palette is a list of colours that the effects take their colours from, kept once for the
+ * whole show (`engine/palette.ts`). Colour is the one type of the three that belongs to no
+ * fixture, so it is a palette and not a scene.
  *
  * A group is a named set of fixtures, and a scene is a part of a look for the fixtures of
- * one group, of one type: lights, colour or motion. For every fixture it names, a scene
+ * one group, of one type: lights or motion. For every fixture it names, a scene
  * holds the properties of its type that fixture should have, in the form the controller of
  * the fixture gives and takes; a fixture of the group that it does not name has those
- * properties at rest. The show knows fixtures by their id only. Which fixtures there are,
- * and whether one of them can take a part, is handed to it.
+ * properties at rest. A look is a key that sets a light scene, a palette and a motion scene of
+ * its group together; it names them and holds no copy of them. The show knows fixtures by
+ * their id only. Which fixtures there are, and whether one of them can take a part, is handed
+ * to it.
  *
- * In the file the groups are a map from id to group, and so are the scenes of a group:
+ * In the file the palettes, the groups, and the scenes and looks of a group are maps from id:
  *
+ *   palettes:
+ *     sunset:
+ *       label: Sunset
+ *       colours: ['#ff4a00', off, '#ffb000']
+ *       mode: cycle                     # static | cycle
+ *       change: fade                    # step | fade
+ *       speed: 0.25
  *   groups:
  *     spider:
  *       label: Spider
@@ -22,21 +36,36 @@
  *             spider:
  *               levels: { dimmer: 1 }
  *               effect: { id: chase }
- *         amber:
- *           label: Amber
- *           type: colour
- *           fixtures:
- *             spider:
- *               effect: { colourA: ... }
+ *       looks:
+ *         drop:
+ *           label: Drop
+ *           lights: chase
+ *           colour: { palette: sunset, speed: 0.25 }
+ *           motion: scissor-slow
  *
- * A show without a file starts with a group for every fixture and one for all of them.
- * A file from before there were groups has `scenes:` at the top. It is read as those
- * starting groups, with its scenes in the group of all fixtures. A scene without a type is
- * a mistake, so the scenes of before there were types are not read.
+ * A show without a file starts with a group for every fixture and one for all of them, and
+ * the palettes `startingPalettes` gives. A file from before there were groups has `scenes:` at
+ * the top. It is read as those starting groups, with its scenes in the group of all fixtures.
+ * A scene without a type is a mistake, and so is a scene of the colour type: the scenes of
+ * before there were types and the colour scenes of before there were palettes are not read.
  */
 
-import { isSceneType, SCENE_TYPES, type SceneType } from '../fixtures/profile.js';
+import { SPEEDS } from '../engine/effects.js';
+import {
+  type Palette,
+  PaletteError,
+  readPaletteFields,
+  startingPalettes,
+} from '../engine/palette.js';
+import type { SceneType } from '../fixtures/profile.js';
 import { PatchError } from '../server/fixture.js';
+
+/** The types of scene that are stored in a group. Colour is a palette of the show. */
+export const STORED_TYPES = ['lights', 'motion'] as const;
+export type StoredType = (typeof STORED_TYPES)[number];
+
+export const isStoredType = (value: unknown): value is StoredType =>
+  STORED_TYPES.includes(value as StoredType);
 
 export interface Scene {
   /** Names the scene in the file and in the API: `amber-chase`. Its own within its group. */
@@ -44,9 +73,32 @@ export interface Scene {
   /** What the operator calls it. */
   label: string;
   /** Which properties of the fixtures it sets. */
-  type: SceneType;
+  type: StoredType;
   /** By fixture id, what the controller of that fixture keeps of it for this type. */
   fixtures: Record<string, unknown>;
+}
+
+/** The palette a look sets, and the pace it gives it instead of the pace of the palette. */
+export interface LookColour {
+  palette: string;
+  /** One of `SPEEDS`, or absent for the pace of the palette itself. */
+  speed?: number;
+}
+
+/**
+ * A key that sets a scene of lights, a palette and a scene of motion together. A lane that a
+ * look does not name is left as it is.
+ */
+export interface Look {
+  /** Names the look in the file and in the API. Its own within its group. */
+  id: string;
+  /** What the operator calls it. */
+  label: string;
+  /** Id of a scene of the group of type lights. */
+  lights?: string;
+  colour?: LookColour;
+  /** Id of a scene of the group of type motion. */
+  motion?: string;
 }
 
 export interface Group {
@@ -58,9 +110,13 @@ export interface Group {
   fixtures: string[];
   /** In the order of the file. */
   scenes: Scene[];
+  /** In the order of the file. */
+  looks: Look[];
 }
 
 export interface Show {
+  /** In the order of the file. */
+  palettes: Palette[];
   /** In the order of the file. */
   groups: Group[];
 }
@@ -117,10 +173,13 @@ export function readLabel(value: unknown, what = 'scene'): string {
   return label;
 }
 
-/** The type of a scene as it was given. Throws a `PatchError` when it is none of the three. */
-export function readSceneType(value: unknown): SceneType {
-  if (!isSceneType(value)) {
-    throw new PatchError(`a scene needs a type: ${SCENE_TYPES.join(', ')}`);
+/** The type of a scene as it was given. Throws a `PatchError` when it is neither lights nor motion. */
+export function readSceneType(value: unknown): StoredType {
+  if (value === 'colour') {
+    throw new PatchError('colours are palettes now, and not scenes: a scene is lights or motion');
+  }
+  if (!isStoredType(value)) {
+    throw new PatchError(`a scene needs a type: ${STORED_TYPES.join(' or ')}`);
   }
   return value;
 }
@@ -147,6 +206,16 @@ export function sceneId(label: string, taken: ReadonlySet<string>): string {
 /** The id of a new group, by its name. */
 export function groupId(label: string, taken: ReadonlySet<string>): string {
   return makeId(label, taken, 'group');
+}
+
+/** The id of a new palette, by its name. */
+export function paletteId(label: string, taken: ReadonlySet<string>): string {
+  return makeId(label, taken, 'palette');
+}
+
+/** The id of a new look, by its name. `taken` has the ids of the looks of its group. */
+export function lookId(label: string, taken: ReadonlySet<string>): string {
+  return makeId(label, taken, 'look');
 }
 
 function noFixture(id: string, fixtures: readonly ShowFixture[]): string {
@@ -182,6 +251,7 @@ export function startingGroups(fixtures: readonly ShowFixture[]): Group[] {
     label: tidyLabel(label).slice(0, MAX_LABEL).trim() || id,
     fixtures: [id],
     scenes: [],
+    looks: [],
   }));
   if (fixtures.length > 1) {
     const ids = fixtures.map((fixture) => fixture.id);
@@ -190,6 +260,7 @@ export function startingGroups(fixtures: readonly ShowFixture[]): Group[] {
       label: 'All',
       fixtures: ids,
       scenes: [],
+      looks: [],
     });
   }
   return groups;
@@ -243,7 +314,100 @@ function readScenes(listed: unknown, group: Group, known: KnownFixtures, place: 
   return scenes;
 }
 
-function readGroups(listed: unknown, known: KnownFixtures): Group[] {
+function readPalettes(listed: unknown): Palette[] {
+  if (listed === null) return [];
+  if (!isObject(listed)) throw new ShowError('"palettes" must be a list of palettes by their id');
+
+  const palettes: Palette[] = [];
+  for (const [id, palette] of entries(listed)) {
+    const where = `palette "${id}"`;
+    if (!ID.test(id)) throw new ShowError(`${where}: ${ID_RULE}`);
+    if (!isObject(palette)) throw new ShowError(`${where} must have colours`);
+    try {
+      const { label, ...fields } = palette;
+      palettes.push({
+        id,
+        label: label === undefined ? id : readLabel(label, 'palette'),
+        ...readPaletteFields(fields),
+      });
+    } catch (error) {
+      if (error instanceof PaletteError || error instanceof PatchError) {
+        throw new ShowError(`${where}: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+  return palettes;
+}
+
+/** The colour a look sets: a palette by its id, or `{ palette, speed }`. */
+function readLookColour(value: unknown, palettes: readonly Palette[]): LookColour {
+  const given = typeof value === 'string' ? { palette: value } : value;
+  if (!isObject(given))
+    throw new PatchError('"colour" must name a palette, with a speed if you like');
+  const extra = Object.keys(given).find((key) => key !== 'palette' && key !== 'speed');
+  if (extra !== undefined) {
+    throw new PatchError(`"colour" cannot have "${extra}", only palette and speed`);
+  }
+  const { palette, speed } = given;
+  if (typeof palette !== 'string' || !palettes.some((each) => each.id === palette)) {
+    throw new PatchError(`there is no palette called "${String(palette)}"`);
+  }
+  if (speed === undefined) return { palette };
+  if (typeof speed !== 'number' || !SPEEDS.includes(speed)) {
+    throw new PatchError(`the speed of a palette must be one of ${SPEEDS.join(', ')}`);
+  }
+  return { palette, speed };
+}
+
+/** A scene of the group of this type, by its id. */
+function sceneOfType(group: Group, id: unknown, type: StoredType): string {
+  if (typeof id !== 'string') throw new PatchError(`"${type}" must name a scene by its id`);
+  const scene = group.scenes.find((each) => each.id === id);
+  if (!scene) throw new PatchError(`there is no scene called "${id}" in this group`);
+  if (scene.type !== type) {
+    throw new PatchError(`the scene "${id}" is ${scene.type}, and not ${type}`);
+  }
+  return id;
+}
+
+function readLooks(listed: unknown, group: Group, palettes: readonly Palette[]): Look[] {
+  if (listed === null || listed === undefined) return [];
+  if (!isObject(listed)) {
+    throw new ShowError(`group "${group.id}": "looks" must be a list of looks by their id`);
+  }
+
+  const looks: Look[] = [];
+  for (const [id, look] of entries(listed)) {
+    const where = `look "${id}" of group "${group.id}"`;
+    if (!ID.test(id)) throw new ShowError(`${where}: ${ID_RULE}`);
+    if (!isObject(look)) throw new ShowError(`${where} must have a label and what it sets`);
+    const extra = Object.keys(look).find(
+      (key) => !['label', 'lights', 'colour', 'motion'].includes(key),
+    );
+    if (extra !== undefined) {
+      throw new ShowError(`${where} cannot have "${extra}", only label, lights, colour and motion`);
+    }
+    try {
+      const read: Look = {
+        id,
+        label: look.label === undefined ? id : readLabel(look.label, 'look'),
+      };
+      if (look.lights !== undefined) read.lights = sceneOfType(group, look.lights, 'lights');
+      if (look.colour !== undefined) read.colour = readLookColour(look.colour, palettes);
+      if (look.motion !== undefined) read.motion = sceneOfType(group, look.motion, 'motion');
+      if (!read.lights && !read.colour && !read.motion) {
+        throw new PatchError('a look sets a scene of lights, a palette or a scene of motion');
+      }
+      looks.push(read);
+    } catch (error) {
+      throw new ShowError(`${where}: ${message(error)}`);
+    }
+  }
+  return looks;
+}
+
+function readGroups(listed: unknown, known: KnownFixtures, palettes: readonly Palette[]): Group[] {
   if (listed === null) return [];
   if (!isObject(listed)) throw new ShowError('"groups" must be a list of groups by their id');
 
@@ -253,12 +417,14 @@ function readGroups(listed: unknown, known: KnownFixtures): Group[] {
     if (!ID.test(id)) throw new ShowError(`${where}: ${ID_RULE}`);
     if (!isObject(group)) throw new ShowError(`${where} must have a label, fixtures and scenes`);
     const extra = Object.keys(group).find(
-      (key) => key !== 'label' && key !== 'fixtures' && key !== 'scenes',
+      (key) => key !== 'label' && key !== 'fixtures' && key !== 'scenes' && key !== 'looks',
     );
     if (extra !== undefined) {
-      throw new ShowError(`${where} cannot have "${extra}", only label, fixtures and scenes`);
+      throw new ShowError(
+        `${where} cannot have "${extra}", only label, fixtures, scenes and looks`,
+      );
     }
-    const read: Group = { id, label: id, fixtures: [], scenes: [] };
+    const read: Group = { id, label: id, fixtures: [], scenes: [], looks: [] };
     try {
       if (group.label !== undefined) read.label = readLabel(group.label, 'group');
       read.fixtures = readGroupFixtures(group.fixtures ?? [], known.fixtures);
@@ -266,6 +432,7 @@ function readGroups(listed: unknown, known: KnownFixtures): Group[] {
       throw new ShowError(`${where}: ${message(error)}`);
     }
     read.scenes = readScenes(group.scenes, read, known, ` of ${where}`);
+    read.looks = readLooks(group.looks, read, palettes);
     groups.push(read);
   }
   return groups;
@@ -273,22 +440,30 @@ function readGroups(listed: unknown, known: KnownFixtures): Group[] {
 
 /**
  * Reads what the file holds as a show. Throws a `ShowError` that says what is wrong. The
- * groups, and the scenes of a group, can be a `Map`, which keeps their order.
+ * palettes, the groups, and the scenes and looks of a group, can be a `Map`, which keeps their
+ * order.
  */
 export function readShow(data: unknown, known: KnownFixtures): Show {
-  if (data === null || data === undefined) return { groups: startingGroups(known.fixtures) };
-  if (!isObject(data)) throw new ShowError('the show must start with "groups:"');
-  const unknown = Object.keys(data).find((key) => key !== 'groups' && key !== 'scenes');
-  if (unknown !== undefined) {
-    throw new ShowError(`the show cannot have "${unknown}", only groups`);
+  if (data === null || data === undefined) {
+    return { palettes: startingPalettes(), groups: startingGroups(known.fixtures) };
   }
+  if (!isObject(data)) throw new ShowError('the show must start with "groups:"');
+  const unknown = Object.keys(data).find(
+    (key) => key !== 'groups' && key !== 'scenes' && key !== 'palettes',
+  );
+  if (unknown !== undefined) {
+    throw new ShowError(`the show cannot have "${unknown}", only palettes and groups`);
+  }
+  // A show without the key has the palettes a show starts with. Writing it to the file is what
+  // the first change from the deck does.
+  const palettes = data.palettes === undefined ? startingPalettes() : readPalettes(data.palettes);
   if (data.groups !== undefined) {
     if (data.scenes !== undefined) {
       throw new ShowError(
         'the show has "scenes" next to "groups". A scene belongs to a group: put it under the "scenes" of its group',
       );
     }
-    return { groups: readGroups(data.groups, known) };
+    return { palettes, groups: readGroups(data.groups, known, palettes) };
   }
 
   // From before there were groups: the scenes are for every fixture.
@@ -299,5 +474,5 @@ export function readShow(data: unknown, known: KnownFixtures): Show {
   } else if (isObject(data.scenes) && entries(data.scenes).length > 0) {
     throw new ShowError('the show has scenes, and there is no fixture they can be for');
   }
-  return { groups };
+  return { palettes, groups };
 }

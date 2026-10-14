@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type Curve, curveAt } from './curve.js';
+import type { Rgbw } from './colour.js';
 import {
   EFFECTS,
   type EffectContext,
@@ -7,23 +7,24 @@ import {
   findEffect,
   limitSpeed,
   MAX_FLASH_HZ,
-  palette,
-  REST_LEVEL,
-  type Rgbw,
   SPEEDS,
 } from './effects.js';
+import { type PaletteColour, paint } from './palette.js';
 
-/** The foreground. */
+/** The main colour. */
 const A: Rgbw = { red: 1, green: 0.5, blue: 0, white: 0 };
-/** The background: dimmer than the foreground, as it is when a flash has to stand out of it. */
+/** The backdrop: dimmer than the main colour, as it is when a flash has to stand out of it. */
 const B: Rgbw = { red: 0, green: 0, blue: 0.25, white: 0 };
+/** The accent. */
+const C: Rgbw = { red: 0, green: 0, blue: 0, white: 1 };
+const DARK: Rgbw = { red: 0, green: 0, blue: 0, white: 0 };
 const BARS = [
   [0, 1, 2, 3],
   [4, 5, 6, 7],
 ];
 
 function context(beat: number, extra: Partial<EffectContext> = {}): EffectContext {
-  return { beat, bpm: 126, cells: 8, bars: BARS, a: A, b: B, ...extra };
+  return { beat, cells: 8, bars: BARS, slots: 2, ...extra };
 }
 
 function render(id: string, beat: number, extra: Partial<EffectContext> = {}): EffectFrame {
@@ -32,78 +33,41 @@ function render(id: string, beat: number, extra: Partial<EffectContext> = {}): E
   return effect.render(context(beat, extra));
 }
 
+/** The lenses of an effect as they look with a palette: the effect is given as many slots as it has. */
+function look(
+  id: string,
+  beat: number,
+  colours: PaletteColour[] = [A, B],
+  extra: Partial<EffectContext> = {},
+): Rgbw[] {
+  const frame = render(id, beat, { slots: colours.length, ...extra });
+  return paint(frame.levels, { colours, mode: 'static', change: 'step', speed: 1 }, 0);
+}
+
 /** Brightest colour part of a cell, 0..1. */
 const peak = (c: Rgbw | undefined) => (c ? Math.max(c.red, c.green, c.blue, c.white) : 0);
 /** All the light of a cell. A fade from one colour to another never rises while it falls. */
 const light = (c: Rgbw | undefined) => (c ? c.red + c.green + c.blue + c.white : 0);
-const total = (frame: EffectFrame) => frame.cells.reduce((sum, c) => sum + peak(c), 0);
-const brightest = (frame: EffectFrame) =>
-  frame.cells.reduce((best, c, i) => (peak(c) > peak(frame.cells[best]) ? i : best), 0);
+const total = (cells: Rgbw[]) => cells.reduce((sum, c) => sum + peak(c), 0);
+const brightest = (cells: Rgbw[]) =>
+  cells.reduce((best, c, i) => (peak(c) > peak(cells[best]) ? i : best), 0);
 
-/** A motor that is slow at 0 and fast at 100: 30 to 300 degrees per second. */
-const CALIBRATED_SPEED = [
-  [0, 30],
-  [1, 300],
-] as const;
-/**
- * The two bars as Jeroen calibrated them on 2026-10-14: the same tilt turns them opposite ways,
- * and neither reaches further than 20 degrees to the side where the beams cross.
- */
-const BAR_TILTS = [
-  [
-    [0, 20],
-    [0.3, 0],
-    [0.87, -90],
-    [1, -108],
-  ],
-  [
-    [0, -20],
-    [0.3, 0],
-    [0.87, 90],
-    [1, 108],
-  ],
-] as const;
-const REAL_MOTION = { tilt: BAR_TILTS, motorSpeed: CALIBRATED_SPEED };
-/** The motor speed of the spider as timed: fast up to 50, and slow at the top of the channel. */
-const SLOW_AT_THE_TOP = [
-  [0, 182.9],
-  [0.5, 182.9],
-  [0.9, 32],
-  [1, 3.1],
-] as const;
-/** Where the bars of the frame stand, in degrees from neutral, by the calibration of the spider. */
-const degreesOf = (frame: EffectFrame, motion: { tilt: readonly Curve[] } = REAL_MOTION) =>
-  (frame.tilt ?? []).map((tilt, bar) => curveAt(motion.tilt[bar] ?? [], tilt));
-
-describe('the colours of an effect', () => {
-  it('are the two the operator chose, the first as foreground and the second as background', () => {
-    const B2: Rgbw = { red: 0.2, green: 0, blue: 0, white: 0 };
-    expect(palette(A, B2)).toEqual({ a: A, b: B2 });
-  });
-
-  it('have the first colour dim for a background when the second is left empty', () => {
-    const { a, b } = palette(A, null);
-    expect(a).toEqual(A);
-    expect(b.red).toBeCloseTo(REST_LEVEL);
-    expect(b.green).toBeCloseTo(0.5 * REST_LEVEL);
-    expect(b.blue).toBe(0);
-    expect(b.white).toBe(0);
-  });
-
-  it('do not change the colours that were given', () => {
-    const a = { ...A };
-    palette(a, null);
-    expect(a).toEqual(A);
-  });
-});
+/** Effects that do not change over time. */
+const STATIC = ['solid', 'bars', 'alternate'];
 
 describe('the set of effects', () => {
-  it('has twelve, each with its own id, a name and a description', () => {
-    expect(EFFECTS).toHaveLength(12);
-    expect(new Set(EFFECTS.map((e) => e.id)).size).toBe(12);
+  it('has twenty-two, each with its own id, a name and a description', () => {
+    expect(EFFECTS).toHaveLength(22);
+    expect(new Set(EFFECTS.map((e) => e.id)).size).toBe(22);
     for (const effect of EFFECTS) {
       expect(effect.name.length).toBeGreaterThan(0);
       expect(effect.description.length).toBeGreaterThan(20);
+    }
+  });
+
+  it('no longer has the effects that move the bars, nor the rainbow', () => {
+    for (const id of ['tiltwave', 'scissor', 'scissor-motor', 'spectrum']) {
+      expect(findEffect(id)).toBeUndefined();
     }
   });
 
@@ -111,29 +75,55 @@ describe('the set of effects', () => {
     expect(findEffect('chase')?.name).toBe('Chase');
     expect(findEffect('nope')).toBeUndefined();
   });
+
+  it('says how many slots of the palette each uses: one to three, or all for the spread', () => {
+    const slots = Object.fromEntries(EFFECTS.map((effect) => [effect.id, effect.slots]));
+    expect(slots).toMatchObject({
+      kick: 3,
+      chase: 3,
+      sparkle: 3,
+      bounce: 2,
+      swap: 2,
+      wave: 2,
+      build: 2,
+      burst: 2,
+      pump: 2,
+      solid: 1,
+      bars: 2,
+      alternate: 2,
+      spread: 8,
+      cross: 2,
+      ticktock: 2,
+      scan: 2,
+      pairs: 2,
+      stab: 2,
+      fade: 2,
+      strobe: 2,
+      seesaw: 2,
+      glow: 2,
+    });
+  });
 });
 
 describe.each(EFFECTS.map((e) => [e.id, e] as const))('%s', (_id, effect) => {
-  it('gives every cell a valid colour at any moment and any tempo', () => {
+  it('gives every cell valid levels at any moment and with any palette length', () => {
     // Collected and asserted once: an assertion per value makes this sweep slow.
     const wrong: string[] = [];
-    const valid = (value: number) => Number.isFinite(value) && value >= 0 && value <= 1;
-    for (const bpm of [60, 126, 140, 200, 400]) {
+    for (const slots of [1, 2, 3, 6, 8]) {
       for (let beat = 0; beat < 40; beat += 0.037) {
-        const frame = effect.render(context(beat, { bpm }));
-        const at = `beat ${beat.toFixed(3)} at ${bpm} bpm`;
-        if (frame.cells.length !== 8) wrong.push(`${frame.cells.length} cells, ${at}`);
-        frame.cells.forEach((cell, i) => {
-          for (const value of [cell.red, cell.green, cell.blue, cell.white]) {
-            if (!valid(value)) wrong.push(`cell ${i} has ${value}, ${at}`);
+        const frame = effect.render(context(beat, { slots }));
+        const at = `beat ${beat.toFixed(3)}, ${slots} slots`;
+        if (frame.levels.length !== 8) wrong.push(`${frame.levels.length} cells, ${at}`);
+        frame.levels.forEach((cell, i) => {
+          let sum = 0;
+          for (const level of cell) {
+            if (!Number.isFinite(level) || level < 0 || level > 1) {
+              wrong.push(`cell ${i} has ${level}, ${at}`);
+            }
+            sum += level;
           }
+          if (sum > 1 + 1e-9) wrong.push(`cell ${i} adds up to ${sum}, ${at}`);
         });
-        for (const tilt of frame.tilt ?? []) {
-          if (!valid(tilt)) wrong.push(`tilt ${tilt}, ${at}`);
-        }
-        if (frame.motorSpeed !== undefined && !valid(frame.motorSpeed)) {
-          wrong.push(`motor speed ${frame.motorSpeed}, ${at}`);
-        }
       }
     }
     expect(wrong.slice(0, 5)).toEqual([]);
@@ -143,77 +133,90 @@ describe.each(EFFECTS.map((e) => [e.id, e] as const))('%s', (_id, effect) => {
     expect(effect.render(context(13.37))).toEqual(effect.render(context(13.37)));
   });
 
-  it('changes over time', () => {
+  it(STATIC.includes(effect.id) ? 'stays as it is' : 'changes over time', () => {
     const pictures = new Set<string>();
-    for (let beat = 0; beat < 16; beat += 0.25) {
-      pictures.add(JSON.stringify(effect.render(context(beat))));
+    for (let beat = 0; beat < 16; beat += 0.1) {
+      pictures.add(JSON.stringify(effect.render(context(beat, { slots: 8 }))));
     }
-    expect(pictures.size).toBeGreaterThan(4);
+    if (STATIC.includes(effect.id)) expect(pictures.size).toBe(1);
+    // The strobe has only three pictures: a flash of each colour, and dark.
+    else expect(pictures.size).toBeGreaterThan(effect.id === 'strobe' ? 2 : 4);
   });
 
   it('copes with a different number of cells and bars', () => {
     const frame = effect.render(context(3.2, { cells: 4, bars: [[0, 1, 2, 3]] }));
-    expect(frame.cells).toHaveLength(4);
+    expect(frame.levels).toHaveLength(4);
   });
 
-  it('only sets the motor speed when it says so', () => {
-    const motion = REAL_MOTION;
-    for (let beat = 0; beat < 16; beat += 0.5) {
-      const frame = effect.render(context(beat, { motion }));
-      if (!effect.setsMotorSpeed) expect(frame.motorSpeed).toBeUndefined();
+  it('uses no more slots than it says, and no slot past the second that the palette lacks', () => {
+    // The backdrop is the second slot and is given even when the palette has one colour: it is
+    // then off. The slots after it are optional and are asked for only when they are there.
+    for (const slots of [1, 2, 3, 8]) {
+      for (let beat = 0; beat < 40; beat += 0.5) {
+        const frame = effect.render(context(beat, { slots }));
+        for (const cell of frame.levels) {
+          expect(cell.length).toBeLessThanOrEqual(effect.slots);
+          cell.forEach((level, slot) => {
+            if (slot >= 2 && slot >= slots) expect(level).toBe(0);
+          });
+        }
+      }
     }
   });
 
-  it('only tilts the bars when it says it moves', () => {
-    const frame = effect.render(context(2.5));
-    expect(frame.tilt !== undefined).toBe(effect.moves);
-    if (frame.tilt) expect(frame.tilt).toHaveLength(BARS.length);
-  });
-
-  it('does not change the colours it was given', () => {
-    const a = { ...A };
-    const b = { ...B };
-    effect.render(context(1.5, { a, b }));
-    expect(a).toEqual(A);
-    expect(b).toEqual(B);
+  it('does not touch what it was given', () => {
+    const bars = BARS.map((bar) => [...bar]);
+    effect.render(context(1.5, { bars }));
+    expect(bars).toEqual(BARS);
   });
 });
 
 describe('kick', () => {
   it('is brightest on the beat and fades until the next one', () => {
-    const all = (beat: number) => light(render('kick', beat).cells[0]);
+    const all = (beat: number) => light(look('kick', beat)[0]);
     expect(all(1)).toBeGreaterThan(all(1.5));
     expect(all(1.5)).toBeGreaterThan(all(1.95));
     expect(all(2)).toBeCloseTo(all(1));
   });
 
   it('rings a little longer on the first beat of the bar', () => {
-    expect(light(render('kick', 4.5).cells[0])).toBeGreaterThan(
-      light(render('kick', 5.5).cells[0]),
-    );
+    expect(light(look('kick', 4.5)[0])).toBeGreaterThan(light(look('kick', 5.5)[0]));
   });
 
-  it('hits in the first colour on every beat and falls back to the second', () => {
-    for (const beat of [0, 1, 2, 3, 4]) {
-      expect(render('kick', beat).cells[0]).toEqual(A);
-      const after = render('kick', beat + 0.99).cells[0];
+  it('hits in the main colour on every beat and falls back to the second', () => {
+    for (const beat of [1, 2, 3, 5]) {
+      expect(look('kick', beat)[0]).toEqual(A);
+      const after = look('kick', beat + 0.99)[0];
       expect(after?.red).toBeLessThan(0.05);
       expect(after?.blue).toBeGreaterThan(0.2);
     }
   });
 
-  it('with the second colour empty hits and falls back to a dim first colour', () => {
-    const frame = render('kick', 1.99, palette(A, null));
-    expect(peak(frame.cells[0])).toBeLessThan(0.1);
-    expect(frame.cells[0]?.blue).toBe(0);
+  it('with one colour hits and falls back to dark', () => {
+    expect(look('kick', 1, [A])[0]).toEqual(A);
+    expect(peak(look('kick', 1.99, [A])[0])).toBeLessThan(0.01);
+  });
+
+  it('hits the first beat of a bar in the third colour when the palette has one', () => {
+    for (const beat of [0, 4, 8]) {
+      expect(look('kick', beat, [A, B, C])[0]).toEqual(C);
+      const after = look('kick', beat + 0.99, [A, B, C])[0];
+      expect(after?.white).toBeLessThan(0.05);
+    }
+    // The other beats are as they are with two.
+    expect(look('kick', 1, [A, B, C])).toEqual(look('kick', 1, [A, B]));
+  });
+
+  it('hits the first beat of a bar in the main colour when the palette has no third', () => {
+    expect(look('kick', 4, [A, B])[0]).toEqual(A);
   });
 });
 
 describe('chase', () => {
   it('moves the bright lens along all eight, one lens per beat', () => {
-    const order = [0, 1, 2, 3, 4, 5, 6, 7].map((beat) => brightest(render('chase', beat + 0.01)));
+    const order = [0, 1, 2, 3, 4, 5, 6, 7].map((beat) => brightest(look('chase', beat + 0.01)));
     expect(order).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    expect(brightest(render('chase', 8.01))).toBe(0);
+    expect(brightest(look('chase', 8.01))).toBe(0);
   });
 
   it('stays where it is until the next beat', () => {
@@ -222,66 +225,102 @@ describe('chase', () => {
   });
 
   it('leaves a tail behind the head, not in front of it', () => {
-    const frame = render('chase', 3.5); // head on lens 3
-    expect(peak(frame.cells[2])).toBeGreaterThan(peak(frame.cells[4]));
+    const cells = look('chase', 3.5); // head on lens 3
+    expect(peak(cells[2])).toBeGreaterThan(peak(cells[4]));
+  });
+
+  it('puts the tail in the third colour when the palette has one, and the head in the main', () => {
+    const cells = look('chase', 3.5, [A, B, C]);
+    expect(cells[3]).toEqual(A);
+    const tail = cells[2];
+    expect(tail?.red).toBe(0);
+    expect(tail?.white).toBeGreaterThan(0.2);
+    // Far from the head it is the backdrop again, as with two.
+    expect(cells[6]?.white).toBeLessThan(0.1);
+    expect(cells[6]?.blue).toBeGreaterThan(0.2);
   });
 });
 
 describe('bounce', () => {
   it('goes to the far end and back, one lens per beat', () => {
-    const order = Array.from({ length: 17 }, (_, beat) => brightest(render('bounce', beat + 0.5)));
+    const order = Array.from({ length: 17 }, (_, beat) => brightest(look('bounce', beat + 0.5)));
     expect(order).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1, 0, 0]);
   });
 
-  it('is a spot of the first colour over the second', () => {
-    expect(render('bounce', 0).cells[0]).toEqual(A);
-    expect(render('bounce', 0).cells[7]).toEqual(B);
-    expect(render('bounce', 7).cells[7]).toEqual(A);
-    expect(render('bounce', 7).cells[0]).toEqual(B);
+  it('is a spot of the main colour over the second', () => {
+    expect(look('bounce', 0)[0]).toEqual(A);
+    expect(look('bounce', 0)[7]).toEqual(B);
+    expect(look('bounce', 7)[7]).toEqual(A);
+    expect(look('bounce', 7)[0]).toEqual(B);
   });
 });
 
 describe('bar swap', () => {
-  it('hits one bar per beat, in turn, in the first colour over the second', () => {
-    const first = render('swap', 0.05);
-    expect(first.cells[0]?.red).toBeGreaterThan(0.5);
-    expect(first.cells[4]).toEqual(B);
+  it('hits one bar per beat, in turn, in the main colour over the second', () => {
+    const first = look('swap', 0.05);
+    expect(first[0]?.red).toBeGreaterThan(0.5);
+    expect(first[4]).toEqual(B);
 
-    const second = render('swap', 1.05);
-    expect(second.cells[0]).toEqual(B);
-    expect(second.cells[4]?.red).toBeGreaterThan(0.5);
+    const second = look('swap', 1.05);
+    expect(second[0]).toEqual(B);
+    expect(second[4]?.red).toBeGreaterThan(0.5);
   });
 });
 
 describe('wave', () => {
-  it('has the first colour on its crest and the second in its trough', () => {
-    expect(render('wave', 1).cells[0]).toEqual(A);
-    const trough = render('wave', 3).cells[0];
+  it('has the main colour on its crest and the second in its trough', () => {
+    expect(look('wave', 1)[0]).toEqual(A);
+    const trough = look('wave', 3)[0];
     expect(trough?.red).toBeCloseTo(0);
     expect(trough?.blue).toBeCloseTo(0.25);
   });
 });
 
-describe('spectrum', () => {
-  it('ignores the chosen colours', () => {
-    const black: Rgbw = { red: 0, green: 0, blue: 0, white: 0 };
-    expect(render('spectrum', 2.2, { a: black, b: black })).toEqual(render('spectrum', 2.2));
-    expect(total(render('spectrum', 2.2, { a: black, b: black }))).toBeGreaterThan(2);
+describe('spread', () => {
+  const hues: PaletteColour[] = Array.from({ length: 8 }, (_, i) => ({
+    red: i / 7,
+    green: 1 - i / 7,
+    blue: 0.5,
+    white: 0,
+  }));
+
+  it('gives neighbouring lenses different colours when the palette has a colour for each', () => {
+    const cells = look('spread', 0.5, hues);
+    expect(new Set(cells.map((c) => JSON.stringify(c))).size).toBe(8);
   });
 
-  it('gives neighbouring lenses different colours', () => {
-    const frame = render('spectrum', 0.5);
-    expect(new Set(frame.cells.map((c) => JSON.stringify(c))).size).toBe(8);
+  it('spreads fewer colours in bands', () => {
+    const cells = look('spread', 0.5, [A, B]);
+    expect(new Set(cells.slice(0, 4).map((c) => JSON.stringify(c))).size).toBe(1);
+    expect(new Set(cells.slice(4).map((c) => JSON.stringify(c))).size).toBe(1);
+    expect(cells[0]).not.toEqual(cells[7]);
+  });
+
+  it('is one colour on every lens with one colour', () => {
+    const cells = look('spread', 0.5, [A]);
+    expect(new Set(cells.map((c) => JSON.stringify(c))).size).toBe(1);
+  });
+
+  it('pumps gently on the beat, and never goes dark', () => {
+    const level = (beat: number) => look('spread', beat, [A])[0]?.red ?? 0;
+    expect(level(0)).toBeCloseTo(1);
+    expect(level(0.99)).toBeGreaterThan(0.65);
+    expect(level(0.99)).toBeLessThan(0.7);
+  });
+
+  it('leaves a lens dark where the palette is off', () => {
+    const cells = look('spread', 0.5, [A, null]);
+    expect(peak(cells[0])).toBeGreaterThan(0.5);
+    expect(peak(cells[7])).toBe(0);
   });
 });
 
 describe('sparkle', () => {
-  it('flashes only some lenses in the first colour and leaves the rest the second', () => {
+  it('flashes only some lenses in the main colour and leaves the rest the second', () => {
     let flashes = 0;
     let slots = 0;
     for (let beat = 0; beat < 128; beat += 1) {
-      const frame = render('sparkle', beat + 0.01);
-      for (const cell of frame.cells) {
+      for (const cell of look('sparkle', beat + 0.01)) {
         slots++;
         if (cell.red > 0.5) flashes++;
         else expect(cell).toEqual(B);
@@ -294,49 +333,68 @@ describe('sparkle', () => {
   it('with blue first and red second flashes blue on a red wash', () => {
     const blue: Rgbw = { red: 0, green: 0, blue: 1, white: 0 };
     const red: Rgbw = { red: 1, green: 0, blue: 0, white: 0 };
-    const frame = render('sparkle', 5.01, { a: blue, b: red });
-    expect(frame.cells.some((cell) => cell.blue > 0.9)).toBe(true);
-    for (const cell of frame.cells) {
+    const cells = look('sparkle', 5.01, [blue, red]);
+    expect(cells.some((cell) => cell.blue > 0.9)).toBe(true);
+    for (const cell of cells) {
       expect(cell.blue > 0.9 || (cell.red === 1 && cell.blue === 0)).toBe(true);
     }
   });
 
-  it('with the second colour empty flashes the first over a dim wash of it', () => {
+  it('with one colour flashes it over darkness', () => {
     const blue: Rgbw = { red: 0, green: 0, blue: 1, white: 0 };
-    const frame = render('sparkle', 5.01, palette(blue, null));
-    const levels = frame.cells.map((cell) => cell.blue);
-    expect(Math.max(...levels)).toBeGreaterThan(0.9);
-    for (const level of levels)
-      expect(level > 0.9 || Math.abs(level - REST_LEVEL) < 1e-9).toBe(true);
-    for (const cell of frame.cells) expect(cell.red + cell.green + cell.white).toBe(0);
+    const cells = look('sparkle', 5.01, [blue]);
+    expect(Math.max(...cells.map((cell) => cell.blue))).toBeGreaterThan(0.9);
+    for (const cell of cells) {
+      expect(cell.blue > 0.9 || cell.blue === 0).toBe(true);
+      expect(cell.red + cell.green + cell.white).toBe(0);
+    }
   });
 
   it('flashes the same lenses for a whole beat, and others on the next', () => {
-    const lit = (beat: number) => render('sparkle', beat).cells.map((cell) => cell.red > 0.011);
+    const lit = (beat: number) => look('sparkle', beat).map((cell) => cell.red > 0.011);
     expect(lit(5.01)).toEqual(lit(5.6));
     const sets = new Set([0, 1, 2, 3, 4, 5, 6, 7].map((beat) => lit(beat + 0.01).join()));
     expect(sets.size).toBeGreaterThan(4);
   });
+
+  it('now and then flashes in the third colour when the palette has one', () => {
+    let accents = 0;
+    let sparks = 0;
+    for (let beat = 0; beat < 256; beat += 1) {
+      for (const cell of look('sparkle', beat + 0.01, [A, B, C])) {
+        if (cell.white > 0.5) accents++;
+        if (cell.white > 0.5 || cell.red > 0.5) sparks++;
+      }
+    }
+    expect(accents).toBeGreaterThan(0);
+    expect(accents / sparks).toBeGreaterThan(0.15);
+    expect(accents / sparks).toBeLessThan(0.45);
+  });
+
+  it('flashes the same lenses with a third colour as without, only not all in the main', () => {
+    const lit = (colours: PaletteColour[]) =>
+      look('sparkle', 5.01, colours).map((cell) => cell.red > 0.5 || cell.white > 0.5);
+    expect(lit([A, B, C])).toEqual(lit([A, B]));
+  });
 });
 
 describe('build-up', () => {
-  /** How many lenses show the first colour. */
-  const flashing = (frame: EffectFrame) => frame.cells.filter((c) => c.red > 0.001).length;
+  /** How many lenses show the main colour. */
+  const flashing = (cells: Rgbw[]) => cells.filter((c) => c.red > 0.001).length;
 
-  it('gets brighter and wider, then drops on the first colour', () => {
-    const early = render('build', 1.1);
-    const late = render('build', 27.01);
+  it('gets brighter and wider, then drops on the main colour', () => {
+    const early = look('build', 1.1);
+    const late = look('build', 27.01);
     expect(total(late)).toBeGreaterThan(total(early));
     expect(flashing(early)).toBeLessThan(flashing(late));
-    expect(early.cells[0]).toEqual(B);
-    expect(render('build', 0).cells[3]?.red).toBeGreaterThan(0);
+    expect(early[0]).toEqual(B);
+    expect(look('build', 0)[3]?.red).toBeGreaterThan(0);
 
-    const drop = render('build', 31.02);
-    for (const cell of drop.cells) expect(cell.red).toBeGreaterThan(0.9);
+    for (const cell of look('build', 31.02)) expect(cell.red).toBeGreaterThan(0.9);
   });
 
   it('flashes once per bar, then every two beats, then on every beat', () => {
-    const on = (beat: number) => flashing(render('build', beat)) > 0;
+    const on = (beat: number) => flashing(look('build', beat)) > 0;
     /** The beats in a stretch on which the light comes on. */
     const starts = (from: number, to: number) => {
       const found: number[] = [];
@@ -358,170 +416,343 @@ describe('build-up', () => {
 describe('strobe burst', () => {
   it('flashes only during the fourth bar, on the beat', () => {
     for (const beat of [0.3, 5.3, 11.3, 16.3]) {
-      const frame = render('burst', beat);
-      expect(frame.cells[0]?.red).toBeLessThan(0.7);
+      expect(look('burst', beat)[0]?.red).toBeLessThan(0.7);
     }
     for (const beat of [12, 13, 14, 15]) {
-      expect(render('burst', beat + 0.01).cells[0]).toEqual(A);
-      expect(render('burst', beat + 0.5).cells[0]).toEqual(B);
+      expect(look('burst', beat + 0.01)[0]).toEqual(A);
+      expect(look('burst', beat + 0.5)[0]).toEqual(B);
     }
   });
 });
 
-describe('tilt wave', () => {
-  it('tilts the bars against each other around the middle of the tilt', () => {
-    for (let beat = 0; beat < 8; beat += 0.5) {
-      const tilt = render('tiltwave', beat).tilt ?? [];
-      expect((tilt[0] ?? 0) + (tilt[1] ?? 0)).toBeCloseTo(1);
-    }
-    const quarter = render('tiltwave', 2).tilt ?? [];
-    expect(quarter[0]).toBeCloseTo(0.8);
-    expect(quarter[1]).toBeCloseTo(0.2);
-  });
-
-  it('shows the first colour on both bars, pumping on the beat over the second', () => {
-    const frame = render('tiltwave', 0);
-    expect(frame.cells[0]).toEqual(A);
-    expect(frame.cells[7]).toEqual(A);
-    expect(render('tiltwave', 0.99).cells[0]?.blue).toBeGreaterThan(0.01);
+describe('pump', () => {
+  it('breathes the main colour on all lenses together, over the second', () => {
+    const cells = look('pump', 0);
+    expect(cells[0]).toEqual(A);
+    expect(cells[7]).toEqual(A);
+    expect(look('pump', 0.99)[0]?.blue).toBeGreaterThan(0.01);
+    expect(look('pump', 0.99)[0]?.red).toBeGreaterThan(0.7);
   });
 });
 
-describe('scissor', () => {
-  const at = (beat: number) => degreesOf(render('scissor', beat, { motion: REAL_MOTION }));
-
-  it('swings the bars through each other, the same distance in opposite directions', () => {
-    for (let beat = 0; beat < 8; beat += 0.25) {
-      const [first = 0, second = 0] = at(beat);
-      expect(first + second).toBeCloseTo(0, 3);
-    }
+describe('the static effects', () => {
+  it('solid puts the main colour on every lens', () => {
+    for (const cell of look('solid', 3.3, [A])) expect(cell).toEqual(A);
   });
 
-  it('crosses the beams on the first beat, as far as the bars can, and opens them four beats later', () => {
-    // The back bar to the front and the front bar to the back: the beams cross. They reach 20 degrees that way.
-    expect(at(0)[0]).toBeCloseTo(20, 3);
-    expect(at(0)[1]).toBeCloseTo(-20, 3);
-    // And 60 degrees the other way, which is as far as a scissor goes.
-    expect(at(4)[0]).toBeCloseTo(-60, 3);
-    expect(at(4)[1]).toBeCloseTo(60, 3);
-    expect(at(8)[0]).toBeCloseTo(20, 3);
+  it('bars puts the main colour on the first bar and the second colour on the other', () => {
+    const cells = look('bars', 3.3);
+    for (const i of [0, 1, 2, 3]) expect(cells[i]).toEqual(A);
+    for (const i of [4, 5, 6, 7]) expect(cells[i]).toEqual(B);
   });
 
-  it('passes through the middle between crossed and open, where the beams are parallel', () => {
-    let wasCrossed = true;
-    let crossings = 0;
-    for (let beat = 0; beat <= 8; beat += 0.01) {
-      const crossed = (at(beat)[0] ?? 0) > 0;
-      if (crossed !== wasCrossed) crossings++;
-      wasCrossed = crossed;
-    }
-    expect(crossings).toBe(2);
+  it('bars leaves the second bar dark with one colour', () => {
+    expect(peak(look('bars', 0, [A])[5])).toBe(0);
   });
 
-  it('puts the same tilt on both bars where they cross, which is what a scissor is for these bars', () => {
-    const tilt = render('scissor', 0, { motion: REAL_MOTION }).tilt ?? [];
-    expect(tilt[0]).toBeCloseTo(0, 6);
-    expect(tilt[1]).toBeCloseTo(0, 6);
-    const open = render('scissor', 4, { motion: REAL_MOTION }).tilt ?? [];
-    expect(open[0]).toBeCloseTo(open[1] ?? 0, 6);
+  it('alternate takes the lenses in turn', () => {
+    const cells = look('alternate', 0);
+    expect(cells.map((c) => c.red > 0.5)).toEqual([
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+    ]);
+    expect(cells[1]).toEqual(B);
   });
 
-  it('swings 60 degrees to each side without a calibration, on a plain tilt', () => {
-    const open = render('scissor', 0).tilt ?? [];
-    expect(open[0]).toBeCloseTo(0.5 - 60 / 180, 6);
-    expect(open[1]).toBeCloseTo(0.5 + 60 / 180, 6);
-  });
-
-  it('shows the first colour on both bars, pumping on the beat over the second', () => {
-    expect(render('scissor', 0).cells[0]).toEqual(A);
-    expect(render('scissor', 0.99).cells[7]?.blue).toBeGreaterThan(0.01);
-  });
-
-  it('leaves the motor speed to the operator', () => {
-    expect(render('scissor', 1, { motion: REAL_MOTION }).motorSpeed).toBeUndefined();
+  it('leave a lens dark that gets an entry that is off', () => {
+    expect(peak(look('alternate', 0, [A, null])[1])).toBe(0);
+    expect(look('solid', 0, [null])[0]).toEqual(DARK);
   });
 });
 
-describe('scissor by motor speed', () => {
-  const frame = (beat: number, extra: Partial<EffectContext> = {}) =>
-    render('scissor-motor', beat, { motion: REAL_MOTION, ...extra });
+describe('the techno effects', () => {
+  const TECHNO = ['cross', 'ticktock', 'scan', 'pairs', 'stab'];
+  const BLUE: Rgbw = { red: 0, green: 0, blue: 1, white: 0 };
+  /** The lenses that show any light at all, and the ones that are bright. */
+  const showing = (cells: Rgbw[]) => cells.flatMap((c, i) => (peak(c) > 0 ? [i] : []));
+  const bright = (cells: Rgbw[]) => cells.flatMap((c, i) => (peak(c) > 0.5 ? [i] : []));
+  /** What the effect shows a little after the beat `beat`, with the first colour orange and the second blue. */
+  const at = (id: string, beat: number, colours: PaletteColour[] = [A, BLUE]) =>
+    look(id, beat + 0.01, colours);
+  /** A lens in the first colour of these tests (orange, no blue) or in the second (blue, no red). */
+  const same = (cell: Rgbw | undefined, colour: Rgbw) =>
+    cell !== undefined &&
+    (colour === BLUE ? cell.blue > 0.5 && cell.red === 0 : cell.red > 0.5 && cell.blue === 0);
 
-  it('says that it sets the motor speed', () => {
-    expect(findEffect('scissor-motor')?.setsMotorSpeed).toBe(true);
-    expect(findEffect('scissor')?.setsMotorSpeed).toBeUndefined();
+  it.each(TECHNO)('lights two lenses at the most, and leaves every other lens dark: %s', (id) => {
+    for (const colours of [[A, BLUE], [A], [A, BLUE, C], [A, null], [null, BLUE]]) {
+      for (const [cells, bars] of [
+        [8, BARS],
+        [4, [[0, 1, 2, 3]]],
+        [5, [[0, 1, 2, 3, 4]]],
+        [1, [[0]]],
+      ] as const) {
+        for (let beat = 0; beat < 40; beat += 0.37) {
+          const shown = showing(look(id, beat, colours, { cells, bars }));
+          expect(shown.length).toBeLessThanOrEqual(2);
+        }
+      }
+    }
   });
 
-  it('gives the bars one target per half cycle, and no position in between', () => {
-    // The target changes on beat 1 and beat 5, three beats before the bars should arrive.
-    const targets = (from: number, to: number) => {
-      const seen = new Set<string>();
-      for (let beat = from; beat < to; beat += 0.05) seen.add(JSON.stringify(frame(beat).tilt));
-      return seen;
+  it.each(TECHNO)('does not use the second colour as a backdrop: %s', (id) => {
+    // Between the beats nothing is lit that was not hit: no wash of the second colour.
+    for (let beat = 0; beat < 32; beat++) {
+      const end = look(id, beat + 0.99, [A, BLUE]);
+      for (const cell of end) expect(peak(cell)).toBeLessThan(0.02);
+    }
+  });
+
+  it.each(TECHNO)('hits on the beat at full level and falls fast: %s', (id) => {
+    for (let beat = 0; beat < 16; beat++) {
+      const on = look(id, beat, [A, BLUE]);
+      expect(Math.max(...on.map((c) => peak(c)))).toBe(1);
+      expect(Math.max(...look(id, beat + 0.5, [A, BLUE]).map((c) => peak(c)))).toBeLessThan(0.1);
+    }
+  });
+
+  it.each(TECHNO)('is dark when the colour of a turn is off or not there: %s', (id) => {
+    // Colour 1 off: the turns of colour 1 are dark, the others are not.
+    const counts = Array.from(
+      { length: 16 },
+      (_, beat) => showing(look(id, beat, [null, BLUE])).length,
+    );
+    expect(Math.max(...counts)).toBeGreaterThan(0);
+    // Cross has a beam of each colour at once, so one beam is left. The others blink.
+    if (id === 'cross') expect(new Set(counts)).toEqual(new Set([1]));
+    else expect(counts).toContain(0);
+  });
+
+  describe('cross', () => {
+    it('steps the first colour along the lenses and the second colour the other way', () => {
+      for (const beat of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
+        const cells = at('cross', beat);
+        const step = beat % 8;
+        expect(bright(cells).sort()).toEqual([step, 7 - step].sort());
+        expect(same(cells[step], A)).toBe(true);
+        expect(same(cells[7 - step], BLUE)).toBe(true);
+      }
+    });
+
+    it('is one beam of the first colour with one colour, and the second is dark', () => {
+      expect(bright(at('cross', 2, [A]))).toEqual([2]);
+    });
+  });
+
+  describe('tick-tock', () => {
+    it('takes one lens per beat, the left half in the first colour and the right half in the second', () => {
+      const lenses = Array.from({ length: 8 }, (_, beat) => bright(at('ticktock', beat)));
+      expect(lenses).toEqual([[0], [7], [1], [6], [2], [5], [3], [4]]);
+      for (const beat of [0, 2, 4, 6])
+        expect(same(at('ticktock', beat)[bright(at('ticktock', beat))[0] ?? 0], A)).toBe(true);
+      for (const beat of [1, 3, 5, 7])
+        expect(same(at('ticktock', beat)[bright(at('ticktock', beat))[0] ?? 0], BLUE)).toBe(true);
+      expect(bright(at('ticktock', 8))).toEqual([0]);
+    });
+  });
+
+  describe('scan', () => {
+    it('goes along the lenses in the first colour and back in the second', () => {
+      const out = Array.from({ length: 8 }, (_, beat) => bright(at('scan', beat)));
+      expect(out).toEqual([[0], [1], [2], [3], [4], [5], [6], [7]]);
+      const back = Array.from({ length: 8 }, (_, beat) => bright(at('scan', 8 + beat)));
+      expect(back).toEqual([[7], [6], [5], [4], [3], [2], [1], [0]]);
+      expect(same(at('scan', 3)[3], A)).toBe(true);
+      expect(same(at('scan', 11)[4], BLUE)).toBe(true);
+      expect(bright(at('scan', 16))).toEqual([0]);
+    });
+  });
+
+  describe('pairs', () => {
+    it('hits a lens on each side of the middle, the outside pair in the first colour and the inside pair in the second', () => {
+      const lenses = Array.from({ length: 8 }, (_, beat) => bright(at('pairs', beat)));
+      expect(lenses).toEqual([
+        [0, 7],
+        [3, 4],
+        [1, 6],
+        [2, 5],
+        [2, 5],
+        [1, 6],
+        [3, 4],
+        [0, 7],
+      ]);
+      for (const beat of [0, 2, 4, 6]) {
+        const cells = at('pairs', beat);
+        for (const lens of bright(cells)) expect(same(cells[lens], A)).toBe(true);
+      }
+      for (const beat of [1, 3, 5, 7]) {
+        const cells = at('pairs', beat);
+        for (const lens of bright(cells)) expect(same(cells[lens], BLUE)).toBe(true);
+      }
+    });
+  });
+
+  describe('stab', () => {
+    const lensAt = (beat: number) => bright(at('stab', beat))[0] as number;
+
+    it('stabs one lens in the first colour and in the second colour on the next beat', () => {
+      for (const beat of [0, 2, 4, 10]) {
+        expect(lensAt(beat)).toBe(lensAt(beat + 1));
+        expect(same(at('stab', beat)[lensAt(beat)], A)).toBe(true);
+        expect(same(at('stab', beat + 1)[lensAt(beat + 1)], BLUE)).toBe(true);
+      }
+    });
+
+    it('jumps to another lens every two beats and visits all of them before it comes round', () => {
+      const turns = Array.from({ length: 8 }, (_, turn) => lensAt(turn * 2));
+      expect(new Set(turns).size).toBe(8);
+      for (let turn = 1; turn < 40; turn++) expect(lensAt(turn * 2)).not.toBe(lensAt(turn * 2 - 2));
+    });
+
+    it('jumps far, not to the next lens', () => {
+      const distances = Array.from({ length: 12 }, (_, turn) =>
+        Math.abs(lensAt((turn + 1) * 2) - lensAt(turn * 2)),
+      );
+      expect(Math.min(...distances)).toBeGreaterThan(1);
+    });
+  });
+});
+
+describe('fade', () => {
+  it('fades all lenses together from the first colour to the second and back, in two bars', () => {
+    expect(look('fade', 0)[0]).toEqual(A);
+    expect(look('fade', 4)[3]).toEqual(B);
+    expect(look('fade', 8)[7]).toEqual(A);
+    const half = look('fade', 2)[0];
+    expect(half?.red).toBeCloseTo(0.5);
+    expect(half?.blue).toBeCloseTo(0.125);
+    for (const cell of look('fade', 1.3)) expect(cell).toEqual(look('fade', 1.3)[0]);
+  });
+
+  it('is a slow breath of light when the second colour is off', () => {
+    const level = (beat: number) => look('fade', beat, [A, null])[0]?.red ?? 0;
+    expect(level(0)).toBe(1);
+    expect(level(4)).toBeCloseTo(0);
+    expect(level(8)).toBe(1);
+    for (let beat = 0; beat < 8; beat += 0.1) {
+      expect(Math.abs(level(beat + 0.1) - level(beat))).toBeLessThan(0.2);
+    }
+  });
+});
+
+describe('seesaw', () => {
+  const barsOf = (beat: number, colours: PaletteColour[] = [A, B]) => {
+    const cells = look('seesaw', beat, colours);
+    return [cells[0], cells[4]] as const;
+  };
+
+  it('fades the two bars against each other, and swaps them in the time of one fade', () => {
+    const [first, second] = barsOf(0);
+    expect(first).toEqual(A);
+    expect(second).toEqual(B);
+    const [swappedFirst, swappedSecond] = barsOf(4);
+    expect(swappedFirst).toEqual(B);
+    expect(swappedSecond).toEqual(A);
+    expect(barsOf(8)[0]).toEqual(A);
+  });
+
+  it('keeps the lenses of a bar together', () => {
+    const cells = look('seesaw', 2.7);
+    for (const i of [1, 2, 3]) expect(cells[i]).toEqual(cells[0]);
+    for (const i of [5, 6, 7]) expect(cells[i]).toEqual(cells[4]);
+    expect(cells[0]).not.toEqual(cells[4]);
+  });
+
+  it('is never dark when the second colour is off: one bar glows while the other fades', () => {
+    for (let beat = 0; beat < 16; beat += 0.1) {
+      const [first, second] = barsOf(beat, [A, null]);
+      // What the two bars give together stays the same, so the fixture does not go dark.
+      expect((first?.red ?? 0) + (second?.red ?? 0)).toBeCloseTo(1, 6);
+    }
+    expect(barsOf(0, [A, null])).toEqual([A, DARK]);
+    expect(barsOf(4, [A, null])).toEqual([DARK, A]);
+  });
+
+  it('goes with the first bar for a lens that is on no bar', () => {
+    const cells = look('seesaw', 1, [A, B], { cells: 3, bars: [[0]] });
+    expect(cells[1]).toEqual(cells[0]);
+    expect(cells[2]).toEqual(cells[0]);
+  });
+});
+
+describe('glow', () => {
+  const shown = (beat: number, colours: PaletteColour[] = [A, B]) => look('glow', beat, colours);
+  const lit = (beat: number) => shown(beat).flatMap((c, i) => (peak(c) > 0.02 ? [i] : []));
+
+  it('lights three lenses at the most, a pool with a heart and an edge, and the rest are dark', () => {
+    for (let beat = 0; beat < 40; beat += 0.1) {
+      expect(lit(beat).length).toBeLessThanOrEqual(3);
+      expect(lit(beat).length).toBeGreaterThanOrEqual(1);
+    }
+    // On a lens: the heart, and a neighbour on each side that has faded to a part of it.
+    expect(lit(0)).toEqual([0, 1, 7]);
+    expect(shown(0)[0]).toEqual(A);
+    expect(peak(shown(0)[1])).toBeLessThan(peak(shown(0)[0]));
+  });
+
+  it('moves one lens in two beats, along the lenses and round again', () => {
+    const heart = (beat: number) => {
+      const cells = shown(beat);
+      return cells.reduce((best, c, i) => (peak(c) > peak(cells[best]) ? i : best), 0);
     };
-    expect(targets(1.001, 4.999).size).toBe(1);
-    expect(targets(5.001, 8.999).size).toBe(1);
-    expect(frame(0.99).tilt).not.toEqual(frame(1.01).tilt);
-    expect(frame(4.99).tilt).not.toEqual(frame(5.01).tilt);
+    expect([0, 2, 4, 6, 14, 16].map(heart)).toEqual([0, 1, 2, 3, 7, 0]);
   });
 
-  it('sends the bars to the same ends as the scissor of the beat, the opposite way round on the next half', () => {
-    // Told on beat 1 to be open on beat 4, and on beat 5 to be crossed on beat 8.
-    const [open1 = 0, open2 = 0] = degreesOf(frame(2));
-    expect(open1).toBeCloseTo(-60, 3);
-    expect(open2).toBeCloseTo(60, 3);
-    const [crossed1 = 0, crossed2 = 0] = degreesOf(frame(6));
-    expect(crossed1).toBeCloseTo(20, 3);
-    expect(crossed2).toBeCloseTo(-20, 3);
+  it('fades one lens into the next: between two lenses both glow, and it never jumps', () => {
+    const between = shown(1);
+    expect(peak(between[0])).toBeGreaterThan(0.3);
+    expect(peak(between[1])).toBeGreaterThan(0.3);
+    expect(peak(between[0])).toBeCloseTo(peak(between[1]), 6);
+    for (let beat = 0; beat < 32; beat += 0.05) {
+      const now = shown(beat);
+      const later = shown(beat + 0.05);
+      for (let i = 0; i < 8; i++) {
+        expect(Math.abs(peak(later[i]) - peak(now[i]))).toBeLessThan(0.1);
+      }
+    }
   });
 
-  it('sets the motor speed to cover the swing in three beats', () => {
-    // 80 degrees (20 crossed to 60 open) in three beats of 126 bpm, which is 1.43 seconds: 56 degrees per second.
-    const rate = 80 / ((3 * 60) / 126);
-    expect(frame(2).motorSpeed).toBeCloseTo((rate - 30) / 270, 6);
+  it('is never dark, and not lit as a whole: some lens always glows well', () => {
+    for (let beat = 0; beat < 32; beat += 0.1) {
+      expect(Math.max(...shown(beat).map((c) => peak(c)))).toBeGreaterThan(0.6);
+    }
   });
 
-  it('turns the motor speed up with the tempo, and leaves the same swing', () => {
-    const slow = frame(2, { bpm: 100 }).motorSpeed ?? 0;
-    const fast = frame(2, { bpm: 200 }).motorSpeed ?? 0;
-    expect(fast).toBeGreaterThan(slow);
-    expect(degreesOf(frame(2, { bpm: 200 }))[1]).toBeCloseTo(60, 3);
+  it('is only the first colour in the heart, and with one colour only a heart and an edge of it', () => {
+    const one = shown(0, [A]);
+    expect(one[0]).toEqual(A);
+    expect(peak(one[1])).toBeGreaterThan(0);
+    expect(peak(one[4])).toBe(0);
+  });
+});
+
+describe('strobe', () => {
+  it('flashes every lens hard at the start of each beat and is dark for the rest of it', () => {
+    for (const beat of [0, 1, 2, 3.1, 7]) {
+      for (const cell of look('strobe', beat + 0.01)) expect(peak(cell)).toBeGreaterThan(0.2);
+    }
+    for (const beat of [0.5, 1.9, 4.6]) {
+      for (const cell of look('strobe', beat)) expect(peak(cell)).toBe(0);
+    }
   });
 
-  it('asks for a lower byte on a motor that gets slower with the byte', () => {
-    const slowAtTheTop = { tilt: BAR_TILTS, motorSpeed: SLOW_AT_THE_TOP };
-    // 56 degrees per second lies between 0.5 (183) and 0.9 (32) on the calibration of the spider.
-    const byte = render('scissor-motor', 2, { motion: slowAtTheTop }).motorSpeed ?? 0;
-    expect(curveAt(SLOW_AT_THE_TOP, byte)).toBeCloseTo(80 / ((3 * 60) / 126), 6);
-    expect(byte).toBeGreaterThan(0.5);
-    expect(byte).toBeLessThan(0.9);
+  it('flashes the first colour and the second colour in turn', () => {
+    expect(look('strobe', 0.01)[0]).toEqual(A);
+    expect(look('strobe', 1.01)[0]).toEqual(B);
+    expect(look('strobe', 2.01)[5]).toEqual(A);
   });
 
-  it('swings less when the motor cannot do it at this tempo', () => {
-    // At 1000 bpm three beats are 0.18 seconds, and at 300 degrees per second that is 54 degrees in all.
-    const quick = frame(2, { bpm: 1000 });
-    expect(quick.motorSpeed).toBe(1);
-    const crossed = degreesOf(frame(6, { bpm: 1000 }))[0] ?? 0;
-    const open = degreesOf(quick)[0] ?? 0;
-    expect(crossed - open).toBeCloseTo(54, 3);
-  });
-
-  it('leaves the motor speed alone when the calibration cannot tell which byte to send', () => {
-    const flat = {
-      tilt: BAR_TILTS,
-      motorSpeed: [
-        [0, 200],
-        [1, 200],
-      ] as const,
-    };
-    expect(frame(2, { motion: flat }).motorSpeed).toBeUndefined();
-    expect(render('scissor-motor', 2).motorSpeed).toBeUndefined();
-    // It still swings, at the speed that is set.
-    expect(degreesOf(frame(2, { motion: flat }), flat)[1]).toBeCloseTo(60, 3);
-  });
-
-  it('shows the first colour on both bars, pumping on the beat over the second', () => {
-    expect(frame(0).cells[0]).toEqual(A);
-    expect(frame(0.99).cells[7]?.blue).toBeGreaterThan(0.01);
+  it('flashes every other beat with one colour, and all lenses flash together', () => {
+    expect(peak(look('strobe', 0.01, [A])[0])).toBe(1);
+    expect(peak(look('strobe', 1.01, [A])[0])).toBe(0);
+    const cells = look('strobe', 2.01);
+    expect(new Set(cells.map((c) => JSON.stringify(c))).size).toBe(1);
   });
 });
 
@@ -562,7 +793,7 @@ describe('speed', () => {
     let flashes = 0;
     let wasOn = false;
     for (let beat = 0; beat < beats; beat += 0.01) {
-      const on = peak(render(id, beat, { bpm }).cells[cell]) > 0.5;
+      const on = peak(look(id, beat)[cell]) > 0.5;
       if (on && !wasOn) flashes++;
       wasOn = on;
     }
@@ -581,16 +812,16 @@ describe('speed', () => {
   it.each(EFFECTS.map((effect) => effect.id))(
     'changes %s once per beat at most, unless it moves smoothly',
     (id) => {
-      const smooth = ['wave', 'spectrum', 'scissor'];
+      const smooth = ['wave', 'spread', 'fade', 'seesaw', 'glow'];
       if (smooth.includes(id)) return;
       // Between two beats a lens may fade or go out, but no lens may come on. It holds with
-      // the second colour set and with it left empty.
-      for (const colours of [{}, palette(A, null)]) {
+      // one colour, with two and with three.
+      for (const colours of [[A], [A, B], [A, B, C]]) {
         for (let beat = 0; beat < 64; beat++) {
           for (let cell = 0; cell < 8; cell++) {
-            let before = light(render(id, beat + 0.01, colours).cells[cell]);
+            let before = light(look(id, beat + 0.01, colours)[cell]);
             for (let part = 0.05; part < 1; part += 0.05) {
-              const now = light(render(id, beat + part, colours).cells[cell]);
+              const now = light(look(id, beat + part, colours)[cell]);
               expect(now - before).toBeLessThan(0.1);
               before = now;
             }

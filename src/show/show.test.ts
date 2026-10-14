@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { startingPalettes } from '../engine/palette.js';
 import { PatchError } from '../server/fixture.js';
 import {
   groupId,
@@ -81,15 +82,15 @@ describe('readGroupFixtures', () => {
 describe('startingGroups', () => {
   it('has a group for every fixture, and then one for all of them', () => {
     expect(startingGroups([SPIDER, LASER])).toEqual([
-      { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [] },
-      { id: 'laser', label: 'Laser', fixtures: ['laser'], scenes: [] },
-      { id: 'all', label: 'All', fixtures: ['spider', 'laser'], scenes: [] },
+      { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [], looks: [] },
+      { id: 'laser', label: 'Laser', fixtures: ['laser'], scenes: [], looks: [] },
+      { id: 'all', label: 'All', fixtures: ['spider', 'laser'], scenes: [], looks: [] },
     ]);
   });
 
   it('has no separate group for all with one fixture', () => {
     expect(startingGroups([SPIDER])).toEqual([
-      { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [] },
+      { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [], looks: [] },
     ]);
     expect(startingGroups([])).toEqual([]);
   });
@@ -113,7 +114,7 @@ describe('startingGroups', () => {
 
 describe('readShow', () => {
   it('reads nothing as the groups a show starts with', () => {
-    const starting = { groups: startingGroups(RIG.fixtures) };
+    const starting = { palettes: startingPalettes(), groups: startingGroups(RIG.fixtures) };
     expect(readShow(null, RIG)).toEqual(starting);
     expect(readShow(undefined, RIG)).toEqual(starting);
     expect(readShow({}, RIG)).toEqual(starting);
@@ -163,6 +164,7 @@ describe('readShow', () => {
             fixtures: { laser: { raw: { mode: 95 } } },
           },
         ],
+        looks: [],
       },
       {
         id: 'both',
@@ -177,15 +179,16 @@ describe('readShow', () => {
           },
           { id: 'dark', label: 'dark', type: 'motion', fixtures: {} },
         ],
+        looks: [],
       },
-      { id: 'bare', label: 'bare', fixtures: ['spider'], scenes: [] },
+      { id: 'bare', label: 'bare', fixtures: ['spider'], scenes: [], looks: [] },
     ]);
   });
 
   it('keeps the order of a map, also where an id is a number', () => {
     const scenes = new Map([
       ['warm', { label: 'Warm', type: 'lights' }],
-      ['2', { label: 'Two', type: 'colour' }],
+      ['2', { label: 'Two', type: 'lights' }],
       ['1', { label: 'One', type: 'motion' }],
     ]);
     const groups = new Map([
@@ -203,8 +206,8 @@ describe('readShow', () => {
   });
 
   it('can have no groups at all', () => {
-    expect(readShow({ groups: {} }, RIG)).toEqual({ groups: [] });
-    expect(readShow({ groups: null }, RIG)).toEqual({ groups: [] });
+    expect(readShow({ groups: {} }, RIG)).toEqual({ palettes: startingPalettes(), groups: [] });
+    expect(readShow({ groups: null }, RIG)).toEqual({ palettes: startingPalettes(), groups: [] });
   });
 
   it('gives two groups a scene of the same id', () => {
@@ -230,7 +233,7 @@ describe('readShow', () => {
             type: 'lights',
             fixtures: { spider: { levels: { dimmer: 1 } }, laser: {} },
           },
-          dark: { type: 'colour' },
+          dark: { type: 'motion' },
         },
       },
       RIG,
@@ -246,7 +249,10 @@ describe('readShow', () => {
       type: 'lights',
       fixtures: { spider: { levels: { dimmer: 1 } }, laser: {} },
     });
-    expect(readShow({ scenes: null }, RIG)).toEqual({ groups: startingGroups(RIG.fixtures) });
+    expect(readShow({ scenes: null }, RIG)).toEqual({
+      palettes: startingPalettes(),
+      groups: startingGroups(RIG.fixtures),
+    });
   });
 
   it('puts the scenes from before there were groups with the one fixture there is', () => {
@@ -257,6 +263,7 @@ describe('readShow', () => {
         label: 'Spider',
         fixtures: ['spider'],
         scenes: [{ id: 'warm', label: 'warm', type: 'lights', fixtures: {} }],
+        looks: [],
       },
     ]);
   });
@@ -274,7 +281,7 @@ describe('readShow', () => {
           groups: {
             both: {
               fixtures: ['spider', 'laser'],
-              scenes: { one: { type: 'colour', fixtures } },
+              scenes: { one: { type: 'motion', fixtures } },
             },
           },
         },
@@ -282,12 +289,12 @@ describe('readShow', () => {
       ),
     ).toThrow(new ShowError('scene "one" of group "both": "mode" must be a whole number'));
     expect(seen).toEqual([
-      ['spider', 'colour', { a: 1 }],
-      ['laser', 'colour', {}],
+      ['spider', 'motion', { a: 1 }],
+      ['laser', 'motion', {}],
     ]);
 
     expect(() =>
-      readShow({ scenes: { one: { type: 'colour', fixtures } } }, { ...RIG, check }),
+      readShow({ scenes: { one: { type: 'motion', fixtures } } }, { ...RIG, check }),
     ).toThrow(new ShowError('scene "one": "mode" must be a whole number'));
   });
 
@@ -296,8 +303,8 @@ describe('readShow', () => {
     const wrong: [unknown, string][] = [
       [[], 'the show must start with "groups:"'],
       ['groups', 'the show must start with "groups:"'],
-      [{ sequences: {} }, 'the show cannot have "sequences", only groups'],
-      [{ groups: {}, sequences: {} }, 'the show cannot have "sequences", only groups'],
+      [{ sequences: {} }, 'the show cannot have "sequences", only palettes and groups'],
+      [{ groups: {}, sequences: {} }, 'the show cannot have "sequences", only palettes and groups'],
       [
         { scenes: {}, groups: {} },
         'the show has "scenes" next to "groups". A scene belongs to a group: put it under the "scenes" of its group',
@@ -310,7 +317,7 @@ describe('readShow', () => {
       [{ groups: { spider: 'spider' } }, 'group "spider" must have a label, fixtures and scenes'],
       [
         { groups: { spider: { fixtures: ['spider'], colour: 'red' } } },
-        'group "spider" cannot have "colour", only label, fixtures and scenes',
+        'group "spider" cannot have "colour", only label, fixtures, scenes and looks',
       ],
       [
         { groups: { spider: { fixtures: ['spider'], label: '' } } },
@@ -350,17 +357,18 @@ describe('readShow', () => {
         group({ one: { colour: 'red' } }),
         'scene "one" of group "spider" cannot have "colour", only label, type and fixtures',
       ],
-      [
-        group({ one: {} }),
-        'scene "one" of group "spider": a scene needs a type: lights, colour, motion',
-      ],
+      [group({ one: {} }), 'scene "one" of group "spider": a scene needs a type: lights or motion'],
       [
         group({ one: { type: 'full' } }),
-        'scene "one" of group "spider": a scene needs a type: lights, colour, motion',
+        'scene "one" of group "spider": a scene needs a type: lights or motion',
       ],
       [
         group({ one: { type: 7, fixtures: {} } }),
-        'scene "one" of group "spider": a scene needs a type: lights, colour, motion',
+        'scene "one" of group "spider": a scene needs a type: lights or motion',
+      ],
+      [
+        group({ one: { type: 'colour', fixtures: {} } }),
+        'scene "one" of group "spider": colours are palettes now, and not scenes: a scene is lights or motion',
       ],
       [
         group({ one: { fixtures: ['spider'] } }),
@@ -398,9 +406,199 @@ describe('readShow', () => {
 
   it('cannot put scenes from before there were groups anywhere without a fixture', () => {
     const nothing: KnownFixtures = { fixtures: [], check: () => {} };
-    expect(readShow({ scenes: {} }, nothing)).toEqual({ groups: [] });
+    expect(readShow({ scenes: {} }, nothing)).toEqual({ palettes: startingPalettes(), groups: [] });
     expect(() => readShow({ scenes: { warm: { type: 'lights' } } }, nothing)).toThrow(
       new ShowError('the show has scenes, and there is no fixture they can be for'),
     );
+  });
+
+  describe('palettes', () => {
+    it('reads them in the order of the file, with the defaults filled in', () => {
+      const show = readShow(
+        {
+          palettes: new Map([
+            ['2', { colours: ['#ff0000'] }],
+            [
+              'dusk',
+              {
+                label: 'Dusk',
+                colours: ['#ff4a00', 'off', '#ffb000ff'],
+                mode: 'cycle',
+                change: 'fade',
+                speed: 1,
+              },
+            ],
+          ]),
+          groups: {},
+        },
+        RIG,
+      );
+      expect(show.palettes).toEqual([
+        {
+          id: '2',
+          label: '2',
+          colours: [{ red: 1, green: 0, blue: 0, white: 0 }],
+          mode: 'static',
+          change: 'step',
+          speed: 0.25,
+        },
+        {
+          id: 'dusk',
+          label: 'Dusk',
+          colours: [
+            { red: 1, green: 74 / 255, blue: 0, white: 0 },
+            null,
+            { red: 1, green: 176 / 255, blue: 0, white: 1 },
+          ],
+          mode: 'cycle',
+          change: 'fade',
+          speed: 1,
+        },
+      ]);
+    });
+
+    it('starts with a white and a rainbow when the file has none, and with none when it says so', () => {
+      expect(readShow({ groups: {} }, RIG).palettes.map((each) => each.id)).toEqual([
+        'white',
+        'rainbow',
+      ]);
+      expect(readShow({ palettes: {}, groups: {} }, RIG).palettes).toEqual([]);
+      expect(readShow({ palettes: null, groups: {} }, RIG).palettes).toEqual([]);
+    });
+
+    it('says what is wrong with a palette', () => {
+      const wrong: [unknown, string][] = [
+        [[], '"palettes" must be a list of palettes by their id'],
+        [{ 'Big blue': {} }, 'palette "Big blue": an id has small letters, digits and dashes only'],
+        [{ blue: 'blue' }, 'palette "blue" must have colours'],
+        [{ blue: {} }, 'palette "blue": a palette needs a list of colours, at least one'],
+        [
+          { blue: { colours: [] } },
+          'palette "blue": a palette needs a list of colours, at least one',
+        ],
+        [
+          { blue: { colours: ['blue'] } },
+          'palette "blue": "blue" is not a colour: write #rrggbb, #rrggbbww or off',
+        ],
+        [{ blue: { colours: [3] } }, 'palette "blue": a colour is written as #rrggbb or off'],
+        [
+          { blue: { colours: ['#0000ff'], mode: 'spin' } },
+          'palette "blue": the mode of a palette is static or cycle',
+        ],
+        [
+          { blue: { colours: ['#0000ff'], change: 'blur' } },
+          'palette "blue": the change of a palette is step or fade',
+        ],
+        [
+          { blue: { colours: ['#0000ff'], speed: 3 } },
+          'palette "blue": the speed of a palette must be one of 0.25, 0.5, 1, 2, 4',
+        ],
+        [
+          { blue: { colours: ['#0000ff'], tint: 1 } },
+          'palette "blue": a palette cannot have "tint", only label, colours, mode, change and speed',
+        ],
+        [{ blue: { colours: ['#0000ff'], label: '' } }, 'palette "blue": a palette needs a name'],
+        [
+          { blue: { colours: Array.from({ length: 9 }, () => '#0000ff') } },
+          'palette "blue": a palette can have 8 colours at most',
+        ],
+      ];
+      for (const [palettes, message] of wrong) {
+        expect(() => readShow({ palettes, groups: {} }, RIG)).toThrow(new ShowError(message));
+      }
+    });
+  });
+
+  describe('looks', () => {
+    const SCENES = {
+      chase: { type: 'lights' },
+      lean: { type: 'motion' },
+    };
+    const read = (looks: unknown) =>
+      readShow({ groups: { spider: { fixtures: ['spider'], scenes: SCENES, looks } } }, RIG)
+        .groups[0]?.looks;
+
+    it('reads a look in the order of the file, with a palette as an id or with a pace', () => {
+      expect(
+        read(
+          new Map([
+            ['drop', { label: 'Drop', lights: 'chase', colour: 'rainbow', motion: 'lean' }],
+            ['slow', { colour: { palette: 'white', speed: 0.5 } }],
+          ]),
+        ),
+      ).toEqual([
+        {
+          id: 'drop',
+          label: 'Drop',
+          lights: 'chase',
+          colour: { palette: 'rainbow' },
+          motion: 'lean',
+        },
+        { id: 'slow', label: 'slow', colour: { palette: 'white', speed: 0.5 } },
+      ]);
+    });
+
+    it('has none when the group has none', () => {
+      expect(read(undefined)).toEqual([]);
+      expect(read(null)).toEqual([]);
+    });
+
+    it('says what is wrong with a look', () => {
+      const wrong: [unknown, string][] = [
+        [[], 'group "spider": "looks" must be a list of looks by their id'],
+        [
+          { 'Big drop': {} },
+          'look "Big drop" of group "spider": an id has small letters, digits and dashes only',
+        ],
+        [{ drop: 'chase' }, 'look "drop" of group "spider" must have a label and what it sets'],
+        [
+          { drop: { sound: 'loud' } },
+          'look "drop" of group "spider" cannot have "sound", only label, lights, colour and motion',
+        ],
+        [
+          { drop: {} },
+          'look "drop" of group "spider": a look sets a scene of lights, a palette or a scene of motion',
+        ],
+        [
+          { drop: { lights: 'nope' } },
+          'look "drop" of group "spider": there is no scene called "nope" in this group',
+        ],
+        [
+          { drop: { lights: 'lean' } },
+          'look "drop" of group "spider": the scene "lean" is motion, and not lights',
+        ],
+        [
+          { drop: { motion: 'chase' } },
+          'look "drop" of group "spider": the scene "chase" is lights, and not motion',
+        ],
+        [
+          { drop: { lights: 3 } },
+          'look "drop" of group "spider": "lights" must name a scene by its id',
+        ],
+        [
+          { drop: { colour: 'nope' } },
+          'look "drop" of group "spider": there is no palette called "nope"',
+        ],
+        [
+          { drop: { colour: { palette: 'white', speed: 3 } } },
+          'look "drop" of group "spider": the speed of a palette must be one of 0.25, 0.5, 1, 2, 4',
+        ],
+        [
+          { drop: { colour: { palette: 'white', tint: 1 } } },
+          'look "drop" of group "spider": "colour" cannot have "tint", only palette and speed',
+        ],
+        [
+          { drop: { colour: 7 } },
+          'look "drop" of group "spider": "colour" must name a palette, with a speed if you like',
+        ],
+        [
+          { drop: { lights: 'chase', label: '' } },
+          'look "drop" of group "spider": a look needs a name',
+        ],
+      ];
+      for (const [looks, message] of wrong) {
+        expect(() => read(looks)).toThrow(new ShowError(message));
+      }
+    });
   });
 });

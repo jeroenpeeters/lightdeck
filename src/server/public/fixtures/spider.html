@@ -50,13 +50,14 @@
               <legend>Speed of this effect</legend>
             </fieldset>
             <p class="hint" id="speed-hint"></p>
-            <fieldset class="choice" id="colour-a">
-              <legend>First colour, what flashes</legend>
+            <fieldset class="choice palette-list" id="palette-list">
+              <legend>Palette</legend>
             </fieldset>
-            <fieldset class="choice" id="colour-b">
-              <legend>Second colour, the rest</legend>
+            <fieldset class="choice" id="palette-speed">
+              <legend>Palette pace</legend>
             </fieldset>
-            <p class="hint" id="palette-hint" hidden></p>
+            <p class="hint" id="pace-hint"></p>
+            <p class="hint" id="palette-hint"></p>
           </div>
         </div>
 
@@ -73,7 +74,15 @@
         </div>
 
         <div class="view view-movement" role="tabpanel" id="view-movement" aria-labelledby="tab-movement" hidden>
-          <p class="hint" id="motion-hint" hidden></p>
+          <fieldset class="effect-list" id="motion-list">
+            <legend class="visually-hidden">Choose a movement</legend>
+          </fieldset>
+          <fieldset class="choice" id="motion-speed">
+            <legend>Speed of this movement</legend>
+          </fieldset>
+          <p class="hint" id="motion-speed-hint"></p>
+          <p class="hint" id="motion-effect-hint"></p>
+          <p class="hint" id="motion-hint"></p>
           <div class="sliders" id="motion-sliders"></div>
           <label class="check">
             <input type="checkbox" id="link-bars" checked />

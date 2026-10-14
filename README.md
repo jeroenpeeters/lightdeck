@@ -14,8 +14,9 @@ the Light Rider app. Lamps and switches in Home Assistant are planned.
 |---|---|
 | Live DMX to the LR512, from Linux | Works on real hardware, through an Android phone as bridge |
 | Fixture pages for manual control | Work, for the two fixtures below |
-| Beat-synced effects, tap tempo, blackout | Work: twelve effects for the spider, five for the laser |
-| Scenes: store what the fixtures do, recall it | Built, not yet tested on the real fixtures |
+| Beat-synced effects, tap tempo, blackout | Work: twenty-two light effects and six motion effects for the spider, five effects for the laser |
+| Palettes: the colours of the show, apart from the effects | Built, not yet tested on the real fixtures |
+| Scenes and looks: store what the fixtures do, recall it | Built, not yet tested on the real fixtures |
 | Sequences, grand master, crossfades, holds | Not built, see [docs/show-design.md](docs/show-design.md) |
 | Home Assistant lamps and switches | Not built, see [docs/hass-fixtures-plan.md](docs/hass-fixtures-plan.md) |
 | Art-Net, sACN | Not built |
@@ -92,8 +93,14 @@ or a finger. With a bridge it shows the same as the real fixtures get.
 
 Go to `http://<computer-ip>:8080` on the tablet. The console has:
 
-- **Deck**: the scenes. Set the fixtures on their pages, store that as a scene, and get
+- **Deck**: per group a lane of scenes of lights, a lane of palettes, a lane of scenes of
+  motion, and a row of looks. Set the fixtures on their pages, store that as a scene, and get
   it back with one press.
+- **Palettes**: the colours of the show, apart from the effects. A list of up to eight
+  colours (or off), static or cycling.
+- **Tablet** (`/tablet`): a page with few, big controls for a tablet at the side of the dance
+  floor: tap the tempo, the master and its speed, the looks of the spider, a panel with its
+  lights, colour and motion, the blackout, and the state of the bridge and the LR512.
 - **A page per fixture**, to set it by hand and to start an effect.
 - On every page: the tempo with tap and nudge, the speed of the effects, the blackout,
   and lamps that show whether the bridge and the LR512 are connected.
@@ -133,11 +140,18 @@ fixtures on it go dark.
 
 ## The show file
 
-Scenes are kept in one YAML file, which the deck writes and which you can edit by hand.
-Lightdeck watches the file. A file with a mistake never replaces the show that is
-running: the deck says what is wrong and keeps the show as it was.
+Palettes, scenes and looks are kept in one YAML file, which the deck writes and which you
+can edit by hand. Lightdeck watches the file. A file with a mistake never replaces the show
+that is running: the deck says what is wrong and keeps the show as it was.
 
 ```yaml
+palettes:
+  sunset:
+    label: Sunset
+    colours: ['#ff4a00', off, '#ffb000']   # #rrggbb, #rrggbbww (with white) or off
+    mode: cycle                            # static | cycle
+    change: fade                           # step | fade
+    speed: 0.25                            # ÷4 .. ×4: one step per bar at 0.25
 groups:
   spider:
     label: Spider
@@ -148,25 +162,27 @@ groups:
         type: lights
         fixtures:
           spider: { levels: { dimmer: 1 }, effect: { id: chase, speed: 1 } }
-      amber:
-        label: Amber
-        type: colour
-        fixtures:
-          spider:
-            effect: { colourA: { red: 1, green: 0.58, blue: 0, white: 0 } }
       wide:
         label: Wide
         type: motion
         fixtures:
-          spider: { levels: { tilt1: 0.2, tilt2: 0.8 } }
+          spider: { levels: { tilt1: 0.2, tilt2: 0.8 }, motion: { id: scissor, speed: 0.5 } }
+    looks:
+      drop:
+        label: Drop
+        lights: chase
+        colour: { palette: sunset, speed: 0.25 }
+        motion: wide
 ```
 
-A scene is of one type, `lights`, `colour` or `motion`, and keeps and sets only the
-properties of that type. A group has one scene on per type, so a colour scene can be
-pressed under a chase that is running. The first colour of an effect is what flashes and
-the second is the background; leave the second out and the background is the first
-colour, dim. A fixture that a scene does not name has those properties at rest, and off
-is the lights.
+Colours are palettes, and no effect names a colour: a light effect says how much of the
+first, second and third colour of the palette every lens gets, a motion effect moves the
+bars, and any of them goes with any other. An empty colour is a dark lens. A scene is of
+the type `lights` or `motion` and keeps and sets only the properties of that type. A group
+has one scene of each type on and one palette, so a palette can be pressed under a chase
+that is running. A look sets a scene of lights, a palette and a scene of motion together.
+A fixture that a scene does not name has those properties at rest, and off is the lights.
+The laser does not use the palettes: it has up to three colours of its own.
 
 ## Safety
 

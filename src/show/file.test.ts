@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Document } from 'yaml';
+import { startingPalettes } from '../engine/palette.js';
 import { PatchError } from '../server/fixture.js';
 import { ShowFile, setIn } from './file.js';
 import { type ShowFixture, startingGroups } from './show.js';
@@ -49,7 +50,7 @@ scenes:
       laser: { raw: { mode: 95 } }
   dark:
     label: Dark
-    type: colour
+    type: motion
     fixtures: {}
 `;
 
@@ -72,7 +73,7 @@ const NUMBERS = `groups:
         fixtures: { spider: { levels: { dimmer: 1 } } }
       true:
         label: Sure
-        type: colour
+        type: motion
   2024:
     label: This year
     fixtures: [laser]
@@ -114,7 +115,10 @@ describe('ShowFile', () => {
 
   it('starts with a group per fixture and one for all, and makes no file', () => {
     const show = open();
-    expect(show.getShow()).toEqual({ groups: startingGroups(FIXTURES) });
+    expect(show.getShow()).toEqual({
+      palettes: startingPalettes(),
+      groups: startingGroups(FIXTURES),
+    });
     expect(ids(show)).toEqual([['spider'], ['laser'], ['all']]);
     expect(show.getProblem()).toBeNull();
     expect(existsSync(path)).toBe(false);
@@ -146,25 +150,27 @@ describe('ShowFile', () => {
             fixtures: { spider: { levels: { dimmer: 1 } } },
           },
         ],
+        looks: [],
       },
-      { id: 'both', label: 'Both', fixtures: ['spider', 'laser'], scenes: [] },
+      { id: 'both', label: 'Both', fixtures: ['spider', 'laser'], scenes: [], looks: [] },
     ]);
     expect(readFileSync(path, 'utf8')).toBe(HAND_MADE);
   });
 
   it('writes a change to the file, which reads back as the same show', () => {
     const show = open();
-    const colour = { red: 1, green: 0.58, blue: 0, white: 0 };
+    const effect = { id: 'chase', speed: 1 };
     show.edit((document) =>
       setIn(document, ['groups', 'spider', 'scenes', 'amber'], {
         label: 'Amber',
-        type: 'colour',
-        fixtures: { spider: { effect: { id: 'chase', colourA: colour, colourB: colour } } },
+        type: 'lights',
+        // Two maps that are the same are written twice, not as a reference to each other.
+        fixtures: { spider: { levels: { dimmer: 1 }, effect, motion: effect } },
       }),
     );
     const text = readFileSync(path, 'utf8');
-    expect(text).toContain('colourA: { red: 1, green: 0.58, blue: 0, white: 0 }');
-    expect(text).toContain('colourB: { red: 1, green: 0.58, blue: 0, white: 0 }');
+    expect(text).toContain('effect: { id: chase, speed: 1 }');
+    expect(text).toContain('motion: { id: chase, speed: 1 }');
     expect(existsSync(`${path}.tmp`)).toBe(false);
     expect(ids(show)).toEqual([['spider', 'amber'], ['laser'], ['all']]);
     show.close();
@@ -174,7 +180,20 @@ describe('ShowFile', () => {
   it('writes the groups a show starts with at the first change', () => {
     const show = open();
     show.edit(addScene('laser', 'tunnel'));
-    expect(readFileSync(path, 'utf8')).toBe(`groups:
+    expect(readFileSync(path, 'utf8')).toBe(`palettes:
+  white:
+    label: White
+    colours: [ "#000000ff" ]
+    mode: static
+    change: step
+    speed: 0.25
+  rainbow:
+    label: Rainbow
+    colours: [ "#ff0000", "#ffaa00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff" ]
+    mode: cycle
+    change: fade
+    speed: 0.25
+groups:
   spider:
     label: Spider
     fixtures: [ spider ]
@@ -249,7 +268,8 @@ describe('ShowFile', () => {
       expect(ids(show)).toEqual([['spider', 'cold'], ['laser'], ['all', 'warm', 'dark']]);
       expect(show.getShow().groups[2]?.scenes).toEqual(before);
       const text = readFileSync(path, 'utf8');
-      expect(text).toMatch(/^# The show of the evening\.\ngroups:\n {2}spider:\n/);
+      expect(text).toMatch(/^# The show of the evening\.\npalettes:\n/);
+      expect(text).toContain('\ngroups:\n  spider:\n');
       expect(text).not.toMatch(/^scenes:/m);
       expect(text).toContain('fixtures: [ spider, laser ]');
       expect(text).toContain('      # Starts the night.\n      warm:\n');
@@ -364,12 +384,16 @@ describe('ShowFile', () => {
 
   describe('after it was read again', () => {
     /** The longest line of the file. */
-    const longest = () =>
-      Math.max(
-        ...readFileSync(path, 'utf8')
+    const longest = () => {
+      // The palettes have a line of their own colours, which is no business of the groups.
+      const text = readFileSync(path, 'utf8');
+      return Math.max(
+        ...text
+          .slice(text.indexOf('groups:'))
           .split('\n')
           .map((line) => line.length),
       );
+    };
     const tunnel = (document: Document) =>
       setIn(document, ['groups', 'laser', 'scenes', 'tunnel'], {
         label: 'Tunnel',
@@ -439,9 +463,9 @@ describe('ShowFile', () => {
     for (const id of ['spider', 'laser', 'all']) {
       show.edit((document) => document.deleteIn(['groups', id]));
     }
-    expect(show.getShow()).toEqual({ groups: [] });
+    expect(show.getShow()).toEqual({ palettes: startingPalettes(), groups: [] });
     show.close();
-    expect(open().getShow()).toEqual({ groups: [] });
+    expect(open().getShow()).toEqual({ palettes: startingPalettes(), groups: [] });
   });
 
   it('tells about every change', () => {
@@ -456,7 +480,10 @@ describe('ShowFile', () => {
     const broken = 'groups:\n  front:\n    fixtures: [spider, strobe]\n';
     writeFileSync(path, broken);
     const show = open();
-    expect(show.getShow()).toEqual({ groups: startingGroups(FIXTURES) });
+    expect(show.getShow()).toEqual({
+      palettes: startingPalettes(),
+      groups: startingGroups(FIXTURES),
+    });
     expect(show.getProblem()).toBe(
       'Group "front": there is no fixture called "strobe", only spider, laser',
     );
@@ -522,7 +549,7 @@ describe('ShowFile', () => {
     writeFileSync(path, untyped);
     const show = open();
     expect(show.getProblem()).toBe(
-      'Scene "warm" of group "spider": a scene needs a type: lights, colour, motion',
+      'Scene "warm" of group "spider": a scene needs a type: lights or motion',
     );
     expect(() => show.edit(addScene('spider', 'one'))).toThrow(/has a mistake/);
     expect(readFileSync(path, 'utf8')).toBe(untyped);
@@ -530,7 +557,7 @@ describe('ShowFile', () => {
 
   it('does not know sequences yet', () => {
     writeFileSync(path, `${HAND_MADE}sequences: {}\n`);
-    expect(open().getProblem()).toBe('The show cannot have "sequences", only groups');
+    expect(open().getProblem()).toBe('The show cannot have "sequences", only palettes and groups');
   });
 
   it('says where YAML that cannot be read goes wrong', () => {

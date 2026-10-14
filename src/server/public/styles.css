@@ -707,3 +707,11 @@ legend {
   /* biome-ignore lint/complexity/noImportantStyles: has to win over every class */
   display: none !important;
 }
+
+/* ---- a page that draws its own controls ---- */
+
+.bare-shell > .topbar,
+.bare-shell > .desk {
+  /* A page that draws its own controls (see `start({ bare: true })` in shell.js). */
+  display: none;
+}

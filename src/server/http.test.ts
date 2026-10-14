@@ -186,7 +186,8 @@ describe('HTTP server', () => {
       }),
     );
     expect(spider.controls).toHaveLength(SPIDER_43CH.controls.length);
-    expect(spider.details.effects).toHaveLength(12);
+    expect(spider.details.effects).toHaveLength(22);
+    expect(spider.details.motionEffects).toHaveLength(6);
     expect(spider.details.layout.cells).toBe(8);
     expect(spider.state.levels.dimmer).toBe(0);
     expect(spider.state.effect.id).toBeNull();
@@ -195,14 +196,22 @@ describe('HTTP server', () => {
 
     expect(laser).toEqual(expect.objectContaining({ kind: 'laser', footprint: 10, address: 44 }));
     expect(laser.details).toEqual(expect.objectContaining({ gate: 'mode', effectsIn: 'manual' }));
-    expect(laser.details.effects.map((e: { id: string }) => e.id)).toEqual([
-      'patterns',
-      'colours',
+    expect(laser.details.effects.map((e: { id: string }) => e.id)).toEqual(['patterns', 'colours']);
+    expect(laser.details.motionEffects.map((e: { id: string }) => e.id)).toEqual([
       'pulse',
       'sweep',
       'twist',
     ]);
+    expect(laser.details.colourSetting).toEqual({
+      control: 'colour',
+      range: 'single',
+      max: 3,
+      from: 0,
+      to: 63,
+    });
     expect(laser.state.effect).toEqual({ id: null, speed: 1 });
+    expect(laser.state.motion).toEqual({ id: null, speed: 1 });
+    expect(laser.state.colours).toEqual([]);
     expect(laser.controls[0].ranges[1]).toEqual(
       expect.objectContaining({ from: 64, to: 127, key: 'manual', name: 'Manual' }),
     );
@@ -571,19 +580,57 @@ describe('HTTP server', () => {
   });
 
   const NONE = { scene: null, changed: false };
-  const NOTHING = { lights: NONE, colour: NONE, motion: NONE };
+  const NO_LOOK = { look: null, changed: false };
+  const NOTHING = { lights: NONE, colour: NONE, motion: NONE, look: NO_LOOK };
   /** What is on in a group when only a scene of lights is. */
   const lights = (scene: string, changed = false) => ({ ...NOTHING, lights: { scene, changed } });
+  const STARTING_PALETTES = [
+    {
+      id: 'white',
+      label: 'White',
+      colours: ['#000000ff'],
+      mode: 'static',
+      change: 'step',
+      speed: 0.25,
+    },
+    {
+      id: 'rainbow',
+      label: 'Rainbow',
+      colours: ['#ff0000', '#ffaa00', '#00ff00', '#00ffff', '#0000ff', '#ff00ff'],
+      mode: 'cycle',
+      change: 'fade',
+      speed: 0.25,
+    },
+  ];
   const STARTING = [
-    { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [] },
-    { id: 'spider-2', label: 'Spider 2', fixtures: ['spider-2'], scenes: [] },
-    { id: 'laser', label: 'Laser', fixtures: ['laser'], scenes: [] },
-    { id: 'all', label: 'All', fixtures: ['spider', 'spider-2', 'laser'], scenes: [] },
+    { id: 'spider', label: 'Spider', fixtures: ['spider'], palettes: true, scenes: [], looks: [] },
+    {
+      id: 'spider-2',
+      label: 'Spider 2',
+      fixtures: ['spider-2'],
+      palettes: true,
+      scenes: [],
+      looks: [],
+    },
+    { id: 'laser', label: 'Laser', fixtures: ['laser'], palettes: false, scenes: [], looks: [] },
+    {
+      id: 'all',
+      label: 'All',
+      fixtures: ['spider', 'spider-2', 'laser'],
+      palettes: true,
+      scenes: [],
+      looks: [],
+    },
   ];
 
   it('describes the show and what is on', async () => {
     const body = await state();
-    expect(body.show).toEqual({ file: null, problem: null, groups: STARTING });
+    expect(body.show).toEqual({
+      file: null,
+      problem: null,
+      palettes: STARTING_PALETTES,
+      groups: STARTING,
+    });
     expect(body.playback).toEqual({
       groups: { spider: NOTHING, 'spider-2': NOTHING, laser: NOTHING, all: NOTHING },
     });
@@ -659,14 +706,14 @@ describe('HTTP server', () => {
     });
   });
 
-  it('stores a scene of each type, sets each alone, and leaves off to the lights', async () => {
+  it('stores a scene of lights and of motion, sets a palette, and sets each alone', async () => {
     await post('/api/fixtures/spider/update', {
       levels: { dimmer: 1, red1: 1, tilt1: 0.3 },
-      effect: { id: 'chase', colourA: { red: 0, green: 1, blue: 0, white: 0 } },
+      effect: { id: 'chase' },
+      motion: { id: 'scissor', speed: 0.5 },
     });
     const scenes = [
       { label: 'Chase', type: 'lights' },
-      { label: 'Green', type: 'colour' },
       { label: 'Lean', type: 'motion' },
     ];
     for (const { label, type } of scenes) {
@@ -678,34 +725,41 @@ describe('HTTP server', () => {
     );
     expect(types).toEqual([
       ['chase', 'lights'],
-      ['green', 'colour'],
       ['lean', 'motion'],
     ]);
 
     await post('/api/fixtures/spider/update', {
       levels: { dimmer: 0.2, red1: 0, tilt1: 0.9 },
-      effect: { id: 'kick', colourA: { red: 1, green: 0, blue: 0, white: 0 } },
+      effect: { id: 'kick' },
+      motion: { id: null },
     });
     expect((await post('/api/playback', { group: 'spider', scene: 'lean' })).status).toBe(200);
     let spider = (await state()).fixtures[0].state;
     expect(spider.levels).toMatchObject({ dimmer: 0.2, red1: 0, tilt1: 0.3 });
     expect(spider.effect.id).toBe('kick');
+    expect(spider.motion).toEqual({ id: 'scissor', speed: 0.5 });
 
-    expect((await post('/api/playback', { group: 'spider', scene: 'green' })).status).toBe(200);
+    const coloured = await post('/api/playback', {
+      group: 'spider',
+      palette: 'rainbow',
+      speed: 2,
+      client: 'tablet-1',
+    });
+    expect(coloured.status).toBe(200);
     spider = (await state()).fixtures[0].state;
-    expect(spider.levels).toMatchObject({ dimmer: 0.2, red1: 1, tilt1: 0.3 });
-    expect(spider.effect).toMatchObject({ id: 'kick', colourA: { green: 1, red: 0 } });
-    expect(spider.effect.colourB).toBeNull();
+    expect(spider.colour).toEqual({ palette: 'rainbow', speed: 2 });
+    expect(spider.effect.id).toBe('kick');
 
     await post('/api/playback', { group: 'spider', scene: 'chase' });
     await post('/api/playback', { group: 'spider', off: true });
     spider = (await state()).fixtures[0].state;
-    expect(spider.levels).toMatchObject({ dimmer: 0, red1: 1, tilt1: 0.3 });
+    expect(spider.levels).toMatchObject({ dimmer: 0, red1: 0, tilt1: 0.3 });
     expect(spider.effect.id).toBeNull();
     expect((await state()).playback.groups.spider).toEqual({
       lights: NONE,
-      colour: { scene: 'green', changed: false },
+      colour: { scene: 'rainbow', changed: false },
       motion: { scene: 'lean', changed: false },
+      look: NO_LOOK,
     });
   });
 
@@ -783,7 +837,9 @@ describe('HTTP server', () => {
         id: 'spiders',
         label: 'Both spiders',
         fixtures: ['spider', 'spider-2'],
+        palettes: true,
         scenes: [{ id: 'warm', label: 'Warm', type: 'lights', fixtures: [] }],
+        looks: [],
       },
     ]);
     expect(now.playback.groups.spiders).toEqual(lights('warm'));
@@ -798,15 +854,16 @@ describe('HTTP server', () => {
     await post('/api/groups/spider/scenes', { label: 'Warm', type: 'lights' });
     const refused: [string, unknown, string][] = [
       ['/api/groups/spider/scenes', { type: 'lights' }, 'a scene needs a name'],
-      [
-        '/api/groups/spider/scenes',
-        { label: 'Warm' },
-        'a scene needs a type: lights, colour, motion',
-      ],
+      ['/api/groups/spider/scenes', { label: 'Warm' }, 'a scene needs a type: lights or motion'],
       [
         '/api/groups/spider/scenes',
         { label: 'Warm', type: 'full' },
-        'a scene needs a type: lights, colour, motion',
+        'a scene needs a type: lights or motion',
+      ],
+      [
+        '/api/groups/spider/scenes',
+        { label: 'Warm', type: 'colour' },
+        'colours are palettes now, and not scenes: a scene is lights or motion',
       ],
       [
         '/api/groups/strobe/scenes',
@@ -826,12 +883,34 @@ describe('HTTP server', () => {
       [
         '/api/playback',
         { group: 'spider', scene: 'warm', off: true },
-        'say a scene or off, not both',
+        'say a scene, a palette, a look or off, one of them',
+      ],
+      [
+        '/api/playback',
+        { group: 'spider', palette: 'white', look: 'drop' },
+        'say a scene, a palette, a look or off, one of them',
+      ],
+      ['/api/playback', { group: 'spider', speed: 2 }, 'a speed goes with a palette'],
+      ['/api/playback', { group: 'spider', palette: 'nope' }, 'there is no palette called "nope"'],
+      [
+        '/api/playback',
+        { group: 'laser', palette: 'white' },
+        'no fixture of "Laser" is coloured by palettes',
+      ],
+      [
+        '/api/playback',
+        { group: 'spider', palette: 'white', speed: 3 },
+        'the speed of a palette must be one of 0.25, 0.5, 1, 2, 4',
+      ],
+      [
+        '/api/playback',
+        { group: 'spider', look: 'nope' },
+        'there is no look called "nope" in the group "spider"',
       ],
       [
         '/api/playback',
         { group: 'spider', scene: 'warm', fade: 2 },
-        'the playback cannot set "fade", only group, scene, off',
+        'the playback cannot set "fade", only group, scene, palette, speed, look, off',
       ],
       [
         '/api/groups/spider/scenes/nothing/delete',
@@ -881,26 +960,159 @@ describe('HTTP server', () => {
       }
     };
     const none = '{"scene":null,"changed":false}';
-    const nothing = `{"lights":${none},"colour":${none},"motion":${none}}`;
+    const nothing = `{"lights":${none},"colour":${none},"motion":${none},"look":{"look":null,"changed":false}}`;
     await readUntil(
       `event: playback\ndata: {"groups":{"spider":${nothing},"spider-2":${nothing},"laser":${nothing},"all":${nothing}}}`,
     );
     expect(text).toContain(
-      `event: show\ndata: ${JSON.stringify({ file: null, problem: null, groups: STARTING })}`,
+      `event: show\ndata: ${JSON.stringify({ file: null, problem: null, palettes: STARTING_PALETTES, groups: STARTING })}`,
     );
 
     await post('/api/groups/laser/scenes', { label: 'Warm', type: 'lights' });
-    const warm = `{"lights":{"scene":"warm","changed":false},"colour":${none},"motion":${none}}`;
+    const warm = `{"lights":{"scene":"warm","changed":false},"colour":${none},"motion":${none},"look":{"look":null,"changed":false}}`;
     await readUntil(
       `event: playback\ndata: {"groups":{"spider":${nothing},"spider-2":${nothing},"laser":${warm},"all":${nothing}}}`,
     );
     expect(text).toContain(
-      '{"id":"laser","label":"Laser","fixtures":["laser"],"scenes":[{"id":"warm","label":"Warm","type":"lights","fixtures":[]}]}',
+      '{"id":"laser","label":"Laser","fixtures":["laser"],"palettes":false,"scenes":[{"id":"warm","label":"Warm","type":"lights","fixtures":[]}],"looks":[]}',
     );
 
     await post('/api/groups', { label: 'Front', fixtures: ['spider'] });
     await readUntil(`"all":${nothing},"front":${nothing}}}`);
-    expect(text).toContain('{"id":"front","label":"Front","fixtures":["spider"],"scenes":[]}');
+    expect(text).toContain(
+      '{"id":"front","label":"Front","fixtures":["spider"],"palettes":true,"scenes":[],"looks":[]}',
+    );
     abort.abort();
+  });
+
+  it('makes, changes and deletes a palette', async () => {
+    const made = await post('/api/palettes', {
+      label: 'Sunset',
+      colours: ['#ff4a00', 'off', '#ffb000'],
+      mode: 'cycle',
+      client: 'tablet-1',
+    });
+    expect(made.status).toBe(200);
+    expect(await made.json()).toEqual({ ok: true, id: 'sunset' });
+    const plain = await post('/api/palettes', { label: 'Plain' });
+    expect(await plain.json()).toEqual({ ok: true, id: 'plain' });
+
+    expect(
+      (await post('/api/palettes/sunset/update', { speed: 1, client: 'tablet-1' })).status,
+    ).toBe(200);
+    expect(
+      (await post('/api/palettes/plain/update', { label: 'Plainer', colours: ['#00ff00'] })).status,
+    ).toBe(200);
+    const now = (await state()).show.palettes;
+    expect(now.slice(2)).toEqual([
+      {
+        id: 'sunset',
+        label: 'Sunset',
+        colours: ['#ff4a00', 'off', '#ffb000'],
+        mode: 'cycle',
+        change: 'step',
+        speed: 1,
+      },
+      {
+        id: 'plain',
+        label: 'Plainer',
+        colours: ['#00ff00'],
+        mode: 'static',
+        change: 'step',
+        speed: 0.25,
+      },
+    ]);
+
+    expect((await post('/api/palettes/sunset/delete', {})).status).toBe(200);
+    expect((await state()).show.palettes.map((each: { id: string }) => each.id)).toEqual([
+      'white',
+      'rainbow',
+      'plain',
+    ]);
+  });
+
+  it('says what is wrong with a request about palettes', async () => {
+    await post('/api/playback', { group: 'spider', palette: 'rainbow' });
+    const refused: [string, unknown, string][] = [
+      ['/api/palettes', {}, 'a palette needs a name'],
+      [
+        '/api/palettes',
+        { label: 'Odd', colours: ['blue'] },
+        '"blue" is not a colour: write #rrggbb, #rrggbbww or off',
+      ],
+      [
+        '/api/palettes',
+        { label: 'Empty', colours: [] },
+        'a palette needs a list of colours, at least one',
+      ],
+      [
+        '/api/palettes',
+        { label: 'Spin', colours: ['#ffffff'], mode: 'spin' },
+        'the mode of a palette is static or cycle',
+      ],
+      ['/api/palettes/nope/update', { label: 'Nope' }, 'there is no palette called "nope"'],
+      [
+        '/api/palettes/white/update',
+        { tint: 1 },
+        'a palette cannot change "tint", only label, colours, mode, change and speed',
+      ],
+      ['/api/palettes/nope/delete', {}, 'there is no palette called "nope"'],
+      ['/api/palettes/rainbow/delete', {}, 'the palette "Rainbow" is in use: it is on in "Spider"'],
+    ];
+    for (const [path, body, message] of refused) {
+      const response = await post(path, body);
+      expect([path, response.status]).toEqual([path, 400]);
+      expect(await error(response)).toBe(message);
+    }
+    expect((await post('/api/palettes/white/burn', {})).status).toBe(404);
+    expect((await state()).show.palettes).toHaveLength(2);
+  });
+
+  it('stores a look from what is on, presses it, and takes it away', async () => {
+    await post('/api/fixtures/spider/update', {
+      levels: { dimmer: 1, tilt1: 0.2 },
+      effect: { id: 'chase' },
+    });
+    await post('/api/groups/spider/scenes', { label: 'Chase', type: 'lights' });
+    await post('/api/groups/spider/scenes', { label: 'Low', type: 'motion' });
+    await post('/api/playback', { group: 'spider', palette: 'rainbow', speed: 0.5 });
+
+    const stored = await post('/api/groups/spider/looks', { label: 'Drop' });
+    expect(await stored.json()).toEqual({ ok: true, id: 'drop' });
+    const now = await state();
+    expect(now.show.groups[0].looks).toEqual([
+      {
+        id: 'drop',
+        label: 'Drop',
+        lights: 'chase',
+        colour: { palette: 'rainbow', speed: 0.5 },
+        motion: 'low',
+      },
+    ]);
+    expect(now.playback.groups.spider.look).toEqual({ look: 'drop', changed: false });
+
+    await post('/api/fixtures/spider/update', {
+      levels: { dimmer: 0 },
+      colour: { palette: 'white' },
+    });
+    expect((await state()).playback.groups.spider.look).toEqual({ look: 'drop', changed: true });
+    expect((await post('/api/playback', { group: 'spider', look: 'drop' })).status).toBe(200);
+    const spider = (await state()).fixtures[0].state;
+    expect(spider.levels.dimmer).toBe(1);
+    expect(spider.colour).toEqual({ palette: 'rainbow', speed: 0.5 });
+    expect((await state()).playback.groups.spider.look).toEqual({ look: 'drop', changed: false });
+
+    expect((await post('/api/groups/spider/looks/drop/rename', { label: 'Big drop' })).status).toBe(
+      200,
+    );
+    expect((await post('/api/groups/spider/looks/drop/store', {})).status).toBe(200);
+    expect((await state()).show.groups[0].looks[0].label).toBe('Big drop');
+    const refused = await post('/api/groups/spider/scenes/chase/delete', {});
+    expect(await error(refused)).toBe(
+      'the scene "Chase" is used by the look "Big drop". Change or delete the look first',
+    );
+    expect((await post('/api/groups/spider/looks/drop/delete', {})).status).toBe(200);
+    expect((await state()).show.groups[0].looks).toEqual([]);
+    expect((await post('/api/groups/spider/looks/drop/burn', {})).status).toBe(404);
   });
 });

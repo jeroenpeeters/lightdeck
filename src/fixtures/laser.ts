@@ -242,7 +242,9 @@ const controls: FunctionControl[] = [
     channel: 9,
     label: 'Color control',
     title: 'Colour',
-    part: 'colour',
+    // The laser does not follow the palettes of the show (it has seven colours of its own), so its
+    // colour is a property of what it does, kept with its pattern in a scene of lights.
+    part: 'lights',
     idle: 0,
     ranges: [
       {

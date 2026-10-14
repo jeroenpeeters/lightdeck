@@ -6,9 +6,13 @@ description: Write or change a beat-synced effect for a lightdeck fixture, or an
 # Writing an effect
 
 An effect in lightdeck is a pure function from a moment in the music to what a fixture
-shows. Read `src/engine/effects.ts` (the spider: a colour per cell and a tilt per bar)
-and `src/engine/laserEffects.ts` (the laser: bytes for the channels it drives) before
-writing one. Their headers say what an effect gets and gives.
+shows. There are two kinds on a spider and two on the laser, chosen apart and put together
+(Jeroen, 2026-10-14, `docs/effects-split-plan.md`): a **light effect** says how much of each
+slot of the palette every lens gets (`src/engine/effects.ts`), a **motion effect** tilts the
+bars (`src/engine/motionEffects.ts`), and the colours are a **palette** of the show
+(`src/engine/palette.ts`) that no effect knows. The laser has its effects of the lights and of
+the motion in `src/engine/laserEffects.ts` (bytes for the channels they drive). Read the file
+of the kind you write before writing one. Their headers say what an effect gets and gives.
 
 ## The rules, and why they are there
 
@@ -36,29 +40,36 @@ unpleasant for most and dangerous for some. An effect that flashes more than onc
 beat at speed 1 breaks the limit without anyone noticing, which is the other reason for
 the rule above.
 
-**An effect sets only what it says it sets.** For the spider: the colours of the cells,
-and the tilt when `moves` is true, and the motor speed only for an effect that says
-`setsMotorSpeed` (`scissor-motor`, which works it out from `motion`, the calibration of the
-layout, and leaves it alone when it cannot). Brightness and the strobe channel stay with the
-operator. For the laser: the controls in `drives`, and the rest stays with
-the operator, so a colour set by hand goes together with an effect.
+**An effect sets only what it says it sets, and only what its type owns.** For the spider: a
+light effect gives levels per slot and nothing else; a motion effect gives the tilts, and the
+motor speed only when it says `setsMotorSpeed` (`scissor-motor`, which works it out from
+`motion`, the calibration of the layout, and leaves it alone when it cannot). The tilts and the
+motor speed are properties of the motion type of scene, so a motion effect reaches into no other
+type. Brightness and the strobe channel stay with the operator. For the laser: the controls in
+`drives`, and the rest stays with the operator, so a colour set by hand goes together with an
+effect. A test checks that the controls an effect of the lights drives are of the lights part and
+those of a motion effect of the motion part.
 
 **An effect never opens the laser.** It may not drive the mode channel, the controller
 refuses one that does, and effects count in manual mode only. A scene may open the
 laser, an effect may not. Keep this for any fixture that can hurt: what opens or arms it
 is never in `drives`.
 
-**The first colour is the foreground and the second is the background** (Jeroen,
-2026-10-07). The first is what flashes, hits or moves; the second is what the rest of the
-lenses show. An effect is given `a` and `b`, with `b` already worked out by `palette`:
-when the operator left the second colour empty it is the first colour dim, so an effect
-never sees an empty colour and works with one colour. Write the effect so that it reads
-as "a over b": `mix(b, a, level)`. An effect that gives a second colour a job of its own,
-such as an accent on the downbeat, takes that job away from the background.
+**A light effect knows slots, not colours** (Jeroen, 2026-10-14). Slot 1 is what flashes,
+hits or moves, slot 2 is what the rest of the lenses show, slot 3 is an accent. The effect
+returns, per cell, how much of each slot it gets (`over(level)` is `[level, 1 - level]`,
+slot 1 over slot 2), and `paint` in `palette.ts` makes the colours from the palette. A slot
+the palette does not have, or has as off, is dark: with one colour a kick is a flash that falls
+to dark, not to a dim first colour. An optional accent in slot 3 (the kick on the first beat
+of a bar, the tail of the chase, now and then a spark) is used only when the palette has a
+third colour (`slots` in the context), and then the effect looks as it does with two. An effect
+says how many slots it uses (`slots`) so that the page can say so.
 
-**Calm is the default.** Most effects keep a dim floor instead of going to black between
-flashes, and use the two colours of the operator instead of their own. Full white, full
-strobe and black gaps are what make a room restless.
+**Calm is the default.** The palette decides what the floor is: an operator who wants the
+lenses to fall to a dim colour puts that colour in slot 2, and one who wants a flash on black
+leaves it off. Full white, full strobe and black gaps are what make a room restless, so the
+palette that a show starts with is a single white and a rainbow, and a new effect is tried with
+one colour, with two and with three.
 
 ## Steps
 
@@ -70,12 +81,14 @@ strobe and black gaps are what make a room restless.
    fraction is the place within the beat, and four beats are a bar. Use the helpers that
    are in the file. Take the cells and bars from the context, never the number eight:
    the tests run every effect with other layouts.
-4. **Add it to the list** (`EFFECTS` or `LASER_EFFECTS`) with an id, a name and the
-   description. The page takes its effects from `details.effects`, so there is nothing
-   to add in the page for a plain effect.
+4. **Add it to the list** (`EFFECTS`, `MOTION_EFFECTS`, `LASER_EFFECTS` or
+   `LASER_MOTION_EFFECTS`) with an id, a name and the description. The pages take their
+   effects from `details.effects` and `details.motionEffects`, so there is nothing to add in
+   the page for a plain effect.
 5. **Test it frame by frame**, next to the others in the `*.test.ts`: what it shows on
-   the beat, between beats, at the bar, and that it comes back to its start. The tests
-   for the whole set (valid colours at any tempo, the same picture for the same moment,
+   the beat, between beats, at the bar, and that it comes back to its start. For a light
+   effect do it through `paint` with one, two and three colours. The tests for the whole set
+   (valid levels at any tempo and any palette length, the same picture for the same moment,
    never the mode for the laser, at most one change per beat) run over the new effect by
    themselves. One of them counts the effects, so that number changes.
 6. **For the laser, take every byte from a range of the profile** with the helpers in

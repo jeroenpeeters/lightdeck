@@ -6,7 +6,13 @@
  * `FixtureController`, an entry here, and its page.
  */
 
-import { LASER_EFFECTS, LASER_EFFECTS_MODE } from '../engine/laserEffects.js';
+import {
+  LASER_COLOUR_SETTING,
+  LASER_EFFECTS,
+  LASER_EFFECTS_MODE,
+  LASER_MOTION_EFFECTS,
+} from '../engine/laserEffects.js';
+import type { PaletteBook } from '../engine/palette.js';
 import { ALIEN_LASER_10CH, LASER_GATE } from '../fixtures/laser.js';
 import type { FixtureProfile } from '../fixtures/profile.js';
 import { SPIDER_43CH, SPIDER_LAYOUT } from '../fixtures/spider.js';
@@ -20,6 +26,8 @@ export interface KindOptions {
   /** Takes whole universes and keeps the channels of this fixture. */
   output: UniverseOutput;
   tempo: Tempo;
+  /** The palettes of the show, for the kinds of fixture that are coloured by them. */
+  palettes: PaletteBook;
   universe: number;
   address: number;
 }
@@ -37,11 +45,12 @@ export const FIXTURE_KINDS: Readonly<Record<string, FixtureKind>> = {
   },
   laser: {
     profile: ALIEN_LASER_10CH,
-    create: (options) =>
+    create: ({ palettes: _palettes, ...options }) =>
       new LaserController({
         profile: ALIEN_LASER_10CH,
         gate: LASER_GATE,
-        effects: { list: LASER_EFFECTS, mode: LASER_EFFECTS_MODE },
+        effects: { list: LASER_EFFECTS, motion: LASER_MOTION_EFFECTS, mode: LASER_EFFECTS_MODE },
+        colourSetting: { control: 'colour', range: 'single', max: LASER_COLOUR_SETTING },
         ...options,
       }),
   },

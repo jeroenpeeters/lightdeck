@@ -11,10 +11,16 @@
  * closes it for good when lightdeck stops: a change that comes after it is kept, and
  * does not reach the fixture.
  *
+ * Like the spider it has two kinds of effects that are chosen apart and go together: an effect
+ * of the lights (which pattern, in what colour) and an effect of the motion (size, place,
+ * rotation). The laser does not follow the palettes of the show. It has a colour setting of its
+ * own, up to three single colours, which its colour chase steps through, and which is kept with
+ * what it does, in a scene of lights.
+ *
  * While an effect is chosen, the laser is in the mode the effects count in and the tempo
  * runs, the engine of the console asks for a frame at every point of the grid of the beat
- * (`render`). The controller has no timer of its own. The effect sets the channels it
- * drives, the others stay with the operator. An effect never opens the laser: the gate is
+ * (`render`). The controller has no timer of its own. The effects set the channels they
+ * drive, the others stay with the operator. An effect never opens the laser: the gate is
  * not for effects to drive. Rendered frames are not state: browsers get them as `frame`
  * events, to draw what is being sent, and what they get is the frame that was sent.
  */
@@ -27,6 +33,7 @@ import {
   controlsOf,
   type FixtureProfile,
   findControl,
+  findRange,
   rangeAt,
   type SceneType,
   UNIVERSE_SIZE,
@@ -47,29 +54,46 @@ export interface LaserEffectSettings {
 export interface LaserState {
   /** Raw bytes by control name. */
   raw: Record<string, number>;
+  /** The effect of the lights. */
   effect: LaserEffectSettings;
+  /** The effect of the motion. */
+  motion: LaserEffectSettings;
+  /** The colour setting: bytes of the single colours, in order, up to the most it can have. */
+  colours: number[];
 }
 
 export interface LaserPatch {
   raw?: unknown;
   effect?: unknown;
+  motion?: unknown;
+  colours?: unknown;
 }
 
 /** What of the state a change can set: all of it. A scene keeps the part of its type. */
 type Look = LaserState;
 
-/** What of the effect each type of scene keeps. The laser has no colours of its own for it. */
-const EFFECT_PARTS: Record<SceneType, readonly string[]> = {
-  lights: ['id', 'speed'],
-  colour: [],
-  motion: [],
+/** Which type of scene keeps which of the effects and the colour setting. */
+const KEPT_BY: Record<'effect' | 'motion' | 'colours', SceneType> = {
+  effect: 'lights',
+  motion: 'motion',
+  colours: 'lights',
 };
 
 /** The effects of a laser, and the range of the gate in which they count. */
 export interface LaserEffects {
+  /** The effects of the lights. */
   list: readonly LaserEffect[];
+  /** The effects of the motion. */
+  motion?: readonly LaserEffect[];
   /** Key of a range of the gate, such as `manual`. */
   mode: string;
+}
+
+/** The colour setting: which control it sets, from which range, and how many colours at most. */
+export interface LaserColourSetting {
+  control: string;
+  range: string;
+  max: number;
 }
 
 export interface LaserOptions {
@@ -81,6 +105,8 @@ export interface LaserOptions {
   tempo: Tempo;
   /** Without effects the laser is set by hand only. */
   effects?: LaserEffects;
+  /** Without it the laser has no colour setting of its own. */
+  colourSetting?: LaserColourSetting;
   /** 0-based universe index on the bridge. */
   universe: number;
   /** 1-based DMX start address of the fixture. */
@@ -92,15 +118,20 @@ export class LaserController extends EventEmitter implements FixtureController {
   readonly gate: string;
   readonly universe: number;
   readonly address: number;
+  /** The laser has colours of its own and does not follow the palettes of the show. */
+  readonly takesPalettes = false;
 
   private readonly output: UniverseOutput;
   private readonly tempo: Tempo;
   private readonly effects: readonly LaserEffect[];
+  private readonly motionEffects: readonly LaserEffect[];
   private readonly effectsMode: string | undefined;
+  private readonly colourSetting: LaserColourSetting | undefined;
   private readonly frame = new Uint8Array(UNIVERSE_SIZE);
   private readonly closed: number;
-  /** Keeps the beat of the effect continuous when its speed changes. */
+  /** Keep the beat of the effect of the lights and the one of the motion continuous when a speed changes. */
   private readonly effectClock = new EffectClock();
+  private readonly motionClock = new EffectClock();
   /** True once the controller was closed: the engine then stops asking it for frames. */
   private disposed = false;
   private state: LaserState;
@@ -118,7 +149,9 @@ export class LaserController extends EventEmitter implements FixtureController {
     this.output = options.output;
     this.tempo = options.tempo;
     this.effects = options.effects?.list ?? [];
+    this.motionEffects = options.effects?.motion ?? [];
     this.effectsMode = options.effects?.mode;
+    this.colourSetting = options.colourSetting;
     this.universe = options.universe;
     this.address = options.address;
 
@@ -141,24 +174,29 @@ export class LaserController extends EventEmitter implements FixtureController {
   }
 
   getState(): LaserState {
-    return { raw: { ...this.state.raw }, effect: { ...this.state.effect } };
+    return {
+      raw: { ...this.state.raw },
+      effect: { ...this.state.effect },
+      motion: { ...this.state.motion },
+      colours: [...this.state.colours],
+    };
   }
 
   /**
-   * The control that opens and closes the laser, the effects and their speeds there are
-   * to choose from, and the range of the gate in which the effects count.
+   * The control that opens and closes the laser, the effects of the lights and of the motion
+   * and their speeds there are to choose from, the range of the gate in which the effects count,
+   * and the colour setting.
    */
   describe(): Record<string, unknown> {
+    const list = (effects: readonly LaserEffect[]) =>
+      effects.map(({ id, name, description, drives }) => ({ id, name, description, drives }));
     return {
       gate: this.gate,
       speeds: SPEEDS,
-      effects: this.effects.map(({ id, name, description, drives }) => ({
-        id,
-        name,
-        description,
-        drives,
-      })),
+      effects: list(this.effects),
+      motionEffects: list(this.motionEffects),
       effectsIn: this.effectsMode ?? null,
+      colourSetting: this.colourSetting ? { ...this.colourSetting, ...this.colourBytes() } : null,
     };
   }
 
@@ -175,7 +213,10 @@ export class LaserController extends EventEmitter implements FixtureController {
    */
   wantsFrames(): boolean {
     return (
-      !this.disposed && !this.stopped && this.tempo.isRunning() && this.showing() !== undefined
+      !this.disposed &&
+      !this.stopped &&
+      this.tempo.isRunning() &&
+      (this.showing('effect') !== undefined || this.showing('motion') !== undefined)
     );
   }
 
@@ -199,8 +240,9 @@ export class LaserController extends EventEmitter implements FixtureController {
   }
 
   /**
-   * The channels of this type that are not at rest, and for lights the chosen effect. Lights
-   * has the mode, so it is what opens the laser.
+   * The channels of this type that are not at rest, and the chosen effect of the type. Lights
+   * has the mode, so it is what opens the laser, and the colour setting is kept with it. The
+   * laser has no palette, so a scene of colour keeps nothing of it.
    */
   snapshot(type: SceneType): Record<string, unknown> {
     const rest = this.rest();
@@ -209,10 +251,12 @@ export class LaserController extends EventEmitter implements FixtureController {
     for (const [name, value] of Object.entries(this.state.raw)) {
       if (own.has(name) && value !== rest.raw[name]) raw[name] = value;
     }
-    const { effect } = this.state;
+    const { effect, motion, colours } = this.state;
     return {
       ...(Object.keys(raw).length > 0 ? { raw } : {}),
       ...(type === 'lights' && effect.id !== null ? { effect: { ...effect } } : {}),
+      ...(type === 'lights' && colours.length > 0 ? { colours: [...colours] } : {}),
+      ...(type === 'motion' && motion.id !== null ? { motion: { ...motion } } : {}),
     };
   }
 
@@ -232,18 +276,25 @@ export class LaserController extends EventEmitter implements FixtureController {
     this.state = {
       raw,
       effect: type === 'lights' ? look.effect : this.state.effect,
+      motion: type === 'motion' ? look.motion : this.state.motion,
+      colours: type === 'lights' ? look.colours : this.state.colours,
     };
     this.emit('wants');
     this.push(origin);
   }
 
-  /** The laser with nothing set: closed, every channel at rest, no effect. */
+  /** The laser with nothing set: closed, every channel at rest, no effect, no colours of its own. */
   private rest(): Look {
     const raw: Record<string, number> = {};
     for (const control of this.profile.controls) {
       if (control.kind === 'function') raw[control.name] = control.idle;
     }
-    return { raw, effect: { id: null, speed: 1 } };
+    return {
+      raw,
+      effect: { id: null, speed: 1 },
+      motion: { id: null, speed: 1 },
+      colours: [],
+    };
   }
 
   /**
@@ -251,8 +302,13 @@ export class LaserController extends EventEmitter implements FixtureController {
    * the change may name properties of that type of scene and no others.
    */
   private apply(base: Look, change: unknown, what: string, only?: SceneType): Look {
-    const patch = readObject(change, what, ['raw', 'effect']) as LaserPatch;
+    const patch = readObject(change, what, ['raw', 'effect', 'motion', 'colours']) as LaserPatch;
     const raw = { ...base.raw };
+    for (const key of ['effect', 'motion', 'colours'] as const) {
+      if (only !== undefined && patch[key] !== undefined && KEPT_BY[key] !== only) {
+        throw new PatchError(`"${key}" is not part of a ${only} scene`);
+      }
+    }
     const own = only === undefined ? undefined : new Set(controlsOf(this.profile, only));
     const newRaw = patch.raw === undefined ? {} : readObject(patch.raw, 'raw');
     for (const [name, value] of Object.entries(newRaw)) {
@@ -263,7 +319,12 @@ export class LaserController extends EventEmitter implements FixtureController {
       }
       raw[name] = value;
     }
-    return { raw, effect: this.readEffect(base.effect, patch.effect, only) };
+    return {
+      raw,
+      effect: this.readEffect(base.effect, patch.effect, 'effect'),
+      motion: this.readEffect(base.motion, patch.motion, 'motion'),
+      colours: this.readColours(base.colours, patch.colours),
+    };
   }
 
   act(name: string): void {
@@ -306,40 +367,58 @@ export class LaserController extends EventEmitter implements FixtureController {
 
   /** An effect may drive any control of the laser but the one that opens it. */
   private checkEffects(): void {
-    if (this.effects.length === 0) return;
-    const gate = findControl(this.profile, this.gate);
-    const mode = this.effectsMode;
-    const open = gate?.kind === 'function' ? gate.ranges.find((r) => r.key === mode) : undefined;
-    if (!open || (this.closed >= open.from && this.closed <= open.to)) {
-      throw new Error(
-        `${this.profile.id}: effects need a range "${mode}" of "${this.gate}" that opens the laser`,
-      );
+    const all = [...this.effects, ...this.motionEffects];
+    if (all.length > 0) {
+      const gate = findControl(this.profile, this.gate);
+      const mode = this.effectsMode;
+      const open = gate?.kind === 'function' ? gate.ranges.find((r) => r.key === mode) : undefined;
+      if (!open || (this.closed >= open.from && this.closed <= open.to)) {
+        throw new Error(
+          `${this.profile.id}: effects need a range "${mode}" of "${this.gate}" that opens the laser`,
+        );
+      }
     }
-    for (const effect of this.effects) {
+    for (const effect of all) {
       for (const name of effect.drives) {
         if (name === this.gate || !findControl(this.profile, name)) {
           throw new Error(`${this.profile.id}: the effect "${effect.id}" cannot drive "${name}"`);
         }
       }
     }
+    if (this.colourSetting) {
+      const { control, range } = this.colourSetting;
+      const found = findControl(this.profile, control);
+      if (found?.kind !== 'function' || !findRange(found, range)) {
+        throw new Error(
+          `${this.profile.id}: the colour setting needs a range "${range}" of "${control}"`,
+        );
+      }
+    }
   }
 
+  /** From and to of the range the colour setting takes its bytes from. */
+  private colourBytes(): { from: number; to: number } | Record<string, never> {
+    if (!this.colourSetting) return {};
+    const found = findControl(this.profile, this.colourSetting.control);
+    const range =
+      found?.kind === 'function' ? findRange(found, this.colourSetting.range) : undefined;
+    return range ? { from: range.from, to: range.to } : {};
+  }
+
+  /** The effect of the lights (`effect`) or the one of the motion (`motion`) with the change on top. */
   private readEffect(
     current: LaserEffectSettings,
     change: unknown,
-    only?: SceneType,
+    kind: 'effect' | 'motion',
   ): LaserEffectSettings {
     if (change === undefined) return current;
-    const { id, speed } = readObject(
-      change,
-      'effect',
-      only === undefined ? ['id', 'speed'] : EFFECT_PARTS[only],
-    );
+    const { id, speed } = readObject(change, kind, ['id', 'speed']);
+    const list = kind === 'effect' ? this.effects : this.motionEffects;
     const effect = { ...current };
     if (id !== undefined) {
-      if (id !== null && !this.effects.some((each) => each.id === id)) {
+      if (id !== null && !list.some((each) => each.id === id)) {
         throw new PatchError(
-          `unknown effect "${String(id)}", choose one of ${this.effects.map((e) => e.id).join(', ')}`,
+          `unknown ${kind === 'effect' ? 'effect' : 'motion effect'} "${String(id)}", choose one of ${list.map((e) => e.id).join(', ')}`,
         );
       }
       effect.id = id as string | null;
@@ -353,40 +432,62 @@ export class LaserController extends EventEmitter implements FixtureController {
     return effect;
   }
 
-  /** The chosen effect, when the laser is in the mode in which effects count. */
-  private showing(): LaserEffect | undefined {
-    const { id } = this.state.effect;
+  /** The colour setting with the change on top: a whole list of bytes of the single colours. */
+  private readColours(current: number[], change: unknown): number[] {
+    if (change === undefined) return current;
+    if (!this.colourSetting) throw new PatchError('this laser has no colour setting');
+    const { max } = this.colourSetting;
+    if (!Array.isArray(change)) {
+      throw new PatchError(`"colours" must be a list of ${max} colours at most`);
+    }
+    if (change.length > max) throw new PatchError(`the laser can have ${max} colours at most`);
+    const { from, to } = this.colourBytes() as { from: number; to: number };
+    return change.map((value) => {
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < from || value > to) {
+        throw new PatchError(`a colour must be a whole number from ${from} to ${to}`);
+      }
+      return value;
+    });
+  }
+
+  /** The chosen effect of the lights or of the motion, when the laser is in the mode in which effects count. */
+  private showing(kind: 'effect' | 'motion'): LaserEffect | undefined {
+    const { id } = this.state[kind];
     if (id === null) return undefined;
     const gate = findControl(this.profile, this.gate);
     if (gate?.kind !== 'function') return undefined;
     if (rangeAt(this.profile, gate, this.state.raw)?.key !== this.effectsMode) return undefined;
-    return this.effects.find((effect) => effect.id === id);
+    return (kind === 'effect' ? this.effects : this.motionEffects).find((each) => each.id === id);
   }
 
   private outputValues(at: number) {
     const raw = { ...this.state.raw };
     // An idle effect drives nothing, and does not open or close the laser: the laser shows
     // what it is set to. The engine asks again when the tempo runs, so the effect is back.
-    const effect = this.tempo.isRunning() ? this.showing() : undefined;
-    if (effect) {
+    if (this.tempo.isRunning()) {
       const { bpm, rate } = this.tempo.getState();
-      // The beat of the output, a little ahead of the beat itself by the lead. Its speed is
-      // limited, and the effect goes on from where it is when the speed changes.
-      const { beat, speed } = this.effectClock.read({
-        beat: this.tempo.outputBeat(at),
-        bpm,
-        wanted: this.state.effect.speed * rate,
-        epoch: this.tempo.epoch,
-        key: effect.id,
-      });
-      const rendered = effect.render({
-        beat,
-        bpm: bpm * speed,
-        raw: this.state.raw,
-      });
-      for (const name of effect.drives) {
-        const byte = rendered[name];
-        if (byte !== undefined) raw[name] = byte;
+      for (const kind of ['effect', 'motion'] as const) {
+        const effect = this.showing(kind);
+        if (!effect) continue;
+        // The beat of the output, a little ahead of the beat itself by the lead. Its speed is
+        // limited, and the effect goes on from where it is when the speed changes.
+        const { beat, speed } = (kind === 'effect' ? this.effectClock : this.motionClock).read({
+          beat: this.tempo.outputBeat(at),
+          bpm,
+          wanted: this.state[kind].speed * rate,
+          epoch: this.tempo.epoch,
+          key: effect.id,
+        });
+        const rendered = effect.render({
+          beat,
+          bpm: bpm * speed,
+          raw: this.state.raw,
+          colours: this.state.colours,
+        });
+        for (const name of effect.drives) {
+          const byte = rendered[name];
+          if (byte !== undefined) raw[name] = byte;
+        }
       }
     }
     // Open only when the master is known to be above 0, so that nothing else opens it.

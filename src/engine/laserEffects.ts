@@ -8,6 +8,13 @@
  * change or zoom of the fixture itself goes together with an effect. No timers and no
  * state in here, so every effect can be tested frame by frame.
  *
+ * Like the effects of the spider they are of two kinds that are chosen apart and go together.
+ * The effects of the lights (`LASER_EFFECTS`) change which pattern is drawn and in what colour:
+ * the pattern chase and the colour chase. The effects of the motion (`LASER_MOTION_EFFECTS`)
+ * change where and how big it is drawn and how it turns: the pulse, the sweep and the twist.
+ * The laser does not follow the palettes of the show: its colour chase steps through the colours
+ * of its own colour setting, up to three, and through all seven when it has none.
+ *
  * Every byte comes from a range of the profile in `src/fixtures/laser.ts`, which has
  * them from the manual. An effect never drives the mode: opening and closing the laser
  * stays with the operator. Effects count in manual mode only, because that is the mode
@@ -43,6 +50,11 @@ export interface LaserEffectContext {
   bpm: number;
   /** What the operator has set: raw bytes by control name. */
   raw: Readonly<Record<string, number>>;
+  /**
+   * The colour setting of the laser: up to three bytes of the single colours of the colour
+   * channel. The colour chase steps through them, and through all seven when there are none.
+   */
+  colours: readonly number[];
 }
 
 export interface LaserEffect {
@@ -110,10 +122,14 @@ const patterns: LaserEffect = {
 const colours: LaserEffect = {
   id: 'colours',
   name: 'Colour chase',
-  description: 'A new colour on every beat, through all the single colours of the laser.',
+  description:
+    'A new colour on every beat, through the colours that are set for the laser, or through all its single colours when none are.',
   drives: ['colour'],
-  render({ beat }) {
-    return { colour: byteForStep(COLOUR_STEPS, mod(Math.floor(beat), LASER_COLOURS) + 1) };
+  render({ beat, colours: own }) {
+    const step = Math.floor(beat);
+    const chosen = own[mod(step, Math.max(own.length, 1))];
+    if (chosen !== undefined) return { colour: chosen };
+    return { colour: byteForStep(COLOUR_STEPS, mod(step, LASER_COLOURS) + 1) };
   },
 };
 
@@ -154,14 +170,24 @@ const twist: LaserEffect = {
   },
 };
 
-export const LASER_EFFECTS: readonly LaserEffect[] = [patterns, colours, pulse, sweep, twist];
+/** What the laser does with its lights: which pattern, and in what colour. */
+export const LASER_EFFECTS: readonly LaserEffect[] = [patterns, colours];
+/** How the laser moves what it draws: its size, its place and its rotation. */
+export const LASER_MOTION_EFFECTS: readonly LaserEffect[] = [pulse, sweep, twist];
 
 export function findLaserEffect(id: string): LaserEffect | undefined {
   return LASER_EFFECTS.find((effect) => effect.id === id);
 }
 
+export function findLaserMotionEffect(id: string): LaserEffect | undefined {
+  return LASER_MOTION_EFFECTS.find((effect) => effect.id === id);
+}
+
+/** The most colours the colour setting of the laser can have. */
+export const LASER_COLOUR_SETTING = 3;
+
 // Fails at startup when an effect names a control the laser lacks, or takes the mode.
-for (const effect of LASER_EFFECTS) {
+for (const effect of [...LASER_EFFECTS, ...LASER_MOTION_EFFECTS]) {
   for (const name of effect.drives) {
     const control = findControl(ALIEN_LASER_10CH, name);
     if (control?.kind !== 'function' || name === LASER_GATE) {

@@ -7,11 +7,14 @@ bridge and in desktop Chrome, not on the real fixtures and not on a tablet. The 
 steps are design. Decisions marked
 "Jeroen" were made by him on 2026-09-29; the rest is a proposal.
 
-Planned and not built (2026-10-14): light effects, motion effects and colours come apart.
-Colours become palettes, lists of colours kept once for the whole show, and the Colour
-type's scenes are replaced by them; tilt wave and the scissors move from Lights to Motion;
-an empty colour is off, which replaces the dim background below. See
-`docs/effects-split-plan.md`. "Scene types" below describes what is built now.
+Built on 2026-10-14: light effects, motion effects and colours came apart. Colours are
+palettes, lists of colours kept once for the whole show, and the Colour lane of a group
+holds them where it held scenes; tilt wave and the scissors are motion effects; an empty
+colour is off, which replaced the dim background below; a look sets a scene of lights, a
+palette and a scene of motion of a group together. See `docs/effects-split-plan.md`, which
+also says what changed in "Scene types" below: a scene is of the type lights or motion only,
+and the two colours of an effect (first and second, with the second dim when empty) are the
+slots of a palette now.
 
 ## What it is for
 

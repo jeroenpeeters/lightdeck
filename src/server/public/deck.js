@@ -1,30 +1,44 @@
-// The deck: the groups of the show with their scenes. Plain browser JavaScript, no build
-// step.
+// The deck: the groups of the show with what can be set on them. Plain browser JavaScript, no
+// build step.
 //
-// A group is a set of fixtures, and a scene is a part of what the fixtures of its group do.
-// A scene is of one type: Lights (what is on, and what it does), Colour or Motion. Every
-// group has a row here with a lane per type, and a lane has a key per scene of that type. One
-// scene per lane is on, so several scenes are on at once, each for its own fixtures and its
-// own properties: a colour scene is pressed under a chase and the chase goes on in the new
-// colour. The lane of the lights has the key for off, which darkens the fixtures and leaves
-// their colours and their motion as they are.
+// A group is a set of fixtures. Every group has a row here with a row of looks and a lane per
+// type: Lights, Colour and Motion.
+//
+//   Lights, Motion   the scenes of the group, a key per scene. A scene is a part of what the
+//                    fixtures of its group do, of that type only. The lane of the lights has
+//                    the key for off, which darkens the fixtures and leaves their colours and
+//                    their motion as they are.
+//   Colour           the palettes of the show, a key per palette, the same in every group. A
+//                    palette belongs to no group and is made on the Palettes page. A group
+//                    whose fixtures have colours of their own (the laser) takes no palettes,
+//                    and its lane says so.
+//   Looks            a look of the group sets a scene of lights, a palette and a scene of
+//                    motion together; a lane it does not name is left alone.
+//
+// One thing per lane is on, so several are on at once, each for its own fixtures and its own
+// properties: a palette is pressed under a chase and the chase goes on in the new colours. A
+// look that is on shows it as well, and it shows as changed when a lane it set is not what it
+// set any more.
 //
 // The deck has two modes, and the address remembers which (#program):
 //
-//   Show      what the page opens in. A press on a scene sets its type of properties on the
-//             fixtures of its group, a press on Off darkens them. There is nothing to type
-//             and nothing that deletes, and no key changes size or place when a scene goes
-//             on or off.
-//   Program   storing, naming and deleting, of scenes and of groups. A press on a scene
-//             chooses it, and the fixtures stay as they are.
+//   Show      what the page opens in. A press sets what its key names on the fixtures of its
+//             group, a press on Off darkens them. There is nothing to type and nothing that
+//             deletes, and no key changes size or place when something goes on or off.
+//   Program   storing, naming and deleting, of scenes, looks and groups. A press on a scene or
+//             a look chooses it, and the fixtures stay as they are. A palette key does
+//             nothing there: the palettes are edited on their own page, which Program links to.
 //
 // Storing takes the properties of the chosen type from the fixtures of the group as they are
-// now, so a scene is made on the pages of the fixtures and kept here.
+// now, so a scene is made on the pages of the fixtures and kept here. A look takes what is on
+// in the group now: the scene of lights, the palette and the scene of motion. The server
+// refuses a look when nothing is on or a lane was changed by hand, and says so.
 //
-// The deck draws what the server says: the groups of the show, which scene is on in each lane
-// of each, and whether its fixtures were changed by hand since. It asks for what the
-// operator wants and waits for the answer to come by as an event. A press is asked once:
-// when it does not reach lightdeck the deck says so and the operator presses again.
+// The deck draws what the server says: the groups of the show, the palettes, which scene or
+// palette is on in each lane of each group, which look, and whether its fixtures were changed
+// by hand since. It asks for what the operator wants and waits for the answer to come by as an
+// event. A press is asked once: when it does not reach lightdeck the deck says so and the
+// operator presses again.
 //
 // The deck also has the fader of the master, in Show and in Program. The master is for
 // the whole console and no part of a scene: moving it changes no scene, and a scene
@@ -36,20 +50,25 @@
 // screen here, with the one of the deck, so that no key moves when it comes or goes.
 
 import { masterPercent, start } from './shell.js';
-import { $, button, element, sentence, slider, speedKeys } from './ui.js';
+import { $, button, element, sentence, slider, speedKeys, speedName } from './ui.js';
 
 /** How long a delete key waits for the second press. */
 const SURE_MS = 3000;
 /** What the address ends in while the deck is in Program. */
 const PROGRAM = '#program';
 const NAME_LENGTH = 40;
-/** The types of scene, in the order of the lanes of a row. */
+/** The types of the lanes of a row, in order. Colour holds palettes, the others scenes. */
 const TYPES = [
   { id: 'lights', name: 'Lights', hint: 'What is on, and what it does' },
-  { id: 'colour', name: 'Colour', hint: 'The first and the second colour' },
+  { id: 'colour', name: 'Colour', hint: 'The palette: the colours the effects use' },
   { id: 'motion', name: 'Motion', hint: 'How the bars and the beam move' },
 ];
+/** The looks come before the lanes of the types, in a lane of their own. */
+const LOOKS = { id: 'look', name: 'Looks', hint: 'Lights, colour and motion together' };
+/** What Program can store: a scene of lights, a scene of motion, or a look. No colour. */
+const STORABLE = [TYPES[0], TYPES[2], { ...LOOKS, name: 'Look' }];
 const typeName = (id) => TYPES.find((type) => type.id === id)?.name ?? id;
+const NO_PALETTES = "This group's fixtures have colours of their own. Set them on their page.";
 
 /**
  * What the page has from the start. It is found once, by ids that no row can have: the
@@ -71,11 +90,11 @@ const page = {
 };
 
 let shell;
-/** While true, a press on a scene chooses it to edit and the fixtures stay as they are. */
+/** While true, a press on a scene or a look chooses it to edit and the fixtures stay as they are. */
 let programming = false;
-/** The scene chosen to edit, as { group, scene }. */
+/** The scene or look chosen to edit, as { group, kind: 'scene' | 'look', id }. */
 let chosen = null;
-/** What a delete key was pressed for once, as { group, scene }. A group has no scene. */
+/** What a delete key was pressed for once, as { group, kind: 'scene' | 'look' | 'group', id }. */
 let sure = null;
 let sureTimer;
 /** What the server answered to what could not be done. */
@@ -91,24 +110,77 @@ let showSpeed = () => {};
 
 const groupOf = (id) => shell.show.groups.find((group) => group.id === id);
 const sceneOf = (group, id) => groupOf(group)?.scenes.find((scene) => scene.id === id);
+const lookOf = (group, id) => groupOf(group)?.looks.find((look) => look.id === id);
+const paletteOf = (id) => palettes().find((palette) => palette.id === id);
+const palettes = () => shell.show.palettes ?? [];
 const labelOf = (id) => shell.fixtures.find((fixture) => fixture.id === id)?.label ?? id;
-const same = (one, other) => one !== null && one.group === other.group && one.scene === other.scene;
+const same = (one, other) =>
+  one !== null && one.group === other.group && one.kind === other.kind && one.id === other.id;
 const count = (number, word) => (number === 1 ? `1 ${word}` : `${number} ${word}s`);
+/** The scene or look that is chosen, when it is still there. */
+const chosenItem = () =>
+  chosen &&
+  (chosen.kind === 'look' ? lookOf(chosen.group, chosen.id) : sceneOf(chosen.group, chosen.id));
 
 /**
  * What is on in a lane of a group. Right after the show changed the server may not have
- * said yet, and then no scene is on.
+ * said yet, and then nothing is on. In the lane of the colour that is a palette of the show.
  */
 function onIn(group, type) {
   const on = shell.playback.groups?.[group.id]?.[type];
-  const scene = group.scenes.find((each) => each.id === on?.scene && each.type === type);
-  return { scene, changed: Boolean(scene && on.changed) };
+  const item =
+    type === 'colour'
+      ? group.palettes === false
+        ? undefined
+        : paletteOf(on?.scene)
+      : group.scenes.find((each) => each.id === on?.scene && each.type === type);
+  return { item, changed: Boolean(item && on.changed) };
+}
+
+/** The look that is on in a group, and whether a lane it set was changed since. */
+function onLook(group) {
+  const on = shell.playback.groups?.[group.id]?.look;
+  const item = group.looks.find((each) => each.id === on?.look);
+  return { item, changed: Boolean(item && on.changed) };
 }
 
 /** What a scene sets, where that says more than the row does already. */
 function setsOf(scene, group) {
   if (scene.fixtures.length === 0) return scene.type === 'lights' ? 'Dark' : 'Nothing set';
   return group.fixtures.length > 1 ? scene.fixtures.map(labelOf).join(', ') : '';
+}
+
+/** What a look names, in the words of the keys it points to: "Chase · Sunset · Scissor". */
+function namesOf(look, group) {
+  const parts = [];
+  const lights = group.scenes.find((scene) => scene.id === look.lights);
+  if (lights) parts.push(lights.label);
+  const palette = look.colour ? paletteOf(look.colour.palette) : undefined;
+  if (palette) {
+    parts.push(
+      look.colour.speed ? `${palette.label} ${speedName(look.colour.speed)}` : palette.label,
+    );
+  }
+  const motion = group.scenes.find((scene) => scene.id === look.motion);
+  if (motion) parts.push(motion.label);
+  return parts.join(' · ');
+}
+
+/** What a palette does besides showing its colours, in a few words. */
+function movesOf(palette) {
+  if (palette.mode !== 'cycle') return '';
+  return palette.change === 'fade' ? 'Cycles, fades' : 'Cycles, steps';
+}
+
+/** A colour of a palette as CSS, or null for a dark slot. White is added to all three. */
+function chipColour(value) {
+  const parsed = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})?$/i.exec(value);
+  if (!parsed) return null;
+  const [red = 0, green = 0, blue = 0, white = 0] = parsed
+    .slice(1)
+    .map((part) => (part ? Number.parseInt(part, 16) : 0));
+  const mix = (light) => Math.min(255, light + white);
+  return `rgb(${mix(red)} ${mix(green)} ${mix(blue)})`;
 }
 
 async function ask(url, body) {
@@ -121,13 +193,21 @@ async function ask(url, body) {
 
 // ---- what the operator does ----
 
-function press(group, scene) {
-  if (programming) {
-    const here = { group, scene };
-    choose(same(chosen, here) ? null : here);
-    return;
-  }
-  ask('/api/playback', { group, scene });
+function pressScene(group, id) {
+  if (programming)
+    return choose(same(chosen, { group, kind: 'scene', id }) ? null : { group, kind: 'scene', id });
+  ask('/api/playback', { group, scene: id });
+}
+
+function pressLook(group, id) {
+  if (programming)
+    return choose(same(chosen, { group, kind: 'look', id }) ? null : { group, kind: 'look', id });
+  ask('/api/playback', { group, look: id });
+}
+
+/** Palettes are edited on their page. In Program their keys do nothing. */
+function pressPalette(group, id) {
+  if (!programming) ask('/api/playback', { group, palette: id });
 }
 
 function pressOff(group) {
@@ -154,8 +234,11 @@ function switchMode() {
 }
 
 async function storeNew(group, field) {
-  const type = rows.get(group)?.type ?? TYPES[0].id;
-  const answer = await ask(`/api/groups/${group}/scenes`, { label: field.value, type });
+  const type = rows.get(group)?.type ?? STORABLE[0].id;
+  const answer =
+    type === 'look'
+      ? await ask(`/api/groups/${group}/looks`, { label: field.value })
+      : await ask(`/api/groups/${group}/scenes`, { label: field.value, type });
   if (answer.ok) field.value = '';
   return answer.ok;
 }
@@ -163,13 +246,21 @@ async function storeNew(group, field) {
 function storeOver(id) {
   const group = groupOf(id);
   const type = rows.get(id)?.type;
-  const { scene } = group && type ? onIn(group, type) : {};
-  if (scene) ask(`/api/groups/${id}/scenes/${scene.id}/store`);
+  if (!group || !type) return;
+  const { item } = type === 'look' ? onLook(group) : onIn(group, type);
+  if (!item) return;
+  ask(`/api/groups/${id}/${type === 'look' ? 'looks' : 'scenes'}/${item.id}/store`);
 }
 
-async function renameScene(group, label) {
+/** The address of the chosen scene or look, on the server. */
+function chosenUrl(group, action) {
+  const kind = chosen.kind === 'look' ? 'looks' : 'scenes';
+  return `/api/groups/${group}/${kind}/${chosen.id}/${action}`;
+}
+
+async function renameItem(group, label) {
   if (chosen?.group !== group) return false;
-  return (await ask(`/api/groups/${group}/scenes/${chosen.scene}/rename`, { label })).ok;
+  return (await ask(chosenUrl(group, 'rename'), { label })).ok;
 }
 
 async function renameGroup(group, label) {
@@ -198,13 +289,13 @@ async function remove(what, url) {
   render();
 }
 
-function removeScene(group) {
+function removeItem(group) {
   if (chosen?.group !== group) return;
-  remove({ ...chosen }, `/api/groups/${group}/scenes/${chosen.scene}/delete`);
+  remove({ ...chosen }, chosenUrl(group, 'delete'));
 }
 
 function removeGroup(group) {
-  remove({ group, scene: null }, `/api/groups/${group}/delete`);
+  remove({ group, kind: 'group', id: group }, `/api/groups/${group}/delete`);
 }
 
 async function makeGroup(event) {
@@ -240,7 +331,7 @@ function nameRow({ id, label, key, done }) {
     // A field that follows a name shows it as it was stored.
     render();
   });
-  return { form, field, submit };
+  return { form, field, submit, name };
 }
 
 function block(title, ...parts) {
@@ -250,11 +341,11 @@ function block(title, ...parts) {
   return { made, head };
 }
 
-/** The keys that say which type of scene is stored. */
+/** The keys that say what is stored: a scene of lights, a scene of motion, or a look. */
 function buildTypeKeys(row) {
   const fieldset = element('fieldset', 'choice type-choice');
-  fieldset.append(element('legend', '', 'Type of scene'));
-  row.typeKeys = TYPES.map(({ id, name, hint }) => {
+  fieldset.append(element('legend', '', 'What to store'));
+  row.typeKeys = STORABLE.map(({ id, name, hint }) => {
     const made = button('pick', name, () => {
       row.type = id;
       render();
@@ -266,7 +357,7 @@ function buildTypeKeys(row) {
   return fieldset;
 }
 
-/** What Program adds to the row of a group: storing, the chosen scene, the group itself. */
+/** What Program adds to the row of a group: storing, the chosen scene or look, the group itself. */
 function buildProgram(row) {
   const { id } = row;
   row.storeNew = nameRow({
@@ -287,9 +378,9 @@ function buildProgram(row) {
     id: `row.${id}.scene`,
     label: 'Name',
     key: 'Rename',
-    done: (label) => renameScene(id, label),
+    done: (label) => renameItem(id, label),
   });
-  row.remove = button('key wide delete', '', () => removeScene(id));
+  row.remove = button('key wide delete', '', () => removeItem(id));
   const scene = block('Scene', row.rename.form, row.remove);
   row.sceneTitle = scene.head;
 
@@ -308,31 +399,39 @@ function buildProgram(row) {
   return program;
 }
 
-/** One lane of a row: the name of the type, the keys of its scenes, and for lights Off. */
+/**
+ * One lane of a row: the name of the lane, its keys, and what it says when it has none. The
+ * lane of the lights has Off at its end, the lane of the colour the link to the palettes. The
+ * place is there in every lane, so that the keys line up.
+ */
 function buildLane(row, type) {
-  const lane = { type: type.id };
+  const lane = { type: type.id, keys: new Map() };
   lane.section = element('div', 'lane');
+  lane.section.dataset.lane = type.id;
   lane.section.setAttribute('role', 'group');
   lane.name = element('span', 'lane-name', type.name);
   lane.name.title = type.hint;
   lane.grid = element('div', 'scene-grid');
-  lane.none = element('p', 'hint', `No ${type.name.toLowerCase()} scenes yet.`);
-  const scenes = element('div', 'lane-scenes');
-  scenes.append(lane.none, lane.grid);
-  lane.section.append(lane.name, scenes);
-  // Off has a place of its own at the end of the lane of the lights, the same in every
-  // group. The other lanes keep the place free, so that the keys line up.
+  lane.none = element('p', 'hint');
+  const keys = element('div', 'lane-scenes');
+  keys.append(lane.none, lane.grid);
+  lane.section.append(lane.name, keys);
   const end = element('div', 'lane-end');
   if (type.id === 'lights') {
     row.off = button('scene off', 'Off', () => pressOff(row.id));
     end.append(row.off);
+  }
+  if (type.id === 'colour') {
+    lane.edit = element('a', 'edit-palettes', 'Edit palettes');
+    lane.edit.href = '/palettes';
+    end.append(lane.edit);
   }
   lane.section.append(end);
   return lane;
 }
 
 function buildRow(id) {
-  const row = { id, keys: new Map(), label: null, edited: null, type: TYPES[0].id, lanes: {} };
+  const row = { id, label: null, edited: null, type: STORABLE[0].id, lanes: {} };
   row.section = element('section', 'panel group');
   row.name = element('h2', 'group-name');
   row.name.id = `row.${id}.title`;
@@ -342,7 +441,7 @@ function buildRow(id) {
   head.append(row.name, row.holds);
 
   const lanes = element('div', 'lanes');
-  for (const type of TYPES) {
+  for (const type of [LOOKS, ...TYPES]) {
     row.lanes[type.id] = buildLane(row, type);
     lanes.append(row.lanes[type.id].section);
   }
@@ -382,73 +481,179 @@ function buildTicks() {
 
 // ---- drawing ----
 
-function stateOf(group, scene) {
-  if (programming && same(chosen, { group: group.id, scene: scene.id })) return 'chosen';
-  const on = onIn(group, scene.type);
-  if (on.scene !== scene) return 'idle';
+/** A key of a lane: its name, and under it a line that says more. */
+function makeKey(onPress, ...between) {
+  const key = button('scene', undefined, onPress);
+  key.append(element('span', 'scene-name'), ...between, element('span', 'scene-sets'));
+  return key;
+}
+
+function drawKey(key, { state, label, sets, title = '' }) {
+  key.dataset.state = state;
+  key.setAttribute('aria-pressed', String(state !== 'idle'));
+  key.firstElementChild.textContent = label;
+  key.lastElementChild.textContent = state === 'changed' ? 'Changed by hand' : sets;
+  key.title = title;
+}
+
+/** The state a key shows: chosen to edit, or on as it was set, or on and changed by hand. */
+function stateOf(chosenHere, on, item) {
+  if (chosenHere) return 'chosen';
+  if (!item || on.item !== item) return 'idle';
   return on.changed ? 'changed' : 'set';
 }
 
-function renderKeys(row, group) {
-  for (const [id, key] of row.keys) {
-    if (group.scenes.some((scene) => scene.id === id)) continue;
+/** Makes the keys of a lane the ones in `items` ({ id, make, draw }), in that order. */
+function syncLane(lane, items) {
+  const wanted = new Set(items.map((item) => item.id));
+  for (const [id, key] of lane.keys) {
+    if (wanted.has(id)) continue;
     key.remove();
-    row.keys.delete(id);
+    lane.keys.delete(id);
   }
-  for (const { id: type } of TYPES) {
-    const lane = row.lanes[type];
-    const scenes = group.scenes.filter((scene) => scene.type === type);
-    scenes.forEach((scene, index) => {
-      let key = row.keys.get(scene.id);
-      if (!key) {
-        key = button('scene', undefined, () => press(group.id, scene.id));
-        key.append(element('span', 'scene-name'), element('span', 'scene-sets'));
-        row.keys.set(scene.id, key);
+  items.forEach((item, index) => {
+    let key = lane.keys.get(item.id);
+    if (!key) {
+      key = item.make();
+      lane.keys.set(item.id, key);
+    }
+    if (lane.grid.children[index] !== key) {
+      lane.grid.insertBefore(key, lane.grid.children[index] ?? null);
+    }
+    item.draw(key);
+  });
+  lane.none.hidden = items.length > 0;
+}
+
+function sceneItems(group, type) {
+  const on = onIn(group, type);
+  return group.scenes
+    .filter((scene) => scene.type === type)
+    .map((scene) => ({
+      id: scene.id,
+      make: () => makeKey(() => pressScene(group.id, scene.id)),
+      draw: (key) => {
+        const here = same(chosen, { group: group.id, kind: 'scene', id: scene.id });
+        drawKey(key, {
+          state: stateOf(programming && here, on, scene),
+          label: scene.label,
+          sets: setsOf(scene, group),
+        });
+      },
+    }));
+}
+
+/** A palette has a strip of its colours between its name and the line under it. */
+function paletteItems(group) {
+  if (group.palettes === false) return [];
+  const on = onIn(group, 'colour');
+  return palettes().map((palette) => ({
+    id: palette.id,
+    make: () => {
+      const strip = element('span', 'chips');
+      strip.setAttribute('aria-hidden', 'true');
+      const key = makeKey(() => pressPalette(group.id, palette.id), strip);
+      key.strip = strip;
+      return key;
+    },
+    draw: (key) => {
+      const colours = palette.colours.join(' ');
+      if (key.colours !== colours) {
+        key.colours = colours;
+        key.strip.replaceChildren(
+          ...palette.colours.map((value) => {
+            const chip = element('span', 'chip');
+            const colour = chipColour(value);
+            if (colour) chip.style.backgroundColor = colour;
+            else chip.dataset.off = 'true';
+            return chip;
+          }),
+        );
       }
-      // Putting a key in a lane also takes it out of the lane it was in, which is how a scene
-      // that got another type in the file moves.
-      if (lane.grid.children[index] !== key) {
-        lane.grid.insertBefore(key, lane.grid.children[index] ?? null);
-      }
-      const state = stateOf(group, scene);
-      key.dataset.state = state;
-      key.setAttribute('aria-pressed', String(state !== 'idle'));
-      key.firstElementChild.textContent = scene.label;
-      key.lastElementChild.textContent =
-        state === 'changed' ? 'Changed by hand' : setsOf(scene, group);
-    });
-    lane.none.hidden = scenes.length > 0;
-    lane.section.setAttribute('aria-label', `${group.label} ${typeName(type)}`);
+      const sets = movesOf(palette);
+      drawKey(key, { state: stateOf(false, on, palette), label: palette.label, sets });
+      key.title = `${palette.label}: ${palette.colours.length === 1 ? '1 colour' : `${palette.colours.length} colours`}`;
+      // Palettes are edited on their own page, so in Program a press does nothing.
+      key.disabled = programming;
+    },
+  }));
+}
+
+function lookItems(group) {
+  const on = onLook(group);
+  return group.looks.map((look) => ({
+    id: look.id,
+    make: () => makeKey(() => pressLook(group.id, look.id)),
+    draw: (key) => {
+      const here = same(chosen, { group: group.id, kind: 'look', id: look.id });
+      const sets = namesOf(look, group);
+      drawKey(key, {
+        state: stateOf(programming && here, on, look),
+        label: look.label,
+        sets,
+        title: sets,
+      });
+    },
+  }));
+}
+
+function renderKeys(row, group) {
+  syncLane(row.lanes[LOOKS.id], lookItems(group));
+  syncLane(row.lanes.lights, sceneItems(group, 'lights'));
+  syncLane(row.lanes.colour, paletteItems(group));
+  syncLane(row.lanes.motion, sceneItems(group, 'motion'));
+
+  const empty = {
+    look: 'No looks yet.',
+    lights: 'No lights scenes yet.',
+    colour:
+      group.palettes === false ? NO_PALETTES : 'No palettes yet. Make them on the Palettes page.',
+    motion: 'No motion scenes yet.',
+  };
+  for (const { id, name } of [LOOKS, ...TYPES]) {
+    const lane = row.lanes[id];
+    lane.none.textContent = empty[id] ?? '';
+    lane.section.setAttribute('aria-label', `${group.label} ${name}`);
   }
+  row.lanes.colour.edit.hidden = !programming;
 }
 
 function renderProgram(row, group) {
-  for (const { id, made } of row.typeKeys)
+  const isLook = row.type === 'look';
+  for (const { id, made } of row.typeKeys) {
     made.setAttribute('aria-pressed', String(row.type === id));
-  const { scene: running, changed } = onIn(group, row.type);
-  const kind = typeName(row.type).toLowerCase();
+  }
+  row.storeNew.name.textContent = isLook ? 'Name of the new look' : 'Name of the new scene';
+  const { item: running, changed } = isLook ? onLook(group) : onIn(group, row.type);
+  const kind = isLook ? 'look' : `${typeName(row.type).toLowerCase()} scene`;
   row.storeOver.disabled = !changed;
   row.storeOver.textContent = !running
-    ? `No ${kind} scene is on`
+    ? `No ${kind} is on`
     : changed
       ? `Store the changes in "${running.label}"`
       : `"${running.label}" is as it was stored`;
 
-  const edited = chosen?.group === group.id ? sceneOf(group.id, chosen.scene) : undefined;
-  row.sceneTitle.textContent = edited
-    ? `Scene "${edited.label}", ${typeName(edited.type).toLowerCase()}`
-    : 'No scene chosen';
+  const edited = chosenItem();
+  const kindEdited = chosen?.kind === 'look' ? 'look' : 'scene';
+  row.sceneTitle.textContent = !edited
+    ? 'No scene or look chosen'
+    : kindEdited === 'look'
+      ? `Look "${edited.label}"`
+      : `Scene "${edited.label}", ${typeName(edited.type).toLowerCase()}`;
   // The field gets the name when the scene is chosen. After that it is the operator's.
-  if (row.edited !== (edited?.id ?? null)) {
-    row.edited = edited?.id ?? null;
+  const editedKey = edited ? `${kindEdited}:${edited.id}` : null;
+  if (row.edited !== editedKey) {
+    row.edited = editedKey;
     row.rename.field.value = edited?.label ?? '';
   }
   row.rename.field.disabled = !edited;
   row.rename.submit.disabled = !edited;
   row.remove.disabled = !edited;
-  const sureOfScene = Boolean(edited) && same(sure, chosen);
-  row.remove.dataset.sure = String(sureOfScene);
-  row.remove.textContent = sureOfScene ? `Press again to delete "${edited.label}"` : 'Delete scene';
+  const sureOfItem = Boolean(edited) && same(sure, chosen);
+  row.remove.dataset.sure = String(sureOfItem);
+  row.remove.textContent = sureOfItem
+    ? `Press again to delete "${edited.label}"`
+    : `Delete ${edited ? kindEdited : 'scene or look'}`;
 
   row.groupTitle.textContent = `Group "${group.label}"`;
   // A name that is being typed stays. Otherwise the field follows the name of the group.
@@ -456,13 +661,17 @@ function renderProgram(row, group) {
     row.renameGroup.field.value = group.label;
     row.label = group.label;
   }
-  const sureOfGroup = same(sure, { group: group.id, scene: null });
+  const sureOfGroup = same(sure, { group: group.id, kind: 'group', id: group.id });
   row.removeGroup.dataset.sure = String(sureOfGroup);
+  const holds = [
+    group.scenes.length > 0 && count(group.scenes.length, 'scene'),
+    group.looks.length > 0 && count(group.looks.length, 'look'),
+  ].filter(Boolean);
   row.removeGroup.textContent = !sureOfGroup
     ? 'Delete group'
-    : group.scenes.length === 0
+    : holds.length === 0
       ? `Press again to delete "${group.label}"`
-      : `Press again to delete "${group.label}" and its ${count(group.scenes.length, 'scene')}`;
+      : `Press again to delete "${group.label}" and its ${holds.join(' and ')}`;
 }
 
 function renderRow(row, group) {
@@ -503,21 +712,29 @@ function renderGroups() {
 function render() {
   const { show } = shell;
   // What was chosen, or asked about, may be gone from the show.
-  if (chosen && !sceneOf(chosen.group, chosen.scene)) chosen = null;
-  if (sure && !(sure.scene === null ? groupOf(sure.group) : sceneOf(sure.group, sure.scene))) {
+  if (chosen && !chosenItem()) chosen = null;
+  if (
+    sure &&
+    !(sure.kind === 'group'
+      ? groupOf(sure.group)
+      : sure.kind === 'look'
+        ? lookOf(sure.group, sure.id)
+        : sceneOf(sure.group, sure.id))
+  ) {
     unsure();
   }
 
   const scenes = show.groups.reduce((sum, group) => sum + group.scenes.length, 0);
+  const looks = show.groups.reduce((sum, group) => sum + group.looks.length, 0);
   page.where.textContent =
-    `${count(show.groups.length, 'group')}, ${count(scenes, 'scene')}` +
+    `${count(show.groups.length, 'group')}, ${count(scenes, 'scene')}, ${count(looks, 'look')}` +
     (show.file ? `, kept in ${show.file.split(/[\\/]/).pop()}` : ', kept until lightdeck stops');
   page.where.title = show.file ?? '';
   page.mode.setAttribute('aria-pressed', String(programming));
 
   const { hint } = page;
   hint.textContent = programming
-    ? 'Program is on. Set the fixtures on their pages, then store what they do in a group: pick the type, Lights, Colour or Motion, and a scene keeps only that. A press on a scene chooses it, to rename or delete it. The fixtures stay as they are, and Off waits. Press Program again for the show.'
+    ? 'Program is on. Set the fixtures on their pages, then store what they do in a group: pick Lights or Motion and a scene keeps only that, or pick Look and the look keeps the scene of lights, the palette and the scene of motion that are on now. Colours are palettes, made on the Palettes page. A press on a scene or a look chooses it, to rename or delete it. The fixtures stay as they are, and Off waits. Press Program again for the show.'
     : 'There are no groups yet. Press Program to make one.';
   hint.hidden = !programming && show.groups.length > 0;
 

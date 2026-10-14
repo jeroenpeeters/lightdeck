@@ -10,8 +10,9 @@
  * the order of a file edited by hand stay.
  *
  * Reading never writes. A file from before there were groups, or no file at all, is read
- * as the groups a show starts with. The first change from the deck writes those groups
- * out, with the scenes that were in the file in the group of all fixtures.
+ * as the groups a show starts with, and a file without palettes as the palettes a show starts
+ * with. The first change from the deck writes those out, with the scenes that were in the file
+ * in the group of all fixtures.
  *
  * Without a path the show is kept in memory only.
  *
@@ -22,6 +23,7 @@ import { EventEmitter } from 'node:events';
 import { type FSWatcher, readFileSync, renameSync, watch, writeFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { Document, isMap, isScalar, parseDocument, visit } from 'yaml';
+import { paletteData, startingPalettes } from '../engine/palette.js';
 import { PatchError } from '../server/fixture.js';
 import {
   type KnownFixtures,
@@ -73,16 +75,22 @@ function asTyped(map: unknown, what: string, place = ''): void {
   }
 }
 
-/** Does that for the groups and their scenes, and for scenes from before there were groups. */
+/**
+ * Does that for the palettes, the groups and their scenes and looks, and for scenes from before
+ * there were groups.
+ */
 function idsAsTyped(document: Document): void {
   const top = document.contents;
   if (!isMap(top)) return;
   asTyped(top.get('scenes', true), 'scene');
+  asTyped(top.get('palettes', true), 'palette');
   const groups = top.get('groups', true);
   asTyped(groups, 'group');
   if (!isMap(groups)) return;
   for (const { key, value } of groups.items) {
-    if (isMap(value)) asTyped(value.get('scenes', true), 'scene', ` of group "${idOf(key)}"`);
+    if (!isMap(value)) continue;
+    asTyped(value.get('scenes', true), 'scene', ` of group "${idOf(key)}"`);
+    asTyped(value.get('looks', true), 'look', ` of group "${idOf(key)}"`);
   }
 }
 
@@ -102,14 +110,15 @@ function inOrder(map: unknown, read: unknown): unknown {
 }
 
 /**
- * What the document holds, to be read as a show. The groups and the scenes of a group
- * are in the order of the file.
+ * What the document holds, to be read as a show. The palettes, the groups, and the scenes and
+ * looks of a group are in the order of the file.
  */
 function dataOf(document: Document): unknown {
   const data: unknown = document.toJS();
   const top = document.contents;
   if (!isObject(data) || !isMap(top)) return data;
   data.scenes = inOrder(top.get('scenes', true), data.scenes);
+  data.palettes = inOrder(top.get('palettes', true), data.palettes);
   const groups = top.get('groups', true);
   data.groups = inOrder(groups, data.groups);
   if (!isMap(groups) || !(data.groups instanceof Map)) return data;
@@ -117,6 +126,7 @@ function dataOf(document: Document): unknown {
     const node = groups.get(id, true);
     if (!isObject(group) || !isMap(node)) continue;
     group.scenes = inOrder(node.get('scenes', true), group.scenes);
+    group.looks = inOrder(node.get('looks', true), group.looks);
   }
   return data;
 }
@@ -166,6 +176,32 @@ function addGroups(document: Document, fixtures: readonly ShowFixture[]): void {
   // The place in the file and the comment above it stay: "scenes" becomes "groups".
   if (isScalar(old.key)) old.key.value = 'groups';
   old.value = groups;
+}
+
+/** Gives a document without palettes the palettes a show starts with. */
+function addPalettes(document: Document): void {
+  if (!isMap(document.contents)) document.contents = document.createNode({});
+  const top = document.contents;
+  if (!isMap(top) || top.has('palettes')) return;
+  top.flow = false;
+  const palettes = document.createNode(
+    Object.fromEntries(
+      startingPalettes().map((palette) => [
+        palette.id,
+        { label: palette.label, ...paletteData(palette) },
+      ]),
+    ),
+    { aliasDuplicateObjects: false },
+  );
+  // At the top, before the groups that use them. A comment at the very top of the file stays
+  // there: it is the first thing in the file, whatever comes under it.
+  const pair = document.createPair('palettes', palettes);
+  const first = top.items[0];
+  if (first && isScalar(first.key) && first.key.commentBefore && isScalar(pair.key)) {
+    pair.key.commentBefore = first.key.commentBefore;
+    first.key.commentBefore = null;
+  }
+  top.items.unshift(pair);
 }
 
 /**
@@ -241,6 +277,7 @@ export class ShowFile extends EventEmitter {
     }
     const document = this.document.clone();
     addGroups(document, this.known.fixtures);
+    addPalettes(document);
     const given = change(document, this.show);
     tidy(document);
     let show: Show;

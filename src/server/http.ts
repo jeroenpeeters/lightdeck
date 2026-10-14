@@ -3,6 +3,9 @@
  *
  *   GET  /                            goes to the deck
  *   GET  /deck                        the deck: the groups of the show with their scenes
+ *   GET  /palettes                    the palettes of the show: their colours, and how they move
+ *   GET  /tablet                      a page for a tablet at the side of the dance floor: the
+ *                                     tap, the master, the looks of the spider and little else
  *   GET  /listen                      the listen page: the microphone of the laptop, which
  *                                     the browser only gives to localhost
  *   GET  /simulator                   the simulator: the fixtures drawn in 3D from the bytes
@@ -32,17 +35,34 @@
  *   POST /api/master                  `master`: the grand master, 0 to 1, for every fixture
  *   POST /api/fixtures/<id>/update    partial state change of one fixture
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
- *   POST /api/playback                `group` with `scene`, the id of the scene to set the
- *                                     fixtures of the group to (only the properties of the
- *                                     type of the scene), or with `off`: true to darken
- *                                     them, which is the lights and nothing else
+ *   POST /api/playback                `group` with one of: `scene`, the id of the scene of
+ *                                     lights or motion to set the fixtures of the group to
+ *                                     (only the properties of the type of the scene);
+ *                                     `palette`, the id of a palette of the show, with
+ *                                     `speed` if it should cycle at another pace than its
+ *                                     own; `look`, the id of a look of the group, which sets
+ *                                     the lanes it names; or `off`: true to darken the
+ *                                     fixtures, which is the lights and nothing else
+ *   POST /api/palettes                `label` and any of `colours` (each `#rrggbb`,
+ *                                     `#rrggbbww` or `off`, eight at most), `mode` (static
+ *                                     or cycle), `change` (step or fade) and `speed`: makes a
+ *                                     palette of the show, and answers with its `id`
+ *   POST /api/palettes/<id>/update    any of `label`, `colours`, `mode`, `change`, `speed`
+ *   POST /api/palettes/<id>/delete    refused while the palette is on in a group or a look
+ *                                     uses it
  *   POST /api/groups                  `label` and `fixtures`, the ids of its fixtures:
  *                                     makes a group, and answers with its `id`
  *   POST /api/groups/<group>/rename   `label`
- *   POST /api/groups/<group>/delete   takes the group away, and its scenes with it
- *   POST /api/groups/<group>/scenes   `label` and `type` (lights, colour or motion):
- *                                     stores those properties of the fixtures of the group
- *                                     as they are as a new scene, and answers with its `id`
+ *   POST /api/groups/<group>/delete   takes the group away, and its scenes and looks with it
+ *   POST /api/groups/<group>/scenes   `label` and `type` (lights or motion): stores those
+ *                                     properties of the fixtures of the group as they are as
+ *                                     a new scene, and answers with its `id`
+ *   POST /api/groups/<group>/looks    `label`: stores what is on in the group (the scene of
+ *                                     lights, the palette, the scene of motion) as a look,
+ *                                     and answers with its `id`
+ *   POST /api/groups/<group>/looks/<look>/store    stores what is on now in this look
+ *   POST /api/groups/<group>/looks/<look>/rename   `label`
+ *   POST /api/groups/<group>/looks/<look>/delete
  *   POST /api/groups/<group>/scenes/<scene>/store    stores the properties of its type of
  *                                                    the fixtures of the group as they are
  *                                                    in this scene
@@ -82,10 +102,14 @@ const MAX_AUDIO_BYTES = 256 * 1024;
 const KEEP_ALIVE_MS = 15_000;
 const FIXTURE_PAGE = /^\/fixtures\/([a-z0-9-]+)$/;
 const FIXTURE_POST = /^\/api\/fixtures\/([a-z0-9-]+)\/([a-z]+)$/;
-const GROUP_POST = /^\/api\/groups\/([a-z0-9-]+)\/(rename|delete|scenes)$/;
+const GROUP_POST = /^\/api\/groups\/([a-z0-9-]+)\/(rename|delete|scenes|looks)$/;
 const SCENE_POST = /^\/api\/groups\/([a-z0-9-]+)\/scenes\/([a-z0-9-]+)\/(store|rename|delete)$/;
+const LOOK_POST = /^\/api\/groups\/([a-z0-9-]+)\/looks\/([a-z0-9-]+)\/(store|rename|delete)$/;
+const PALETTE_POST = /^\/api\/palettes\/([a-z0-9-]+)\/(update|delete)$/;
 const DECK = '/deck';
 const LISTEN = '/listen';
+const PALETTES = '/palettes';
+const TABLET = '/tablet';
 const SIMULATOR = '/simulator';
 
 export interface HttpOptions {
@@ -356,14 +380,49 @@ export function createHttpServer(options: HttpOptions): Server {
 
     if (req.method === 'POST' && path === '/api/playback') {
       const { change, origin } = split(await readJson(req));
-      const { group, scene, off } = readObject(change, 'the playback', ['group', 'scene', 'off']);
-      if (off === undefined) {
-        rig.playback.recall(group, scene, origin);
-      } else {
-        if (off !== true) throw new PatchError('"off" can only be true');
-        if (scene !== undefined) throw new PatchError('say a scene or off, not both');
-        rig.playback.off(group, origin);
+      const { group, scene, palette, speed, look, off } = readObject(change, 'the playback', [
+        'group',
+        'scene',
+        'palette',
+        'speed',
+        'look',
+        'off',
+      ]);
+      const named = [scene, palette, look, off].filter((each) => each !== undefined).length;
+      if (named > 1) throw new PatchError('say a scene, a palette, a look or off, one of them');
+      if (speed !== undefined && palette === undefined) {
+        throw new PatchError('a speed goes with a palette');
       }
+      if (palette !== undefined) {
+        rig.playback.setPalette(group, palette, speed, origin);
+      } else if (look !== undefined) {
+        rig.playback.playLook(group, look, origin);
+      } else if (off !== undefined) {
+        if (off !== true) throw new PatchError('"off" can only be true');
+        rig.playback.off(group, origin);
+      } else {
+        rig.playback.recall(group, scene, origin);
+      }
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/palettes') {
+      const { label, ...fields } = await readJson(req);
+      const { client: _client, ...rest } = fields;
+      sendJson(res, 200, {
+        ok: true,
+        id: rig.playback.addPalette(label, Object.keys(rest).length === 0 ? undefined : rest),
+      });
+      return;
+    }
+
+    const palette = req.method === 'POST' ? PALETTE_POST.exec(path) : null;
+    if (palette) {
+      const id = palette[1] ?? '';
+      const body = await readJson(req);
+      if (palette[2] === 'update') rig.playback.updatePalette(id, split(body).change);
+      else rig.playback.removePalette(id);
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -382,6 +441,10 @@ export function createHttpServer(options: HttpOptions): Server {
         sendJson(res, 200, { ok: true, id: rig.playback.store(id, body.type, body.label) });
         return;
       }
+      if (group[2] === 'looks') {
+        sendJson(res, 200, { ok: true, id: rig.playback.storeLook(id, body.label) });
+        return;
+      }
       if (group[2] === 'rename') rig.playback.renameGroup(id, body.label);
       else rig.playback.removeGroup(id);
       sendJson(res, 200, { ok: true });
@@ -395,6 +458,17 @@ export function createHttpServer(options: HttpOptions): Server {
       if (action === 'store') rig.playback.storeOver(of, id);
       else if (action === 'rename') rig.playback.rename(of, id, body.label);
       else rig.playback.remove(of, id);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    const look = req.method === 'POST' ? LOOK_POST.exec(path) : null;
+    if (look) {
+      const [, of = '', id = '', action] = look;
+      const body = await readJson(req);
+      if (action === 'store') rig.playback.storeLookOver(of, id);
+      else if (action === 'rename') rig.playback.renameLook(of, id, body.label);
+      else rig.playback.removeLook(of, id);
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -418,6 +492,8 @@ export function createHttpServer(options: HttpOptions): Server {
       }
       if (path === DECK && sendFile(req, res, '/deck.html')) return;
       if (path === LISTEN && sendFile(req, res, '/listen.html')) return;
+      if (path === PALETTES && sendFile(req, res, '/palettes.html')) return;
+      if (path === TABLET && sendFile(req, res, '/tablet.html')) return;
       if (path === SIMULATOR && sendFile(req, res, '/simulator.html')) return;
       const page = FIXTURE_PAGE.exec(path);
       const shown = page ? rig.find(page[1] ?? '') : undefined;

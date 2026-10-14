@@ -1,7 +1,7 @@
 /*
- * What belongs to the deck: a row per group with a lane per type of scene (lights, colour,
- * motion) holding the keys of its scenes, and what Program adds to it, the rows to name a
- * scene or a group with.
+ * What belongs to the deck: a row per group with a lane of looks and a lane per type (lights,
+ * colour, motion) holding the keys of its scenes or, for the colour, of the palettes, and
+ * what Program adds to it, the rows to name a scene, a look or a group with.
  *
  * In a row nothing takes its size from what it says, so that no key moves under a
  * finger when a scene goes on or off: the columns are fixed and text that changes stays
@@ -113,9 +113,10 @@
 }
 
 /*
- * A lane per type of scene. The name of the type is on the left, the keys of its scenes in
- * the middle, and at the end a place that only the lights use, for Off. The columns are
- * fixed, so the keys of the lanes line up and nothing moves when a scene goes on.
+ * A lane for the looks and a lane per type. The name is on the left, the keys in the middle,
+ * and at the end a place that only two lanes use: Off in the lights, the link to the
+ * palettes in the colour. The columns are fixed, so the keys of the lanes line up and nothing
+ * moves when something goes on.
  */
 .lanes {
   margin-top: 0.25rem;
@@ -133,6 +134,12 @@
   font-size: var(--small);
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+/* The looks are above the lanes of the types, and set apart from them. */
+.lane[data-lane="look"] {
+  margin-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
 }
 .lane-scenes > .hint {
   display: flex;
@@ -193,6 +200,44 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/*
+ * What a look names is longer than what a scene says, so it may take two lines. Every look key
+ * has both, so they are the same height whatever the look names.
+ */
+.lane[data-lane="look"] .scene-sets {
+  display: -webkit-box;
+  min-height: 2.3em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
+/* The colours of a palette, small, between its name and the line under it. */
+.chips {
+  display: flex;
+  gap: 0.25rem;
+  height: 1rem;
+}
+.chip {
+  flex: none;
+  width: 1.4rem;
+  height: 1rem;
+  border: 1px solid var(--paper);
+  border-radius: 2px;
+}
+/* An off slot is a dark chip with a dashed outline, so that it reads as a gap. */
+.chip[data-off="true"] {
+  border-style: dashed;
+  border-color: var(--dim);
+  background: var(--ground);
+}
+.scene[data-state="set"] .chip {
+  border-color: var(--ink);
+}
+.scene[data-state="set"] .chip[data-off="true"] {
+  border-color: var(--ink);
+}
+
 .off {
   padding: 0.5rem;
   font-size: var(--large);
@@ -228,6 +273,29 @@
   color: var(--ink);
 }
 
+/* The link to the palettes, in the place at the end of the colour lane. */
+.edit-palettes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch);
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--paper);
+  font-weight: 500;
+  line-height: 1.15;
+  text-align: center;
+  text-decoration: none;
+}
+.edit-palettes:active {
+  background: var(--key-down);
+}
+.edit-palettes[hidden] {
+  display: none;
+}
+
 /* ---- naming a scene or a group ---- */
 
 .name-row {
@@ -247,7 +315,7 @@
 
 /* ---- what Program adds to a group ---- */
 
-/* The keys that say which type of scene is stored. */
+/* The keys that say what is stored: a scene of lights, a scene of motion, or a look. */
 .type-choice {
   margin-top: 0.5rem;
 }
@@ -267,6 +335,8 @@
   width: 100%;
   margin-top: 0.5rem;
   padding: 0.35rem 1rem;
+  /* Room for two lines, so that a name that wraps does not push the groups below it. */
+  min-height: 3.75rem;
 }
 .delete {
   border-color: var(--stop);

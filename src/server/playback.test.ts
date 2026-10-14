@@ -15,15 +15,41 @@ const FIXTURES: FixtureDefinition[] = [
   { id: 'laser', kind: 'laser', label: 'Laser', universe: 0, address: LASER_AT },
 ];
 const NONE = { scene: null, changed: false };
-/** What is on in a group when nothing is, by type. */
-const NOTHING = { lights: NONE, colour: NONE, motion: NONE };
+const NO_LOOK = { look: null, changed: false };
+/** What is on in a group when nothing is, by type, and no look. */
+const NOTHING = { lights: NONE, colour: NONE, motion: NONE, look: NO_LOOK };
 /** What is on in a group when only a scene of lights is. Most of what follows is about lights. */
 const lights = (scene: string, changed = false) => ({
   ...NOTHING,
   lights: { scene, changed },
 });
-const GREEN = { red: 0, green: 1, blue: 0, white: 0 };
-const RED = { red: 1, green: 0, blue: 0, white: 0 };
+/** What the show has for palettes before anybody makes one: a white and a rainbow. */
+const STARTING_PALETTES = [
+  {
+    id: 'white',
+    label: 'White',
+    colours: ['#000000ff'],
+    mode: 'static',
+    change: 'step',
+    speed: 0.25,
+  },
+  {
+    id: 'rainbow',
+    label: 'Rainbow',
+    colours: ['#ff0000', '#ffaa00', '#00ff00', '#00ffff', '#0000ff', '#ff00ff'],
+    mode: 'cycle',
+    change: 'fade',
+    speed: 0.25,
+  },
+];
+/** A group as the summary of the show has it. The laser does not take palettes. */
+const GROUP = (
+  id: string,
+  label: string,
+  fixtures: string[],
+  scenes: unknown[] = [],
+  looks: unknown[] = [],
+) => ({ id, label, fixtures, palettes: fixtures.includes('spider'), scenes, looks });
 
 const STEP_ONE = `# The show of the evening.
 scenes:
@@ -71,10 +97,11 @@ describe('Playback', () => {
     expect(rig.playback.getShow()).toEqual({
       file: path,
       problem: null,
+      palettes: STARTING_PALETTES,
       groups: [
-        { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [] },
-        { id: 'laser', label: 'Laser', fixtures: ['laser'], scenes: [] },
-        { id: 'all', label: 'All', fixtures: ['spider', 'laser'], scenes: [] },
+        GROUP('spider', 'Spider', ['spider']),
+        GROUP('laser', 'Laser', ['laser']),
+        GROUP('all', 'All', ['spider', 'laser']),
       ],
     });
     expect(rig.playback.getState()).toEqual({
@@ -93,71 +120,71 @@ describe('Playback', () => {
   it('stores one type at a time, and brings a look back from a scene of each', () => {
     change('spider', {
       levels: { dimmer: 1, red1: 0.5, tilt1: 0.3, motorSpeed: 0.6 },
-      effect: { id: 'chase', colourA: GREEN, colourB: RED },
+      effect: { id: 'chase' },
+      motion: { id: 'tiltwave', speed: 2 },
     });
     change('laser', {
       raw: { mode: MANUAL, drawing: 191, colour: 100, rotation: 30 },
-      effect: { id: 'pulse' },
+      motion: { id: 'pulse' },
     });
     const before = [state('spider'), state('laser')];
     expect(rig.playback.store('all', 'lights', 'Chase on')).toBe('chase-on');
-    expect(rig.playback.store('all', 'colour', 'Green on red')).toBe('green-on-red');
     expect(rig.playback.store('all', 'motion', 'Leaning')).toBe('leaning');
+    rig.playback.setPalette('all', 'rainbow');
 
     change('spider', {
-      levels: { dimmer: 0.2, red1: 0, tilt1: 0, motorSpeed: 0, green3: 1 },
-      effect: { id: null, colourA: RED, colourB: null },
+      levels: { dimmer: 0.2, tilt1: 0, motorSpeed: 0 },
+      effect: { id: null },
+      motion: { id: null, speed: 1 },
+      colour: { palette: null },
     });
     change('laser', {
       raw: { mode: 0, drawing: 0, colour: 0, rotation: 0 },
       effect: { id: null },
     });
-    for (const scene of ['chase-on', 'green-on-red', 'leaning']) {
-      rig.playback.recall('all', scene);
-    }
+    for (const scene of ['chase-on', 'leaning']) rig.playback.recall('all', scene);
+    rig.playback.setPalette('all', 'rainbow');
 
-    // The only difference is green3, which no scene of the three has a say in until it is
-    // stored: a colour scene sets every colour level, so it is gone as well.
-    expect([state('spider'), state('laser')]).toEqual(before);
+    // The colour of a lens by hand is in no scene, so it stays as it was set.
+    expect([state('spider'), state('laser')]).toEqual([
+      { ...(before[0] as object), colour: { palette: 'rainbow', speed: null } },
+      before[1],
+    ]);
     expect(ch(output, 6)).toBe(255);
     expect(ch(output, LASER_AT)).toBe(MANUAL);
     expect(on().all).toEqual({
       lights: { scene: 'chase-on', changed: false },
-      colour: { scene: 'green-on-red', changed: false },
+      colour: { scene: 'rainbow', changed: false },
       motion: { scene: 'leaning', changed: false },
+      look: NO_LOOK,
     });
   });
 
   it('keeps the type in the file, and only the properties of it', () => {
     change('spider', {
       levels: { dimmer: 1, red1: 0.5, tilt1: 0.3 },
-      effect: { id: 'chase', colourA: GREEN },
+      effect: { id: 'chase' },
+      motion: { id: 'scissor', speed: 0.5 },
     });
     rig.playback.store('spider', 'lights', 'Chase');
-    rig.playback.store('spider', 'colour', 'Green');
     rig.playback.store('spider', 'motion', 'Lean');
     const text = readFileSync(path, 'utf8');
     expect(text).toContain('type: lights');
-    expect(text).toContain('type: colour');
     expect(text).toContain('type: motion');
+    expect(text).not.toContain('type: colour');
     const { scenes } = parse(text).groups.spider;
     expect(scenes.chase).toEqual({
       label: 'Chase',
       type: 'lights',
       fixtures: { spider: { levels: { dimmer: 1 }, effect: { id: 'chase', speed: 1 } } },
     });
-    expect(scenes.green).toEqual({
-      label: 'Green',
-      type: 'colour',
-      fixtures: { spider: { levels: { red1: 0.5 }, effect: { colourA: GREEN } } },
-    });
     expect(scenes.lean).toEqual({
       label: 'Lean',
       type: 'motion',
-      fixtures: { spider: { levels: { tilt1: 0.3 } } },
+      fixtures: {
+        spider: { levels: { tilt1: 0.3 }, motion: { id: 'scissor', speed: 0.5 } },
+      },
     });
-    // The second colour is only in a scene when it was set.
-    expect(text).not.toContain('colourB');
   });
 
   it('stores the fixtures of the group only', () => {
@@ -186,15 +213,15 @@ describe('Playback', () => {
     rig.close();
     start();
     expect(rig.playback.getShow().groups).toEqual([
-      {
-        id: 'spider',
-        label: 'Spider',
-        fixtures: ['spider'],
-        scenes: [{ id: 'warm', label: 'Warm', type: 'lights', fixtures: ['spider'] }],
-      },
-      { id: 'laser', label: 'Laser', fixtures: ['laser'], scenes: [] },
-      { id: 'all', label: 'All', fixtures: ['spider', 'laser'], scenes: [] },
-      { id: 'front', label: 'Front', fixtures: ['laser', 'spider'], scenes: [] },
+      GROUP(
+        'spider',
+        'Spider',
+        ['spider'],
+        [{ id: 'warm', label: 'Warm', type: 'lights', fixtures: ['spider'] }],
+      ),
+      GROUP('laser', 'Laser', ['laser']),
+      GROUP('all', 'All', ['spider', 'laser']),
+      GROUP('front', 'Front', ['laser', 'spider']),
     ]);
     expect(on().spider).toEqual(NOTHING);
     rig.playback.recall('spider', 'warm');
@@ -206,7 +233,7 @@ describe('Playback', () => {
     rig.playback.store('spider', 'lights', 'Warm');
     change('spider', { levels: { dimmer: 0.5 } });
     rig.playback.store('spider', 'lights', 'Half');
-    change('laser', { raw: { mode: MANUAL, drawing: 191 }, effect: { id: 'pulse' } });
+    change('laser', { raw: { mode: MANUAL, drawing: 191 }, motion: { id: 'pulse' } });
     rig.playback.store('laser', 'lights', 'Tunnel');
     const laser = state('laser');
 
@@ -228,47 +255,51 @@ describe('Playback', () => {
     expect(on().spider).toEqual(lights('warm'));
   });
 
-  describe('with scenes of different types', () => {
+  describe('with a scene of each lane', () => {
     beforeEach(() => {
       change('spider', {
-        levels: { dimmer: 1, red1: 1, tilt1: 0.2 },
-        effect: { id: 'chase', colourA: GREEN },
+        levels: { dimmer: 1, tilt1: 0.2 },
+        effect: { id: 'chase' },
+        colour: { palette: 'white' },
       });
       rig.playback.store('spider', 'lights', 'Chase');
-      rig.playback.store('spider', 'colour', 'Green');
       rig.playback.store('spider', 'motion', 'Low');
       change('spider', {
-        levels: { dimmer: 0.5, red1: 0, tilt1: 0.9 },
-        effect: { id: 'kick', colourA: RED },
+        levels: { dimmer: 0.5, tilt1: 0.9 },
+        effect: { id: 'kick' },
       });
       rig.playback.store('spider', 'lights', 'Kick');
-      rig.playback.store('spider', 'colour', 'Red');
       rig.playback.store('spider', 'motion', 'High');
     });
 
-    it('is on for one scene of each type in a group, and each press sets only its type', () => {
+    it('is on for one thing in each lane of a group, and each press sets only its lane', () => {
       rig.playback.recall('spider', 'chase');
-      rig.playback.recall('spider', 'green');
+      rig.playback.setPalette('spider', 'rainbow');
       rig.playback.recall('spider', 'low');
       expect(state('spider')).toMatchObject({
-        levels: { dimmer: 1, red1: 1, tilt1: 0.2 },
-        effect: { id: 'chase', colourA: GREEN },
+        levels: { dimmer: 1, tilt1: 0.2 },
+        effect: { id: 'chase' },
+        colour: { palette: 'rainbow', speed: null },
       });
       expect(on().spider).toEqual({
         lights: { scene: 'chase', changed: false },
-        colour: { scene: 'green', changed: false },
+        colour: { scene: 'rainbow', changed: false },
         motion: { scene: 'low', changed: false },
+        look: NO_LOOK,
       });
 
-      // A scene of another type takes the colour and leaves the chase going.
-      rig.playback.recall('spider', 'red');
-      expect(state('spider')).toMatchObject({ effect: { id: 'chase', colourA: RED } });
+      // Another palette takes the colours and leaves the chase going.
+      rig.playback.setPalette('spider', 'white');
+      expect(state('spider')).toMatchObject({
+        effect: { id: 'chase' },
+        colour: { palette: 'white' },
+      });
       expect(on().spider.lights).toEqual({ scene: 'chase', changed: false });
-      expect(on().spider.colour).toEqual({ scene: 'red', changed: false });
+      expect(on().spider.colour).toEqual({ scene: 'white', changed: false });
       expect(on().spider.motion).toEqual({ scene: 'low', changed: false });
     });
 
-    it('takes the scene of the same type off the place and no other', () => {
+    it('takes the scene of the same lane off the place and no other', () => {
       rig.playback.recall('spider', 'chase');
       rig.playback.recall('spider', 'kick');
       expect(on().spider.lights).toEqual({ scene: 'kick', changed: false });
@@ -278,73 +309,63 @@ describe('Playback', () => {
       expect(on().spider.lights).toEqual({ scene: 'kick', changed: false });
     });
 
-    it('shows only the type that was changed by hand as changed', () => {
-      for (const scene of ['chase', 'green', 'low']) rig.playback.recall('spider', scene);
+    it('shows only the lane that was changed by hand as changed', () => {
+      rig.playback.recall('spider', 'chase');
+      rig.playback.setPalette('spider', 'rainbow');
+      rig.playback.recall('spider', 'low');
       const told = vi.fn();
       rig.on('playback', told);
 
       change('spider', { levels: { tilt1: 0.7 } });
       expect(on().spider).toEqual({
         lights: { scene: 'chase', changed: false },
-        colour: { scene: 'green', changed: false },
+        colour: { scene: 'rainbow', changed: false },
         motion: { scene: 'low', changed: true },
+        look: NO_LOOK,
       });
       expect(told).toHaveBeenCalledTimes(1);
 
       change('spider', { levels: { dimmer: 0.1 } });
       expect(on().spider.lights).toEqual({ scene: 'chase', changed: true });
-      expect(on().spider.colour).toEqual({ scene: 'green', changed: false });
+      expect(on().spider.colour).toEqual({ scene: 'rainbow', changed: false });
 
-      change('spider', { effect: { colourA: RED } });
-      expect(on().spider.colour).toEqual({ scene: 'green', changed: true });
+      change('spider', { colour: { palette: 'white' } });
+      expect(on().spider.colour).toEqual({ scene: 'rainbow', changed: true });
 
       change('spider', { levels: { tilt1: 0.2 } });
       expect(on().spider.motion).toEqual({ scene: 'low', changed: false });
     });
 
-    it('is told by the second colour too: a colour scene is changed when it is set or cleared', () => {
-      rig.playback.recall('spider', 'green');
-      change('spider', { effect: { colourB: RED } });
-      expect(on().spider.colour).toEqual({ scene: 'green', changed: true });
-      change('spider', { effect: { colourB: null } });
-      expect(on().spider.colour).toEqual({ scene: 'green', changed: false });
-    });
-
-    it('takes the second colour back when a colour scene does not name it', () => {
-      change('spider', { effect: { colourA: RED, colourB: GREEN } });
-      rig.playback.store('spider', 'colour', 'Both');
-      change('spider', { effect: { colourB: null } });
-      rig.playback.recall('spider', 'green');
-      expect(state('spider')).toMatchObject({ effect: { colourB: null } });
-      rig.playback.recall('spider', 'both');
-      expect(state('spider')).toMatchObject({ effect: { colourB: GREEN } });
+    it('is told by the speed of the palette too: it is changed when it is set or cleared', () => {
+      rig.playback.setPalette('spider', 'rainbow');
+      change('spider', { colour: { speed: 2 } });
+      expect(on().spider.colour).toEqual({ scene: 'rainbow', changed: true });
+      change('spider', { colour: { speed: null } });
+      expect(on().spider.colour).toEqual({ scene: 'rainbow', changed: false });
     });
 
     it('stores over a scene of its own type only', () => {
-      rig.playback.recall('spider', 'green');
-      change('spider', { levels: { red1: 0.25, dimmer: 0.9 }, effect: { colourA: RED } });
-      rig.playback.storeOver('spider', 'green');
-      expect(group('spider')?.scenes.find((scene) => scene.id === 'green')?.type).toBe('colour');
-      expect(on().spider.colour).toEqual({ scene: 'green', changed: false });
-      // The brightness was changed too, and a colour scene does not keep that.
-      change('spider', { levels: { dimmer: 0 } });
-      rig.playback.recall('spider', 'green');
-      expect(state('spider')).toMatchObject({
-        levels: { red1: 0.25, dimmer: 0 },
-        effect: { colourA: RED },
-      });
+      rig.playback.recall('spider', 'low');
+      change('spider', { levels: { tilt1: 0.25, dimmer: 0.9 } });
+      rig.playback.storeOver('spider', 'low');
+      expect(group('spider')?.scenes.find((scene) => scene.id === 'low')?.type).toBe('motion');
+      expect(on().spider.motion).toEqual({ scene: 'low', changed: false });
+      // The brightness was changed too, and a scene of motion does not keep that.
+      change('spider', { levels: { tilt1: 0 } });
+      rig.playback.recall('spider', 'low');
+      expect(state('spider')).toMatchObject({ levels: { tilt1: 0.25, dimmer: 0.9 } });
     });
 
     it('does not let a scene of another type of a group that is set as a whole go', () => {
-      change('laser', { raw: { mode: MANUAL, colour: 80, rotation: 20 } });
-      rig.playback.store('all', 'colour', 'Everywhere');
+      change('laser', { raw: { mode: MANUAL, rotation: 20 } });
+      rig.playback.store('all', 'motion', 'Everywhere');
       rig.playback.recall('spider', 'chase');
-      rig.playback.recall('spider', 'green');
+      rig.playback.recall('spider', 'low');
 
-      // The scene of colour in "All" sets every fixture of "Spider": the one of "Spider" is off.
+      // The scene of motion in "All" sets every fixture of "Spider": the one of "Spider" is off.
       rig.playback.recall('all', 'everywhere');
-      expect(on().spider.colour).toEqual(NONE);
-      expect(on().all.colour).toEqual({ scene: 'everywhere', changed: false });
+      expect(on().spider.motion).toEqual(NONE);
+      expect(on().all.motion).toEqual({ scene: 'everywhere', changed: false });
       // Its lights scene is another type, and was not touched.
       expect(on().spider.lights).toEqual({ scene: 'chase', changed: false });
       expect(on().all.lights).toEqual(NONE);
@@ -356,43 +377,48 @@ describe('Playback', () => {
     rig.playback.store('all', 'lights', 'Spider only');
     expect(group('all')?.scenes[0]?.fixtures).toEqual(['spider']);
 
-    change('laser', { raw: { mode: MANUAL, drawing: 191 }, effect: { id: 'pulse' } });
+    change('laser', { raw: { mode: MANUAL, drawing: 191 }, motion: { id: 'pulse' } });
     rig.playback.recall('all', 'spider-only');
     expect(ch(output, LASER_AT)).toBe(0);
+    // The lights are dark, and the motion effect is another type: it stays.
     expect(state('laser')).toEqual({
       raw: expect.objectContaining({ mode: 0, drawing: 0 }),
       effect: { id: null, speed: 1 },
+      motion: { id: 'pulse', speed: 1 },
+      colours: [],
     });
   });
 
   it('puts a fixture it does not name to rest for its type only', () => {
-    change('spider', { levels: { red1: 1 } });
-    rig.playback.store('all', 'colour', 'Spider only');
+    change('spider', { levels: { tilt1: 1 } });
+    rig.playback.store('all', 'motion', 'Spider only');
     expect(group('all')?.scenes[0]?.fixtures).toEqual(['spider']);
 
     change('laser', { raw: { mode: MANUAL, colour: 80, rotation: 20 } });
     rig.playback.recall('all', 'spider-only');
-    // The colour of the laser is at rest, and its mode and its rotation are what they were.
-    expect(state('laser')).toMatchObject({ raw: { mode: MANUAL, colour: 0, rotation: 20 } });
+    // The rotation of the laser is at rest, and its mode and its colour are what they were.
+    expect(state('laser')).toMatchObject({ raw: { mode: MANUAL, colour: 80, rotation: 0 } });
     expect(ch(output, LASER_AT)).toBe(MANUAL);
   });
 
   it('leaves a fixture outside the group alone, whatever the type', () => {
-    change('spider', { levels: { red1: 1 } });
-    rig.playback.store('spider', 'colour', 'Red');
+    change('spider', { levels: { tilt1: 1 } });
+    rig.playback.store('spider', 'motion', 'Lean');
     change('laser', { raw: { mode: MANUAL, colour: 10, rotation: 20 } });
-    rig.playback.recall('spider', 'red');
+    rig.playback.recall('spider', 'lean');
+    rig.playback.setPalette('spider', 'rainbow');
     expect(state('laser')).toMatchObject({ raw: { mode: MANUAL, colour: 10, rotation: 20 } });
   });
 
   it('is what off is: only the lights, with the colour and the motion left as they are', () => {
     change('spider', {
       levels: { dimmer: 1, red1: 1, tilt1: 0.4 },
-      effect: { id: 'chase', colourA: GREEN },
+      effect: { id: 'chase' },
+      motion: { id: 'tiltwave' },
     });
     change('laser', { raw: { mode: MANUAL } });
     rig.playback.store('spider', 'lights', 'Warm');
-    rig.playback.store('spider', 'colour', 'Red');
+    rig.playback.setPalette('spider', 'rainbow');
     rig.playback.store('laser', 'lights', 'Open');
     const told = vi.fn();
     rig.on('playback', told);
@@ -401,7 +427,9 @@ describe('Playback', () => {
     expect(ch(output, 6)).toBe(0);
     expect(state('spider')).toMatchObject({
       levels: { dimmer: 0, red1: 1, tilt1: 0.4 },
-      effect: { id: null, colourA: GREEN },
+      effect: { id: null },
+      motion: { id: 'tiltwave' },
+      colour: { palette: 'rainbow' },
     });
     expect(ch(output, LASER_AT)).toBe(MANUAL);
     expect(told).toHaveBeenCalledTimes(1);
@@ -409,8 +437,9 @@ describe('Playback', () => {
       groups: {
         spider: {
           lights: NONE,
-          colour: { scene: 'red', changed: false },
+          colour: { scene: 'rainbow', changed: false },
           motion: NONE,
+          look: NO_LOOK,
         },
         laser: lights('open'),
         all: NOTHING,
@@ -420,7 +449,7 @@ describe('Playback', () => {
     rig.playback.off('all');
     expect(ch(output, LASER_AT)).toBe(0);
     expect(on().laser.lights).toEqual(NONE);
-    expect(on().spider.colour).toEqual({ scene: 'red', changed: false });
+    expect(on().spider.colour).toEqual({ scene: 'rainbow', changed: false });
   });
 
   it('passes on who asked for it', () => {
@@ -445,7 +474,7 @@ describe('Playback', () => {
   });
 
   it('keeps the laser closed during a blackout, whatever is recalled', () => {
-    change('laser', { raw: { mode: MANUAL, drawing: 191 }, effect: { id: 'pulse' } });
+    change('laser', { raw: { mode: MANUAL, drawing: 191 }, motion: { id: 'pulse' } });
     rig.playback.store('laser', 'lights', 'Laser on');
     rig.playback.store('all', 'lights', 'Everything');
     rig.playback.off('all');
@@ -555,7 +584,7 @@ describe('Playback', () => {
   });
 
   it('keeps the laser closed while the master is at 0, whatever is recalled', () => {
-    change('laser', { raw: { mode: MANUAL, drawing: 191 }, effect: { id: 'pulse' } });
+    change('laser', { raw: { mode: MANUAL, drawing: 191 }, motion: { id: 'pulse' } });
     rig.playback.store('laser', 'lights', 'Laser on');
     rig.playback.store('all', 'lights', 'Everything');
     rig.playback.off('all');
@@ -750,7 +779,7 @@ describe('Playback', () => {
   it('gives a scene an id of its own within its group, whatever its type', () => {
     expect(rig.playback.store('spider', 'lights', 'Peak')).toBe('peak');
     expect(rig.playback.store('spider', 'lights', 'Peak')).toBe('peak-2');
-    expect(rig.playback.store('spider', 'colour', 'Peak')).toBe('peak-3');
+    expect(rig.playback.store('spider', 'motion', 'Peak')).toBe('peak-3');
     expect(rig.playback.store('laser', 'motion', 'Peak')).toBe('peak');
     expect(rig.playback.store('laser', 'lights', 'Off')).toBe('off-2');
   });
@@ -793,11 +822,18 @@ describe('Playback', () => {
   it('refuses a scene without a type, or with one it does not know, and writes nothing', () => {
     for (const type of [undefined, 'full', 'light', 3, null]) {
       expect(() => rig.playback.store('spider', type, 'Warm')).toThrow(
-        new PatchError('a scene needs a type: lights, colour, motion'),
+        new PatchError('a scene needs a type: lights or motion'),
       );
     }
     expect(existsSync(path)).toBe(false);
     expect(group('spider')?.scenes).toEqual([]);
+  });
+
+  it('says that colours are palettes when a scene of colour is asked for', () => {
+    expect(() => rig.playback.store('spider', 'colour', 'Warm')).toThrow(
+      new PatchError('colours are palettes now, and not scenes: a scene is lights or motion'),
+    );
+    expect(existsSync(path)).toBe(false);
   });
 
   describe('groups', () => {
@@ -807,12 +843,7 @@ describe('Playback', () => {
       rig.on('show', show);
       rig.on('playback', playback);
       expect(rig.playback.addGroup(' Front  bar ', ['laser', 'spider'])).toBe('front-bar');
-      expect(group('front-bar')).toEqual({
-        id: 'front-bar',
-        label: 'Front bar',
-        fixtures: ['laser', 'spider'],
-        scenes: [],
-      });
+      expect(group('front-bar')).toEqual(GROUP('front-bar', 'Front bar', ['laser', 'spider']));
       expect(show).toHaveBeenCalledTimes(1);
       expect(show).toHaveBeenLastCalledWith(rig.playback.getShow());
       expect(playback).toHaveBeenLastCalledWith({
@@ -854,12 +885,14 @@ describe('Playback', () => {
     it('renames a group and keeps its id, its scenes and what is on', () => {
       rig.playback.store('spider', 'lights', 'Warm');
       rig.playback.renameGroup('spider', ' Truss ');
-      expect(group('spider')).toEqual({
-        id: 'spider',
-        label: 'Truss',
-        fixtures: ['spider'],
-        scenes: [{ id: 'warm', label: 'Warm', type: 'lights', fixtures: [] }],
-      });
+      expect(group('spider')).toEqual(
+        GROUP(
+          'spider',
+          'Truss',
+          ['spider'],
+          [{ id: 'warm', label: 'Warm', type: 'lights', fixtures: [] }],
+        ),
+      );
       expect(on().spider).toEqual(lights('warm'));
       expect(() => rig.playback.renameGroup('spider', '')).toThrow('a group needs a name');
     });
@@ -904,20 +937,21 @@ describe('Playback', () => {
   it('tells about the show when it changes', () => {
     const told = vi.fn();
     rig.on('show', told);
-    rig.playback.store('laser', 'colour', 'Warm');
+    rig.playback.store('laser', 'motion', 'Warm');
     expect(told).toHaveBeenCalledTimes(1);
     expect(told).toHaveBeenLastCalledWith({
       file: path,
       problem: null,
+      palettes: STARTING_PALETTES,
       groups: [
-        { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [] },
-        {
-          id: 'laser',
-          label: 'Laser',
-          fixtures: ['laser'],
-          scenes: [{ id: 'warm', label: 'Warm', type: 'colour', fixtures: [] }],
-        },
-        { id: 'all', label: 'All', fixtures: ['spider', 'laser'], scenes: [] },
+        GROUP('spider', 'Spider', ['spider']),
+        GROUP(
+          'laser',
+          'Laser',
+          ['laser'],
+          [{ id: 'warm', label: 'Warm', type: 'motion', fixtures: [] }],
+        ),
+        GROUP('all', 'All', ['spider', 'laser']),
       ],
     });
   });
@@ -933,15 +967,16 @@ describe('Playback', () => {
       expect(rig.playback.getShow()).toEqual({
         file: path,
         problem: null,
+        palettes: STARTING_PALETTES,
         groups: [
-          { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [] },
-          { id: 'laser', label: 'Laser', fixtures: ['laser'], scenes: [] },
-          {
-            id: 'all',
-            label: 'All',
-            fixtures: ['spider', 'laser'],
-            scenes: [{ id: 'warm', label: 'Warm', type: 'lights', fixtures: ['spider', 'laser'] }],
-          },
+          GROUP('spider', 'Spider', ['spider']),
+          GROUP('laser', 'Laser', ['laser']),
+          GROUP(
+            'all',
+            'All',
+            ['spider', 'laser'],
+            [{ id: 'warm', label: 'Warm', type: 'lights', fixtures: ['spider', 'laser'] }],
+          ),
         ],
       });
       rig.playback.recall('all', 'warm');
@@ -955,7 +990,8 @@ describe('Playback', () => {
       rig.playback.recall('all', 'warm');
       rig.playback.store('spider', 'lights', 'Cold');
       const text = readFileSync(path, 'utf8');
-      expect(text).toMatch(/^# The show of the evening\.\ngroups:\n/);
+      expect(text).toMatch(/^# The show of the evening\.\npalettes:\n/);
+      expect(text).toContain('\ngroups:\n');
       expect(text).toContain('label: Warm # the opener');
       expect(on()).toEqual({
         spider: lights('cold'),
@@ -980,7 +1016,7 @@ describe('Playback', () => {
       writeFileSync(path, STEP_ONE.replace('    type: lights\n', ''));
       start();
       expect(rig.playback.getShow().problem).toMatch(
-        /Scene "warm": a scene needs a type: lights, colour, motion/,
+        /Scene "warm": a scene needs a type: lights or motion/,
       );
       expect(rig.playback.getShow().groups.every((each) => each.scenes.length === 0)).toBe(true);
     });
@@ -1119,16 +1155,18 @@ describe('Playback', () => {
               '    scenes:',
               '      keep:',
               '        label: Keep',
-              '        type: colour',
+              '        type: motion',
             ),
         );
         expect(rig.playback.addGroup('Front', ['spider'])).toBe('front-2');
-        expect(group('front')).toEqual({
-          id: 'front',
-          label: 'Front by hand',
-          fixtures: ['laser'],
-          scenes: [{ id: 'keep', label: 'Keep', type: 'colour', fixtures: [] }],
-        });
+        expect(group('front')).toEqual(
+          GROUP(
+            'front',
+            'Front by hand',
+            ['laser'],
+            [{ id: 'keep', label: 'Keep', type: 'motion', fixtures: [] }],
+          ),
+        );
         expect(group('front-2')?.fixtures).toEqual(['spider']);
       });
 
@@ -1232,12 +1270,14 @@ describe('Playback', () => {
       change('laser', { raw: { mode: MANUAL } });
       expect(rig.playback.store('2024', 'lights', 'Open')).toBe('open');
       rig.playback.renameGroup('2024', 'Next year');
-      expect(group('2024')).toEqual({
-        id: '2024',
-        label: 'Next year',
-        fixtures: ['laser'],
-        scenes: [{ id: 'open', label: 'Open', type: 'lights', fixtures: ['laser'] }],
-      });
+      expect(group('2024')).toEqual(
+        GROUP(
+          '2024',
+          'Next year',
+          ['laser'],
+          [{ id: 'open', label: 'Open', type: 'lights', fixtures: ['laser'] }],
+        ),
+      );
       rig.playback.removeGroup('2024');
       expect(rig.playback.getShow().groups.map((each) => each.id)).toEqual(['spider']);
       expect(readFileSync(path, 'utf8')).not.toContain('2024');
@@ -1324,11 +1364,666 @@ describe('Playback', () => {
     rig.close();
     writeFileSync(
       path,
-      'groups:\n  spider:\n    fixtures: [spider]\n    scenes:\n      odd:\n        type: colour\n        fixtures:\n          spider:\n            levels: { dimmer: 1 }\n',
+      'groups:\n  spider:\n    fixtures: [spider]\n    scenes:\n      odd:\n        type: motion\n        fixtures:\n          spider:\n            levels: { dimmer: 1 }\n',
     );
     start();
     expect(rig.playback.getShow().problem).toMatch(
-      /Scene "odd" of group "spider": "dimmer" is not part of a colour scene/,
+      /Scene "odd" of group "spider": "dimmer" is not part of a motion scene/,
     );
+  });
+
+  it('does not read a scene of colour: colours are palettes now', () => {
+    rig.close();
+    writeFileSync(
+      path,
+      'groups:\n  spider:\n    fixtures: [spider]\n    scenes:\n      amber:\n        type: colour\n        fixtures:\n          spider:\n            effect: { colourA: { red: 1, green: 0.5, blue: 0, white: 0 } }\n',
+    );
+    start();
+    expect(rig.playback.getShow().problem).toMatch(
+      /Scene "amber" of group "spider": colours are palettes now/,
+    );
+  });
+
+  describe('palettes', () => {
+    const palette = (id: string) => rig.playback.getShow().palettes.find((each) => each.id === id);
+
+    it('starts with a white and a rainbow, and writes them to the file with the first change', () => {
+      expect(rig.playback.getShow().palettes).toEqual(STARTING_PALETTES);
+      expect(existsSync(path)).toBe(false);
+      expect(rig.palettes.list().map((each) => each.id)).toEqual(['white', 'rainbow']);
+
+      rig.playback.store('spider', 'lights', 'Warm');
+      const text = readFileSync(path, 'utf8');
+      expect(text).toMatch(
+        /^palettes:\n {2}white:\n {4}label: White\n {4}colours: \[ "#000000ff" \]\n/,
+      );
+      expect(parse(text).palettes.rainbow).toEqual({
+        label: 'Rainbow',
+        colours: ['#ff0000', '#ffaa00', '#00ff00', '#00ffff', '#0000ff', '#ff00ff'],
+        mode: 'cycle',
+        change: 'fade',
+        speed: 0.25,
+      });
+      rig.close();
+      start();
+      expect(rig.playback.getShow().palettes).toEqual(STARTING_PALETTES);
+    });
+
+    it('sets a palette on the fixtures of the group that take palettes, and leaves the laser alone', () => {
+      change('laser', { raw: { mode: MANUAL, colour: 100 } });
+      const laser = state('laser');
+      const told = vi.fn();
+      rig.on('playback', told);
+      rig.playback.setPalette('all', 'rainbow');
+      expect(state('spider')).toMatchObject({ colour: { palette: 'rainbow', speed: null } });
+      expect(state('laser')).toEqual(laser);
+      expect(on().all.colour).toEqual({ scene: 'rainbow', changed: false });
+      expect(told).toHaveBeenCalledTimes(1);
+    });
+
+    it('says which groups have a colour lane: the ones with a fixture that takes palettes', () => {
+      expect(rig.playback.getShow().groups.map((each) => [each.id, each.palettes])).toEqual([
+        ['spider', true],
+        ['laser', false],
+        ['all', true],
+      ]);
+    });
+
+    it('refuses a palette for a group without a fixture that takes palettes, and changes nothing', () => {
+      const frames = output.frames.length;
+      expect(() => rig.playback.setPalette('laser', 'rainbow')).toThrow(
+        new PatchError('no fixture of "Laser" is coloured by palettes'),
+      );
+      expect(output.frames).toHaveLength(frames);
+      expect(on().laser).toEqual(NOTHING);
+    });
+
+    it('refuses a palette that is not in the show, and a speed that is not one', () => {
+      const refused: [() => void, string][] = [
+        [() => rig.playback.setPalette('spider', 'nope'), 'there is no palette called "nope"'],
+        [() => rig.playback.setPalette('spider', undefined), 'say which palette, by its id'],
+        [() => rig.playback.setPalette('strobe', 'white'), 'there is no group called "strobe"'],
+        [
+          () => rig.playback.setPalette('spider', 'rainbow', 3),
+          'the speed of a palette must be one of 0.25, 0.5, 1, 2, 4',
+        ],
+      ];
+      for (const [act, message] of refused) expect(act).toThrow(new PatchError(message));
+      expect(state('spider')).toMatchObject({ colour: { palette: null } });
+      expect(on().spider.colour).toEqual(NONE);
+    });
+
+    it('sets the speed for this use, and takes it back with the next press', () => {
+      rig.playback.setPalette('spider', 'rainbow', 2);
+      expect(state('spider')).toMatchObject({ colour: { palette: 'rainbow', speed: 2 } });
+      expect(on().spider.colour).toEqual({ scene: 'rainbow', changed: false });
+      rig.playback.setPalette('spider', 'rainbow');
+      expect(state('spider')).toMatchObject({ colour: { palette: 'rainbow', speed: null } });
+    });
+
+    it('takes the palette of a group off when another group sets all its fixtures', () => {
+      rig.playback.setPalette('spider', 'white');
+      rig.playback.setPalette('all', 'rainbow');
+      expect(on().spider.colour).toEqual(NONE);
+      expect(on().all.colour).toEqual({ scene: 'rainbow', changed: false });
+
+      // The laser takes no palette, so "Spider" sets everything "All" has a palette for.
+      rig.playback.setPalette('spider', 'white');
+      expect(on().all.colour).toEqual(NONE);
+      expect(on().spider.colour).toEqual({ scene: 'white', changed: false });
+    });
+
+    it('keeps the palette of a group on, as changed, when only some of its fixtures are set', () => {
+      rig.close();
+      start([
+        { id: 'spider', kind: 'spider', label: 'Spider', universe: 0, address: 1 },
+        { id: 'spider-2', kind: 'spider', label: 'Spider 2', universe: 0, address: 100 },
+      ]);
+      rig.playback.setPalette('all', 'rainbow');
+      rig.playback.setPalette('spider', 'white');
+      expect(on().all.colour).toEqual({ scene: 'rainbow', changed: true });
+      expect(on().spider.colour).toEqual({ scene: 'white', changed: false });
+    });
+
+    it('does not take a palette off a group of the laser alone', () => {
+      rig.playback.setPalette('all', 'rainbow');
+      expect(on().laser).toEqual(NOTHING);
+    });
+
+    it('makes one with an id from its name, white when it has no colours given', () => {
+      expect(rig.playback.addPalette(' Warm  glow ')).toBe('warm-glow');
+      expect(palette('warm-glow')).toEqual({
+        id: 'warm-glow',
+        label: 'Warm glow',
+        colours: ['#000000ff'],
+        mode: 'static',
+        change: 'step',
+        speed: 0.25,
+      });
+      expect(rig.playback.addPalette('White', { colours: ['#ff0000', 'off'] })).toBe('white-2');
+      expect(palette('white-2')?.colours).toEqual(['#ff0000', 'off']);
+      expect(rig.palettes.get('white-2')?.colours).toHaveLength(2);
+      expect(readFileSync(path, 'utf8')).toContain('white-2:');
+    });
+
+    it('refuses a palette that cannot be one, and writes nothing', () => {
+      const refused: [unknown, unknown, RegExp][] = [
+        ['', undefined, /a palette needs a name/],
+        ['Empty', { colours: [] }, /at least one/],
+        ['Long', { colours: Array.from({ length: 9 }, () => '#ffffff') }, /8 colours at most/],
+        ['Odd', { colours: ['blue'] }, /not a colour/],
+        ['Spin', { colours: ['#ffffff'], mode: 'spin' }, /static or cycle/],
+        ['Pace', { colours: ['#ffffff'], speed: 3 }, /one of/],
+        ['Extra', { colours: ['#ffffff'], tint: 1 }, /cannot have "tint"/],
+      ];
+      for (const [name, fields, message] of refused) {
+        expect(() => rig.playback.addPalette(name, fields)).toThrow(message);
+      }
+      expect(existsSync(path)).toBe(false);
+      expect(rig.playback.getShow().palettes).toEqual(STARTING_PALETTES);
+    });
+
+    it('changes the parts of a palette that are named and keeps the rest', () => {
+      rig.playback.updatePalette('rainbow', { colours: ['#ff0000', 'off', '#0000ff'], speed: 1 });
+      expect(palette('rainbow')).toEqual({
+        id: 'rainbow',
+        label: 'Rainbow',
+        colours: ['#ff0000', 'off', '#0000ff'],
+        mode: 'cycle',
+        change: 'fade',
+        speed: 1,
+      });
+      rig.playback.updatePalette('rainbow', { label: ' Sunset ', mode: 'static' });
+      expect(palette('rainbow')).toMatchObject({
+        label: 'Sunset',
+        mode: 'static',
+        colours: ['#ff0000', 'off', '#0000ff'],
+      });
+      const written = parse(readFileSync(path, 'utf8')).palettes.rainbow;
+      expect(written).toEqual({
+        label: 'Sunset',
+        colours: ['#ff0000', 'off', '#0000ff'],
+        mode: 'static',
+        change: 'fade',
+        speed: 1,
+      });
+    });
+
+    it('has the fixtures use an edited palette at once, and keeps it on', () => {
+      rig.playback.setPalette('spider', 'white');
+      const told = vi.fn();
+      rig.on('playback', told);
+      rig.playback.updatePalette('white', { colours: ['#00ff00'] });
+      expect(rig.palettes.get('white')?.colours).toEqual([{ red: 0, green: 1, blue: 0, white: 0 }]);
+      expect(on().spider.colour).toEqual({ scene: 'white', changed: false });
+      expect(told).not.toHaveBeenCalled();
+    });
+
+    it('refuses a change that makes no sense, and changes nothing', () => {
+      const refused: [() => void, RegExp][] = [
+        [() => rig.playback.updatePalette('nope', { label: 'Nope' }), /no palette called "nope"/],
+        [() => rig.playback.updatePalette('white', { colours: [] }), /at least one/],
+        [() => rig.playback.updatePalette('white', { tint: 1 }), /cannot change "tint"/],
+        [() => rig.playback.updatePalette('white', 'blue'), /must be an object/],
+        [() => rig.playback.updatePalette('white', { label: '' }), /needs a name/],
+      ];
+      for (const [act, message] of refused) expect(act).toThrow(message);
+      expect(palette('white')).toEqual(STARTING_PALETTES[0]);
+    });
+
+    it('takes a palette away', () => {
+      rig.playback.removePalette('rainbow');
+      expect(rig.playback.getShow().palettes.map((each) => each.id)).toEqual(['white']);
+      expect(rig.palettes.get('rainbow')).toBeUndefined();
+      expect(readFileSync(path, 'utf8')).not.toContain('rainbow');
+      expect(() => rig.playback.removePalette('rainbow')).toThrow(/no palette called/);
+    });
+
+    it('does not take a palette away that is on in a group, and says where', () => {
+      rig.playback.setPalette('spider', 'rainbow');
+      expect(() => rig.playback.removePalette('rainbow')).toThrow(
+        new PatchError('the palette "Rainbow" is in use: it is on in "Spider"'),
+      );
+      expect(palette('rainbow')).toBeDefined();
+      // Once another palette is on, it can go.
+      rig.playback.setPalette('spider', 'white');
+      rig.playback.removePalette('rainbow');
+      expect(palette('rainbow')).toBeUndefined();
+    });
+
+    it('has no palette on in a group when the file loses it', async () => {
+      rig.playback.addPalette('Extra', { colours: ['#ff0000'] });
+      rig.playback.setPalette('spider', 'extra');
+      expect(on().spider.colour).toEqual({ scene: 'extra', changed: false });
+      const text = readFileSync(path, 'utf8');
+      writeFileSync(path, text.replace(/ {2}extra:\n(?: {4}.*\n)+/, ''));
+      await vi.waitFor(() => expect(palette('extra')).toBeUndefined(), { timeout: 2000 });
+      expect(on().spider.colour).toEqual(NONE);
+      // The fixture still holds the id and shows white until another is set.
+      expect(state('spider')).toMatchObject({ colour: { palette: 'extra' } });
+    });
+
+    it('does not use a file with a palette that cannot be read', () => {
+      rig.close();
+      writeFileSync(path, 'palettes:\n  odd:\n    colours: [blue]\n');
+      start();
+      expect(rig.playback.getShow().problem).toMatch(/Palette "odd": "blue" is not a colour/);
+      expect(rig.playback.getShow().palettes).toEqual(STARTING_PALETTES);
+      expect(() => rig.playback.addPalette('New')).toThrow(/has a mistake/);
+    });
+
+    it('reads palettes written by hand, in the order of the file, with the defaults filled in', () => {
+      rig.close();
+      writeFileSync(
+        path,
+        "palettes:\n  2:\n    colours: ['#ff0000']\n  dusk:\n    label: Dusk\n    colours: ['#ff4a00', off, '#ffb000ff']\n    mode: cycle\n    change: fade\n    speed: 1\n",
+      );
+      start();
+      expect(rig.playback.getShow().problem).toBeNull();
+      expect(rig.playback.getShow().palettes).toEqual([
+        { id: '2', label: '2', colours: ['#ff0000'], mode: 'static', change: 'step', speed: 0.25 },
+        {
+          id: 'dusk',
+          label: 'Dusk',
+          colours: ['#ff4a00', 'off', '#ffb000ff'],
+          mode: 'cycle',
+          change: 'fade',
+          speed: 1,
+        },
+      ]);
+    });
+
+    it('starts with no palette at all when the file says so', () => {
+      rig.close();
+      writeFileSync(path, 'palettes: {}\n');
+      start();
+      expect(rig.playback.getShow().palettes).toEqual([]);
+      expect(() => rig.playback.setPalette('spider', 'white')).toThrow(/no palette called/);
+    });
+
+    it('tells about the show when a palette changes', () => {
+      const told = vi.fn();
+      rig.on('show', told);
+      rig.playback.addPalette('Warm');
+      rig.playback.updatePalette('warm', { speed: 1 });
+      rig.playback.removePalette('warm');
+      expect(told).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('looks', () => {
+    const look = (group: string, id: string) =>
+      rig.playback
+        .getShow()
+        .groups.find((each) => each.id === group)
+        ?.looks.find((l) => l.id === id);
+
+    beforeEach(() => {
+      change('spider', { levels: { dimmer: 1, tilt1: 0.2 }, effect: { id: 'chase' } });
+      rig.playback.store('spider', 'lights', 'Chase');
+      rig.playback.store('spider', 'motion', 'Low');
+      change('spider', { levels: { dimmer: 0.5, tilt1: 0.9 }, effect: { id: 'kick' } });
+      rig.playback.store('spider', 'lights', 'Kick');
+      rig.playback.store('spider', 'motion', 'High');
+      // Stored scenes are on; start again from the file, with the fixtures at rest.
+      rig.close();
+      start();
+    });
+
+    /** Puts a scene of each lane on, so that a look can be stored from it. */
+    const setUp = () => {
+      rig.playback.recall('spider', 'chase');
+      rig.playback.setPalette('spider', 'rainbow');
+      rig.playback.recall('spider', 'low');
+    };
+
+    it('stores what is on in the group, by reference, and has it on', () => {
+      setUp();
+      expect(rig.playback.storeLook('spider', ' Drop ')).toBe('drop');
+      expect(look('spider', 'drop')).toEqual({
+        id: 'drop',
+        label: 'Drop',
+        lights: 'chase',
+        colour: { palette: 'rainbow', speed: null },
+        motion: 'low',
+      });
+      expect(on().spider.look).toEqual({ look: 'drop', changed: false });
+      const written = parse(readFileSync(path, 'utf8')).groups.spider.looks;
+      expect(written).toEqual({
+        drop: { label: 'Drop', lights: 'chase', colour: { palette: 'rainbow' }, motion: 'low' },
+      });
+    });
+
+    it('leaves out a lane with nothing on, and stores the speed of the palette that was set', () => {
+      rig.playback.setPalette('spider', 'rainbow', 4);
+      rig.playback.storeLook('spider', 'Just colour');
+      expect(look('spider', 'just-colour')).toEqual({
+        id: 'just-colour',
+        label: 'Just colour',
+        lights: null,
+        colour: { palette: 'rainbow', speed: 4 },
+        motion: null,
+      });
+      expect(parse(readFileSync(path, 'utf8')).groups.spider.looks['just-colour']).toEqual({
+        label: 'Just colour',
+        colour: { palette: 'rainbow', speed: 4 },
+      });
+    });
+
+    it('does not store a look when nothing is on, or when a lane was changed by hand', () => {
+      expect(() => rig.playback.storeLook('spider', 'Nothing')).toThrow(
+        new PatchError('nothing is on in "Spider", so there is nothing to store as a look'),
+      );
+      setUp();
+      change('spider', { levels: { tilt1: 0.7 } });
+      expect(() => rig.playback.storeLook('spider', 'Changed')).toThrow(
+        /the motion of "Spider" were changed by hand/,
+      );
+      expect(rig.playback.getShow().groups.find((g) => g.id === 'spider')?.looks).toEqual([]);
+    });
+
+    it('sets the lanes it names together, as the presses would, and tells once', () => {
+      setUp();
+      rig.playback.storeLook('spider', 'Drop');
+      rig.playback.recall('spider', 'kick');
+      rig.playback.setPalette('spider', 'white');
+      rig.playback.recall('spider', 'high');
+      expect(on().spider.look).toEqual({ look: 'drop', changed: true });
+
+      const told = vi.fn();
+      rig.on('playback', told);
+      rig.playback.playLook('spider', 'drop', 'tablet-1');
+      expect(state('spider')).toMatchObject({
+        levels: { dimmer: 1, tilt1: 0.2 },
+        effect: { id: 'chase' },
+        colour: { palette: 'rainbow', speed: null },
+      });
+      expect(on().spider).toEqual({
+        lights: { scene: 'chase', changed: false },
+        colour: { scene: 'rainbow', changed: false },
+        motion: { scene: 'low', changed: false },
+        look: { look: 'drop', changed: false },
+      });
+      expect(told).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves a lane alone that it does not name', () => {
+      setUp();
+      rig.close();
+      writeFileSync(
+        path,
+        readFileSync(path, 'utf8').replace(
+          '    scenes:',
+          '    looks:\n      tint:\n        label: Tint\n        colour: white\n    scenes:',
+        ),
+      );
+      rig = new Rig({ output, fixtures: FIXTURES, show: path });
+      rig.playback.recall('spider', 'chase');
+      rig.playback.setPalette('spider', 'rainbow');
+      rig.playback.recall('spider', 'low');
+      rig.playback.playLook('spider', 'tint');
+      expect(state('spider')).toMatchObject({
+        levels: { dimmer: 1, tilt1: 0.2 },
+        effect: { id: 'chase' },
+        colour: { palette: 'white' },
+      });
+      expect(on().spider.lights).toEqual({ scene: 'chase', changed: false });
+      expect(on().spider.motion).toEqual({ scene: 'low', changed: false });
+      expect(on().spider.look).toEqual({ look: 'tint', changed: false });
+    });
+
+    it('sets the pace it names for the palette, and is changed when the palette is pressed without it', () => {
+      setUp();
+      rig.playback.setPalette('spider', 'rainbow', 4);
+      rig.playback.storeLook('spider', 'Quick');
+      rig.playback.setPalette('spider', 'white');
+      rig.playback.playLook('spider', 'quick');
+      expect(state('spider')).toMatchObject({ colour: { palette: 'rainbow', speed: 4 } });
+      expect(on().spider.look).toEqual({ look: 'quick', changed: false });
+
+      rig.playback.setPalette('spider', 'rainbow');
+      expect(state('spider')).toMatchObject({ colour: { palette: 'rainbow', speed: null } });
+      expect(on().spider.look).toEqual({ look: 'quick', changed: true });
+      rig.playback.setPalette('spider', 'rainbow', 4);
+      expect(on().spider.look).toEqual({ look: 'quick', changed: false });
+    });
+
+    it('is shown as changed when a lane it set is pressed again, and not when it is put back', () => {
+      setUp();
+      rig.playback.storeLook('spider', 'Drop');
+      rig.playback.recall('spider', 'kick');
+      expect(on().spider.look).toEqual({ look: 'drop', changed: true });
+      rig.playback.recall('spider', 'chase');
+      expect(on().spider.look).toEqual({ look: 'drop', changed: false });
+      change('spider', { levels: { dimmer: 0.4 } });
+      expect(on().spider.look).toEqual({ look: 'drop', changed: true });
+      rig.playback.off('spider');
+      expect(on().spider.look).toEqual({ look: 'drop', changed: true });
+    });
+
+    it('is not changed by a lane it does not name', () => {
+      rig.playback.setPalette('spider', 'rainbow');
+      rig.playback.storeLook('spider', 'Colour only');
+      rig.playback.recall('spider', 'chase');
+      rig.playback.recall('spider', 'high');
+      expect(on().spider.look).toEqual({ look: 'colour-only', changed: false });
+    });
+
+    it('is replaced by another look, and forgotten when a look is not what the group does any more', () => {
+      setUp();
+      rig.playback.storeLook('spider', 'Drop');
+      rig.playback.recall('spider', 'kick');
+      rig.playback.storeLook('spider', 'Hit');
+      expect(on().spider.look).toEqual({ look: 'hit', changed: false });
+      rig.playback.playLook('spider', 'drop');
+      expect(on().spider.look).toEqual({ look: 'drop', changed: false });
+    });
+
+    it('changes no fixture when one of them cannot take its part', () => {
+      change('spider', { levels: { dimmer: 1 } });
+      change('laser', { raw: { mode: MANUAL } });
+      rig.playback.store('all', 'lights', 'Everything');
+      rig.playback.store('all', 'motion', 'Lean');
+      rig.playback.off('all');
+      rig.playback.recall('all', 'everything');
+      rig.playback.recall('all', 'lean');
+      rig.playback.storeLook('all', 'Whole');
+      rig.playback.off('all');
+      const laser = rig.find('laser')?.controller;
+      if (!laser) throw new Error('no laser');
+      const check = vi.spyOn(laser, 'check').mockImplementation((type) => {
+        if (type === 'motion') throw new PatchError('the laser cannot move');
+      });
+      const frames = output.frames.length;
+      expect(() => rig.playback.playLook('all', 'whole')).toThrow('the laser cannot move');
+      expect(output.frames).toHaveLength(frames);
+      expect(state('spider')).toMatchObject({ levels: { dimmer: 0 } });
+      expect(on().all.look).toEqual({ look: 'whole', changed: true });
+      check.mockRestore();
+      rig.playback.playLook('all', 'whole');
+      expect(ch(output, 6)).toBe(255);
+    });
+
+    it('sets the palette on the fixtures that take palettes in a group of several', () => {
+      change('laser', { raw: { mode: MANUAL } });
+      rig.playback.store('all', 'lights', 'Open');
+      rig.playback.recall('all', 'open');
+      rig.playback.setPalette('all', 'rainbow');
+      rig.playback.storeLook('all', 'Open rainbow');
+      rig.playback.off('all');
+      rig.playback.setPalette('all', 'white');
+      rig.playback.playLook('all', 'open-rainbow');
+      expect(state('spider')).toMatchObject({ colour: { palette: 'rainbow' } });
+      expect(ch(output, LASER_AT)).toBe(MANUAL);
+    });
+
+    it('stores over a look that is there, renames it and takes it away', () => {
+      setUp();
+      rig.playback.storeLook('spider', 'Drop');
+      rig.playback.recall('spider', 'kick');
+      rig.playback.storeLookOver('spider', 'drop');
+      expect(look('spider', 'drop')).toMatchObject({ label: 'Drop', lights: 'kick' });
+      expect(on().spider.look).toEqual({ look: 'drop', changed: false });
+
+      rig.playback.renameLook('spider', 'drop', ' Big drop ');
+      expect(look('spider', 'drop')?.label).toBe('Big drop');
+      rig.playback.removeLook('spider', 'drop');
+      expect(look('spider', 'drop')).toBeUndefined();
+      expect(on().spider.look).toEqual(NO_LOOK);
+      expect(() => rig.playback.playLook('spider', 'drop')).toThrow(
+        new PatchError('there is no look called "drop" in the group "spider"'),
+      );
+    });
+
+    it('does not take a scene away that a look uses, nor a palette', () => {
+      setUp();
+      rig.playback.storeLook('spider', 'Drop');
+      expect(() => rig.playback.remove('spider', 'chase')).toThrow(
+        new PatchError(
+          'the scene "Chase" is used by the look "Drop". Change or delete the look first',
+        ),
+      );
+      expect(() => rig.playback.remove('spider', 'low')).toThrow(/used by the look "Drop"/);
+      rig.playback.setPalette('spider', 'white');
+      expect(() => rig.playback.removePalette('rainbow')).toThrow(
+        new PatchError('the palette "Rainbow" is in use: the look "Drop" of "Spider" uses it'),
+      );
+      rig.playback.remove('spider', 'kick');
+
+      rig.playback.removeLook('spider', 'drop');
+      rig.playback.remove('spider', 'chase');
+      rig.playback.removePalette('rainbow');
+      expect(group('spider')?.scenes.map((scene) => scene.id)).toEqual(['low', 'high']);
+    });
+
+    it('is taken away with its group', () => {
+      setUp();
+      rig.playback.storeLook('spider', 'Drop');
+      rig.playback.removeGroup('spider');
+      expect(readFileSync(path, 'utf8')).not.toContain('drop');
+      expect(on().spider).toBeUndefined();
+    });
+
+    it('has its looks after a restart, with nothing on', () => {
+      setUp();
+      rig.playback.storeLook('spider', 'Drop');
+      rig.close();
+      start();
+      expect(look('spider', 'drop')).toBeDefined();
+      expect(on().spider).toEqual(NOTHING);
+      rig.playback.playLook('spider', 'drop');
+      expect(state('spider')).toMatchObject({
+        effect: { id: 'chase' },
+        colour: { palette: 'rainbow' },
+      });
+    });
+
+    it('gives a look an id of its own within its group', () => {
+      setUp();
+      expect(rig.playback.storeLook('spider', 'Drop')).toBe('drop');
+      expect(rig.playback.storeLook('spider', 'Drop')).toBe('drop-2');
+      expect(() => rig.playback.storeLook('spider', ' ')).toThrow('a look needs a name');
+    });
+
+    it('refuses what is not there, and a look that names nothing', () => {
+      const refused: [() => void, string][] = [
+        [() => rig.playback.playLook('strobe', 'drop'), 'there is no group called "strobe"'],
+        [() => rig.playback.playLook('spider', undefined), 'say which look, by its id'],
+        [
+          () => rig.playback.renameLook('spider', 'nope', 'X'),
+          'there is no look called "nope" in the group "spider"',
+        ],
+        [
+          () => rig.playback.removeLook('spider', 'nope'),
+          'there is no look called "nope" in the group "spider"',
+        ],
+        [() => rig.playback.storeLook('strobe', 'X'), 'there is no group called "strobe"'],
+      ];
+      for (const [act, message] of refused) expect(act).toThrow(new PatchError(message));
+    });
+
+    describe('written by hand', () => {
+      const WITH_LOOK = (extra: string) =>
+        `groups:\n  spider:\n    fixtures: [spider]\n    scenes:\n      chase:\n        type: lights\n        fixtures:\n          spider: { levels: { dimmer: 1 }, effect: { id: chase } }\n      low:\n        type: motion\n        fixtures:\n          spider: { levels: { tilt1: 0.2 } }\n    looks:\n${extra}`;
+
+      const problem = (extra: string) => {
+        rig.close();
+        writeFileSync(path, WITH_LOOK(extra));
+        start();
+        return rig.playback.getShow().problem;
+      };
+
+      it('reads a look with the palette as a plain id, or with a pace', () => {
+        rig.close();
+        writeFileSync(
+          path,
+          WITH_LOOK(
+            '      a:\n        lights: chase\n        colour: rainbow\n      b:\n        label: B\n        colour: { palette: white, speed: 0.5 }\n        motion: low\n',
+          ),
+        );
+        start();
+        expect(rig.playback.getShow().problem).toBeNull();
+        expect(group('spider')?.looks).toEqual([
+          {
+            id: 'a',
+            label: 'a',
+            lights: 'chase',
+            colour: { palette: 'rainbow', speed: null },
+            motion: null,
+          },
+          {
+            id: 'b',
+            label: 'B',
+            lights: null,
+            colour: { palette: 'white', speed: 0.5 },
+            motion: 'low',
+          },
+        ]);
+        rig.playback.playLook('spider', 'b');
+        expect(state('spider')).toMatchObject({ colour: { palette: 'white', speed: 0.5 } });
+        expect(readFileSync(path, 'utf8')).toContain('colour: rainbow');
+      });
+
+      it('does not use a look that names what is not there', () => {
+        expect(problem('      a:\n        lights: nope\n')).toMatch(
+          /Look "a" of group "spider": there is no scene called "nope" in this group/,
+        );
+        expect(problem('      a:\n        colour: nope\n')).toMatch(
+          /there is no palette called "nope"/,
+        );
+        expect(problem('      a:\n        lights: low\n')).toMatch(
+          /the scene "low" is motion, and not lights/,
+        );
+        expect(problem('      a:\n        motion: chase\n')).toMatch(
+          /the scene "chase" is lights, and not motion/,
+        );
+      });
+
+      it('does not use a look that sets nothing, or with a pace that is none', () => {
+        expect(problem('      a:\n        label: Nothing\n')).toMatch(
+          /a look sets a scene of lights, a palette or a scene of motion/,
+        );
+        expect(problem('      a:\n        colour: { palette: white, speed: 3 }\n')).toMatch(
+          /the speed of a palette must be one of/,
+        );
+        expect(problem('      a:\n        colour: { palette: white, tint: 1 }\n')).toMatch(
+          /"colour" cannot have "tint"/,
+        );
+        expect(problem('      a:\n        lights: chase\n        sound: loud\n')).toMatch(
+          /cannot have "sound", only label, lights, colour and motion/,
+        );
+        expect(problem('      Big:\n        lights: chase\n')).toMatch(/an id has small letters/);
+      });
+
+      it('has a look that is on gone when the file loses it', async () => {
+        rig.close();
+        writeFileSync(path, WITH_LOOK('      a:\n        lights: chase\n'));
+        start();
+        rig.playback.playLook('spider', 'a');
+        expect(on().spider.look).toEqual({ look: 'a', changed: false });
+        writeFileSync(path, WITH_LOOK('      b:\n        lights: chase\n'));
+        await vi.waitFor(() => expect(on().spider.look).toEqual(NO_LOOK), { timeout: 2000 });
+      });
+    });
   });
 });

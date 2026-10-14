@@ -22,6 +22,7 @@ before changing it; they describe the interface and are kept up to date.
 | `ui.js` | What controls are built from: `slider`, `button`, `speedKeys`, `views`, `renderReadout` |
 | `styles.css` | The shared styles and the tokens: colours, sizes, the touch size |
 | `deck.*` | The deck: groups, scenes, the master, the master speed, in Show and Program |
+| `palettes.*` | The palettes of the show (the colours, apart from the effects): they belong to no fixture and no group, so they have a page of their own |
 | `fixtures/<kind>.*` | One page per kind of fixture, with only what belongs to that fixture |
 
 Where a thing belongs: what is about one fixture goes in its page; what is about no

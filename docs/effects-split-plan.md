@@ -1,9 +1,33 @@
 # Plan: light effects, motion effects and palettes, apart
 
-Status: design only, nothing built (2026-10-14). The decisions marked "Jeroen" were made by
-him on that date, in the order they are listed. The rest is a proposal. It builds on the
-scene types of `docs/show-design.md` ("Scene types", built 2026-10-07) and changes what is
-in two of them.
+Status: built on 2026-10-14, steps 1 to 7 of "Order of building". It has run in tests and in
+headless Chrome against a lightdeck without a bridge, not on the real fixtures or on a tablet.
+The decisions marked "Jeroen" were made by him on that date, in the order they are listed.
+The rest is a proposal that was built as written, except where "As built" says otherwise. It
+builds on the scene types of `docs/show-design.md` ("Scene types", built 2026-10-07) and
+changes what is in two of them.
+
+## As built
+
+- **Accents of the third slot**: the kick, the chase and the sparkle use slot 3 only when the
+  palette has a third colour (`slots` in the context of a light effect). With two colours they
+  look as they did. This is the one place where a slot that is not there does not mean dark, and
+  it is because an accent is an extra and not a part of the effect. (An empty or off slot that
+  the effect needs is dark, as decided.)
+- **New light effects**: pump (the soft breathing that the old tilt wave and scissors had under
+  them), solid, bars, alternate and spread. Spread puts the colours of the palette over the
+  lenses in bands and replaces Spectrum.
+- **Colour lane**: palettes are pressed per group (`POST /api/playback {group, palette}`), and
+  the pace for this use is a speed that a look or a press can give. A group with no fixture that
+  takes palettes (the laser alone) has no palette to press.
+- **The laser**: its effects are split too (patterns and colours in the lights, pulse, sweep
+  and twist in the motion), and its colour setting is up to three of the seven single colours
+  (bytes of the single range of channel 9, numbered 1 to 7 on its page). It is part of a scene
+  of lights, together with its colour channel, and not of a look.
+- **Looks** refer to scenes and palettes by id and cannot outlive them: a scene a look uses, and
+  a palette that is on or that a look uses, cannot be deleted.
+- **Old files**: a colour scene, or a scene with `colourA`, is a mistake in the file and must be
+  edited by hand (Jeroen: drop old scenes).
 
 ## What Jeroen wants
 

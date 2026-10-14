@@ -127,7 +127,7 @@ describe('Rig', () => {
       const timed = new Rig({ output, fixtures: [SPIDER, LASER], now: () => clock });
       try {
         timed.find('spider')?.controller.update({ effect: { id: 'chase' } });
-        timed.find('laser')?.controller.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+        timed.find('laser')?.controller.update({ raw: { mode: MANUAL }, motion: { id: 'sweep' } });
         for (let i = 0; i < 40; i++) {
           clock += 25;
           vi.advanceTimersByTime(25);
@@ -313,7 +313,7 @@ describe('Rig', () => {
 
   it('leaves what the fixtures are set to when the master moves', () => {
     change('spider', { levels: { dimmer: 0.8 }, effect: { id: 'wave' } });
-    change('laser', { raw: { mode: MANUAL }, effect: { id: 'pulse' } });
+    change('laser', { raw: { mode: MANUAL }, motion: { id: 'pulse' } });
     const controllers = rig.fixtures.map((fixture) => fixture.controller);
     const states = controllers.map((controller) => controller.getState());
     const types = ['lights', 'colour', 'motion'] as const;
@@ -411,7 +411,7 @@ describe('Rig', () => {
     timed.on('frame', (id, dmx) => frames.push([id, dmx[id === 'spider' ? 5 : 0]]));
     try {
       timed.find('spider')?.controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase' } });
-      timed.find('laser')?.controller.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+      timed.find('laser')?.controller.update({ raw: { mode: MANUAL }, motion: { id: 'sweep' } });
       timed.setMaster(0.5);
       for (let i = 0; i < 4; i++) {
         clock += 25;

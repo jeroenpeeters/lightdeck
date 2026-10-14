@@ -16,6 +16,9 @@
 //   const shell = await start();          null when the page cannot be shown
 //   const shell = await start({ page: 'deck' });        for a page about no fixture, such as
 //                                          the deck or the listen page
+//   const shell = await start({ page: 'tablet', bare: true });   a page that draws its own
+//                                          controls: the shell then shows no bar and no tempo
+//                                          desk, and a page asks for what it needs below
 //   shell.fixture                          the fixture as /api/state describes it
 //   shell.fixtures                         every fixture of the console
 //   shell.show                             the show: its file, what is wrong with it, and
@@ -52,6 +55,11 @@
 //   shell.rates                            the speeds the master speed can have
 //   shell.tempo.rate                       the master speed
 //   shell.setRate(rate)                    set the master speed, for every effect
+//   shell.tap()                            a tap on the beat, as the Tap key of the desk makes it
+//   shell.setBlackout(on)                  switch the blackout, for every fixture
+//   shell.links                            the state of the link lamps: { bridge, device }, each
+//                                          { state: 'ok' | 'down' | 'unknown', text }
+//   shell.on('status', () => ...)          the bridge or the LR512 came or went
 //
 // And for a page that shows the master:
 //
@@ -142,10 +150,13 @@ function listenAddress() {
   return `localhost${location.port ? `:${location.port}` : ''}/listen`;
 }
 
-export async function start({ page = 'fixture' } = {}) {
+export async function start({ page = 'fixture', bare = false } = {}) {
   const frame = document.createElement('template');
   frame.innerHTML = FRAME;
   document.body.prepend(frame.content);
+  // A bare page draws its own controls: the bar and the tempo desk stay there, out of sight, so
+  // that nothing that works on them has to know. The notice stays, for the page to put where it wants.
+  if (bare) document.body.classList.add('bare-shell');
 
   const id =
     page === 'fixture'
@@ -184,13 +195,23 @@ export async function start({ page = 'fixture' } = {}) {
   let pageNotes = () => [];
   /** A beat number and the moment it was true, to count on from between messages. */
   let beatBase = { beat: initial.tempo.beat, at: performance.now() };
-  const handlers = { fixture: [], frame: [], change: [], show: [], playback: [], audio: [] };
+  const handlers = {
+    fixture: [],
+    frame: [],
+    change: [],
+    show: [],
+    playback: [],
+    audio: [],
+    status: [],
+  };
   const tell = (name, message) => {
     for (const handler of handlers[name]) handler(message);
   };
 
   const pages = [
     { name: 'Deck', href: '/deck', here: page === 'deck' },
+    { name: 'Palettes', href: '/palettes', here: page === 'palettes' },
+    { name: 'Tablet', href: '/tablet', here: page === 'tablet' },
     ...initial.fixtures.map((each) => ({
       name: each.label,
       href: `/fixtures/${each.id}`,
@@ -434,6 +455,7 @@ export async function start({ page = 'fixture' } = {}) {
       status = message;
       renderLinks();
       renderNotice();
+      tell('status');
     });
     on('show', (message) => {
       show = message;
@@ -554,33 +576,41 @@ export async function start({ page = 'fixture' } = {}) {
     return { given, held: given < wanted };
   }
 
-  $('blackout').addEventListener('click', () => {
-    blackout = !blackout;
+  function setBlackout(on) {
+    blackout = on;
     sendBlackout({ blackout });
     render();
     tell('change');
-  });
+  }
+  $('blackout').addEventListener('click', () => setBlackout(!blackout));
 
   // ---- drawing ----
 
-  function renderLinks() {
-    const bridge = $('link-bridge');
+  /** The state of the two links and the words for them, for the lamps of the bar and of a bare page. */
+  function linkStates() {
     // Started without a bridge: nothing is wrong, the simulator is the output.
-    bridge.dataset.state = !initial.bridgeUrl ? 'unknown' : status.bridge ? 'ok' : 'down';
-    bridge.querySelector('.link-text').textContent = !initial.bridgeUrl
-      ? 'No bridge'
-      : status.bridge
-        ? 'Bridge connected'
-        : 'Bridge not connected';
-
-    const device = $('link-device');
+    const bridge = {
+      state: !initial.bridgeUrl ? 'unknown' : status.bridge ? 'ok' : 'down',
+      text: !initial.bridgeUrl
+        ? 'No bridge'
+        : status.bridge
+          ? 'Bridge connected'
+          : 'Bridge not connected',
+    };
     const known = status.bridge && status.device !== 'unknown';
-    device.dataset.state = !known ? 'unknown' : status.device === 'open' ? 'ok' : 'down';
-    device.querySelector('.link-text').textContent = !known
-      ? 'LR512'
-      : status.device === 'open'
-        ? 'LR512 connected'
-        : 'LR512 not found';
+    const device = {
+      state: !known ? 'unknown' : status.device === 'open' ? 'ok' : 'down',
+      text: !known ? 'LR512' : status.device === 'open' ? 'LR512 connected' : 'LR512 not found',
+    };
+    return { bridge, device };
+  }
+
+  function renderLinks() {
+    const { bridge, device } = linkStates();
+    $('link-bridge').dataset.state = bridge.state;
+    $('link-bridge').querySelector('.link-text').textContent = bridge.text;
+    $('link-device').dataset.state = device.state;
+    $('link-device').querySelector('.link-text').textContent = device.text;
   }
 
   /** Why nothing reaches this fixture where it is patched, or nothing when it does. */
@@ -769,6 +799,11 @@ export async function start({ page = 'fixture' } = {}) {
       return master;
     },
     setMaster,
+    tap,
+    setBlackout,
+    get links() {
+      return linkStates();
+    },
     rates: limits.rates,
     setRate: (rate) => setTempo({ rate }),
     get tempo() {

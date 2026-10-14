@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LASER_EFFECTS, LASER_EFFECTS_MODE, type LaserEffect } from '../engine/laserEffects.js';
+import {
+  LASER_COLOUR_SETTING,
+  LASER_EFFECTS,
+  LASER_EFFECTS_MODE,
+  LASER_MOTION_EFFECTS,
+  type LaserEffect,
+} from '../engine/laserEffects.js';
 import { ALIEN_LASER_10CH, LASER_GATE } from '../fixtures/laser.js';
 import { Engine } from './engine.js';
 import { PatchError } from './fixture.js';
@@ -10,7 +16,8 @@ import { ch, RecordingOutput } from './testing.js';
 const MANUAL = 95;
 const AUTO = 159;
 const LASER_AT = 44;
-const EFFECTS = { list: LASER_EFFECTS, mode: LASER_EFFECTS_MODE };
+const EFFECTS = { list: LASER_EFFECTS, motion: LASER_MOTION_EFFECTS, mode: LASER_EFFECTS_MODE };
+const COLOURS = { control: 'colour', range: 'single', max: LASER_COLOUR_SETTING };
 /** One beat at the tempo the console starts with. */
 const BEAT_MS = 60_000 / 126;
 
@@ -25,6 +32,7 @@ describe('LaserController', () => {
       output,
       tempo: new Tempo(),
       effects: EFFECTS,
+      colourSetting: COLOURS,
       universe: 0,
       address,
     });
@@ -53,6 +61,8 @@ describe('LaserController', () => {
         drawing: 0,
       },
       effect: { id: null, speed: 1 },
+      motion: { id: null, speed: 1 },
+      colours: [],
     });
   });
 
@@ -158,7 +168,11 @@ describe('LaserController', () => {
   });
 
   it('keeps what is set whatever the master says', () => {
-    laser.update({ raw: { mode: MANUAL, program: 57 }, effect: { id: 'pulse' } });
+    laser.update({
+      raw: { mode: MANUAL, program: 57 },
+      effect: { id: 'patterns' },
+      motion: { id: 'pulse' },
+    });
     const state = laser.getState();
     const kept = laser.snapshot('lights');
     for (const master of [0.5, 0, 0.01, 1]) {
@@ -168,8 +182,9 @@ describe('LaserController', () => {
     }
     expect(kept).toEqual({
       raw: { mode: MANUAL, program: 57 },
-      effect: { id: 'pulse', speed: 1 },
+      effect: { id: 'patterns', speed: 1 },
     });
+    expect(laser.snapshot('motion')).toEqual({ motion: { id: 'pulse', speed: 1 } });
   });
 
   it('sends and tells nothing when the master does not change', () => {
@@ -258,10 +273,24 @@ describe('LaserController', () => {
   });
 
   it('tells the page which control opens it and which effects there are', () => {
-    const details = laser.describe() as { gate: string; effects: unknown[]; effectsIn: string };
+    const details = laser.describe() as {
+      gate: string;
+      effects: unknown[];
+      motionEffects: { id: string }[];
+      effectsIn: string;
+      colourSetting: unknown;
+    };
     expect(details.gate).toBe('mode');
     expect(details.effectsIn).toBe('manual');
-    expect(details.effects).toHaveLength(5);
+    expect(details.effects).toHaveLength(2);
+    expect(details.motionEffects.map((effect) => effect.id)).toEqual(['pulse', 'sweep', 'twist']);
+    expect(details.colourSetting).toEqual({
+      control: 'colour',
+      range: 'single',
+      max: 3,
+      from: 0,
+      to: 63,
+    });
     expect(details.effects[0]).toEqual({
       id: 'patterns',
       name: 'Pattern chase',
@@ -322,7 +351,7 @@ describe('LaserController effects', () => {
   });
 
   it('sends a frame at every point of the grid while an effect shows, and never more than 25 a second', () => {
-    laser.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+    laser.update({ raw: { mode: MANUAL }, motion: { id: 'sweep' } });
     const before = output.frames.length;
     advance(1000);
     // 126 beats per minute and 25 per second at most: 11 points per beat, 23 a second.
@@ -332,7 +361,7 @@ describe('LaserController effects', () => {
   });
 
   it('has no timer of its own', () => {
-    laser.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+    laser.update({ raw: { mode: MANUAL }, motion: { id: 'sweep' } });
     engine.close();
     expect(vi.getTimerCount()).toBe(0);
     const before = output.frames.length;
@@ -342,7 +371,7 @@ describe('LaserController effects', () => {
 
   it('wants frames only while an effect shows, the tempo runs and it was not darkened', () => {
     expect(laser.wantsFrames()).toBe(false);
-    laser.update({ effect: { id: 'sweep' } });
+    laser.update({ motion: { id: 'sweep' } });
     // The effect only counts in manual mode.
     expect(laser.wantsFrames()).toBe(false);
     laser.update({ raw: { mode: MANUAL } });
@@ -366,7 +395,7 @@ describe('LaserController effects', () => {
   it('lets the effect set what it drives and keeps the rest with the operator', () => {
     laser.update({
       raw: { mode: MANUAL, program: 57, moveH: 20, colour: 70, size: 200 },
-      effect: { id: 'sweep' },
+      motion: { id: 'sweep' },
     });
     expect(laser.getDmx()).toEqual([MANUAL, 57, 0, 0, 0, 1, 0, 200, 70, 0]);
     advance(BEAT_MS);
@@ -446,19 +475,19 @@ describe('LaserController effects', () => {
     laser.update({ raw: { mode: MANUAL }, effect: { id: 'patterns', speed: 0.25 } });
     const kept = laser.snapshot('lights');
     expect(kept.effect).toEqual({ id: 'patterns', speed: 0.25 });
-    laser.recall('lights', { raw: { mode: MANUAL }, effect: { id: 'pulse' } });
-    expect(laser.getState().effect).toEqual({ id: 'pulse', speed: 1 });
+    laser.recall('lights', { raw: { mode: MANUAL }, effect: { id: 'colours' } });
+    expect(laser.getState().effect).toEqual({ id: 'colours', speed: 1 });
     laser.recall('lights', kept);
     expect(laser.getState().effect).toEqual({ id: 'patterns', speed: 0.25 });
   });
 
   it('never opens the laser: a chosen effect waits until the operator does', () => {
-    laser.update({ effect: { id: 'pulse' } });
+    laser.update({ motion: { id: 'pulse' } });
     const before = output.frames.length;
     advance(500);
     expect(output.frames.length).toBe(before);
     expect(laser.getDmx()).toEqual(new Array(10).fill(0));
-    expect(laser.getState().effect.id).toBe('pulse');
+    expect(laser.getState().motion.id).toBe('pulse');
 
     laser.update({ raw: { mode: MANUAL } });
     advance(250);
@@ -475,9 +504,9 @@ describe('LaserController effects', () => {
   });
 
   it('goes back to what the operator set when the effect stops', () => {
-    laser.update({ raw: { mode: MANUAL, moveH: 20 }, effect: { id: 'sweep' } });
+    laser.update({ raw: { mode: MANUAL, moveH: 20 }, motion: { id: 'sweep' } });
     advance(BEAT_MS);
-    laser.update({ effect: { id: null } });
+    laser.update({ motion: { id: null } });
     expect(ch(output, LASER_AT + 5)).toBe(20);
     const before = output.frames.length;
     advance(500);
@@ -485,7 +514,7 @@ describe('LaserController effects', () => {
   });
 
   it('stays closed during a blackout, while the effect keeps running', () => {
-    laser.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+    laser.update({ raw: { mode: MANUAL }, motion: { id: 'sweep' } });
     laser.setBlackout(true);
     advance(BEAT_MS);
     expect(ch(output, LASER_AT)).toBe(0);
@@ -498,7 +527,7 @@ describe('LaserController effects', () => {
   it('stays closed while the master is at 0, while the effect keeps running', () => {
     const frames: number[][] = [];
     laser.on('frame', (dmx) => frames.push(dmx));
-    laser.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+    laser.update({ raw: { mode: MANUAL }, motion: { id: 'sweep' } });
     laser.setMaster(0);
     const before = output.frames.length;
     advance(BEAT_MS);
@@ -516,14 +545,19 @@ describe('LaserController effects', () => {
 
   it('is not opened by anything while the master is at 0', () => {
     laser.setMaster(0);
-    laser.update({ effect: { id: 'pulse' } });
+    laser.update({ motion: { id: 'pulse' } });
     laser.update({ raw: { mode: MANUAL } });
     advance(BEAT_MS);
-    for (const id of ['patterns', 'colours', 'pulse', 'sweep', 'twist']) {
+    for (const id of ['patterns', 'colours']) {
       laser.update({ effect: { id } });
       advance(BEAT_MS);
     }
-    laser.recall('lights', { raw: { mode: MANUAL, program: 57 }, effect: { id: 'twist' } });
+    for (const id of ['pulse', 'sweep', 'twist']) {
+      laser.update({ motion: { id } });
+      advance(BEAT_MS);
+    }
+    laser.recall('motion', { motion: { id: 'twist' } });
+    laser.recall('lights', { raw: { mode: MANUAL, program: 57 }, effect: { id: 'colours' } });
     advance(BEAT_MS);
     laser.setBlackout(true);
     laser.setBlackout(false);
@@ -534,7 +568,7 @@ describe('LaserController effects', () => {
   });
 
   it('closes and stops sending when lightdeck stops', () => {
-    laser.update({ raw: { mode: MANUAL }, effect: { id: 'twist' } });
+    laser.update({ raw: { mode: MANUAL }, motion: { id: 'twist' } });
     advance(200);
     laser.darken();
     expect(ch(output, LASER_AT)).toBe(0);
@@ -546,7 +580,7 @@ describe('LaserController effects', () => {
   it('starts no effect and stays closed after lightdeck stopped', () => {
     laser.darken();
     laser.close();
-    laser.update({ raw: { mode: MANUAL }, effect: { id: 'pulse' } });
+    laser.update({ raw: { mode: MANUAL }, motion: { id: 'pulse' } });
     expect(ch(output, LASER_AT)).toBe(0);
     const before = output.frames.length;
     advance(500);
@@ -555,7 +589,7 @@ describe('LaserController effects', () => {
   });
 
   it('stops sending when it is closed', () => {
-    laser.update({ raw: { mode: MANUAL }, effect: { id: 'twist' } });
+    laser.update({ raw: { mode: MANUAL }, motion: { id: 'twist' } });
     laser.close();
     const before = output.frames.length;
     advance(500);
@@ -565,7 +599,7 @@ describe('LaserController effects', () => {
   it('tells browsers every frame it sends, with the beat the frame is for', () => {
     const frames: { dmx: number[]; beat: number }[] = [];
     laser.on('frame', (dmx, beat) => frames.push({ dmx, beat }));
-    laser.update({ raw: { mode: MANUAL }, effect: { id: 'sweep' } });
+    laser.update({ raw: { mode: MANUAL }, motion: { id: 'sweep' } });
     const before = output.frames.length;
     advance(1000);
     expect(frames).toHaveLength(output.frames.length - before);
@@ -592,8 +626,15 @@ describe('LaserController effects', () => {
   it('tells the state with the effect in it', () => {
     const seen: LaserState[] = [];
     laser.on('state', (state) => seen.push(state as LaserState));
-    laser.update({ effect: { id: 'twist' } }, 'tablet');
-    expect(seen).toEqual([{ raw: expect.any(Object), effect: { id: 'twist', speed: 1 } }]);
+    laser.update({ motion: { id: 'twist' } }, 'tablet');
+    expect(seen).toEqual([
+      {
+        raw: expect.any(Object),
+        effect: { id: null, speed: 1 },
+        motion: { id: 'twist', speed: 1 },
+        colours: [],
+      },
+    ]);
   });
 
   it('refuses effect settings that make no sense, and changes nothing', () => {
@@ -611,7 +652,18 @@ describe('LaserController effects', () => {
     for (const effect of bad) {
       expect(() => laser.update({ raw: { mode: MANUAL }, effect })).toThrow(PatchError);
     }
-    expect(laser.getState()).toEqual(expect.objectContaining({ effect: { id: null, speed: 1 } }));
+    for (const motion of [{ id: 'patterns' }, { id: 'pulse', speed: 3 }]) {
+      expect(() => laser.update({ motion: { ...motion, bpm: 1 } })).toThrow(PatchError);
+    }
+    // An effect of the lights is not an effect of the motion, and the other way round.
+    expect(() => laser.update({ effect: { id: 'sweep' } })).toThrow(/unknown effect "sweep"/);
+    expect(() => laser.update({ motion: { id: 'patterns' } })).toThrow(/unknown motion effect/);
+    expect(laser.getState()).toEqual(
+      expect.objectContaining({
+        effect: { id: null, speed: 1 },
+        motion: { id: null, speed: 1 },
+      }),
+    );
     expect(laser.getState().raw.mode).toBe(0);
   });
 
@@ -622,9 +674,12 @@ describe('LaserController effects', () => {
       gate: 'mode',
       speeds: [0.25, 0.5, 1, 2, 4],
       effects: [],
+      motionEffects: [],
       effectsIn: null,
+      colourSetting: null,
     });
-    expect(() => laser.update({ effect: { id: 'sweep' } })).toThrow(PatchError);
+    expect(() => laser.update({ motion: { id: 'sweep' } })).toThrow(PatchError);
+    expect(() => laser.update({ colours: [5] })).toThrow(/no colour setting/);
     laser.update({ raw: { mode: MANUAL }, effect: { id: null } });
     expect(ch(output, LASER_AT)).toBe(MANUAL);
   });
@@ -671,6 +726,7 @@ describe('LaserController in a scene', () => {
       output,
       tempo: new Tempo(),
       effects: EFFECTS,
+      colourSetting: COLOURS,
       universe: 0,
       address: LASER_AT,
     });
@@ -683,21 +739,60 @@ describe('LaserController in a scene', () => {
     }
   });
 
-  it('gives every type the channels that are set in it, and for lights the chosen effect', () => {
+  it('gives every type the channels that are set in it, and the chosen effect of the type', () => {
     laser.update({
       raw: { mode: MANUAL, drawing: 191, size: 0, rotation: 30, moveH: 20, colour: 100 },
-      effect: { id: 'pulse' },
+      effect: { id: 'colours' },
+      motion: { id: 'pulse', speed: 2 },
+      colours: [13, 49],
     });
+    // The laser has colours of its own, kept with what it does: it takes no palette.
     expect(laser.snapshot('lights')).toEqual({
-      raw: { mode: MANUAL, drawing: 191 },
-      effect: { id: 'pulse', speed: 1 },
+      raw: { mode: MANUAL, drawing: 191, colour: 100 },
+      effect: { id: 'colours', speed: 1 },
+      colours: [13, 49],
     });
-    expect(laser.snapshot('colour')).toEqual({ raw: { colour: 100 } });
-    expect(laser.snapshot('motion')).toEqual({ raw: { rotation: 30, moveH: 20 } });
+    expect(laser.snapshot('colour')).toEqual({});
+    expect(laser.snapshot('motion')).toEqual({
+      raw: { rotation: 30, moveH: 20 },
+      motion: { id: 'pulse', speed: 2 },
+    });
+    expect(laser.takesPalettes).toBe(false);
+  });
+
+  it('keeps the colour setting with the lights, and sets it back to none with them', () => {
+    laser.update({ raw: { mode: MANUAL }, colours: [4, 58, 22] });
+    const kept = laser.snapshot('lights');
+    laser.recall('lights', undefined);
+    expect(laser.getState().colours).toEqual([]);
+    laser.recall('lights', kept);
+    expect(laser.getState().colours).toEqual([4, 58, 22]);
+    laser.recall('motion', undefined);
+    expect(laser.getState().colours).toEqual([4, 58, 22]);
+  });
+
+  it('takes up to three colours of the single colours, as a whole list at a time', () => {
+    laser.update({ colours: [4] });
+    expect(laser.getState().colours).toEqual([4]);
+    laser.update({ colours: [58, 13, 40] });
+    expect(laser.getState().colours).toEqual([58, 13, 40]);
+    laser.update({ colours: [] });
+    expect(laser.getState().colours).toEqual([]);
+    const refused: unknown[] = [[1, 2, 3, 4], [64], [-1], [1.5], ['red'], 5, 'red', [null]];
+    for (const colours of refused) expect(() => laser.update({ colours })).toThrow(PatchError);
+    expect(() => laser.update({ colours: [1, 2, 3, 4] })).toThrow(/3 colours at most/);
+    expect(() => laser.update({ colours: [64] })).toThrow(/from 0 to 63/);
+    expect(laser.getState().colours).toEqual([]);
+  });
+
+  it('steps the colour chase through the colours that are set', () => {
+    // Told in the effects block below with a running clock; here only that the state reaches the effect.
+    laser.update({ raw: { mode: MANUAL }, effect: { id: 'colours' }, colours: [49] });
+    expect(laser.describe().colourSetting).toMatchObject({ max: 3 });
   });
 
   it('comes back to what was kept, and opens when the part says so', () => {
-    laser.update({ raw: { mode: MANUAL, drawing: 191 }, effect: { id: 'pulse' } });
+    laser.update({ raw: { mode: MANUAL, drawing: 191 }, effect: { id: 'patterns' } });
     const kept = laser.snapshot('lights');
     const before = laser.getState();
     laser.update({ raw: { mode: 0, drawing: 0, size: 80 }, effect: { id: null } });
@@ -712,30 +807,40 @@ describe('LaserController in a scene', () => {
   it('sets only the channels of its type, and leaves the others alone', () => {
     laser.update({
       raw: { mode: MANUAL, program: 57, rotation: 30, moveH: 20, colour: 100 },
-      effect: { id: 'pulse' },
+      effect: { id: 'patterns' },
+      motion: { id: 'pulse' },
     });
-    laser.recall('colour', { raw: { colour: 40 } });
-    expect(laser.getState().raw).toEqual(
-      expect.objectContaining({ mode: MANUAL, program: 57, rotation: 30, moveH: 20, colour: 40 }),
-    );
-    expect(laser.getState().effect.id).toBe('pulse');
     laser.recall('motion', { raw: { size: 90 } });
     expect(laser.getState().raw).toEqual(
-      expect.objectContaining({ mode: MANUAL, rotation: 0, moveH: 0, size: 90, colour: 40 }),
+      expect.objectContaining({
+        mode: MANUAL,
+        program: 57,
+        rotation: 0,
+        moveH: 0,
+        size: 90,
+        colour: 100,
+      }),
+    );
+    // The motion effect is of the motion and was not named, the effect of the lights stays.
+    expect(laser.getState().effect.id).toBe('patterns');
+    expect(laser.getState().motion.id).toBeNull();
+    laser.recall('lights', { raw: { mode: MANUAL, colour: 40 } });
+    expect(laser.getState().raw).toEqual(
+      expect.objectContaining({ mode: MANUAL, program: 0, rotation: 0, size: 90, colour: 40 }),
     );
     expect(ch(output, LASER_AT)).toBe(MANUAL);
   });
 
-  it('closes with lights and no part, and keeps the colour and the motion', () => {
+  it('closes with lights and no part, and keeps the motion', () => {
     laser.update({
       raw: { mode: MANUAL, drawing: 191, colour: 100, rotation: 30 },
-      effect: { id: 'pulse' },
+      motion: { id: 'pulse' },
     });
     laser.recall('lights', undefined);
     expect(ch(output, LASER_AT)).toBe(0);
     expect(laser.getState().effect.id).toBeNull();
     expect(laser.getState().raw).toEqual(
-      expect.objectContaining({ mode: 0, drawing: 0, colour: 100, rotation: 30 }),
+      expect.objectContaining({ mode: 0, drawing: 0, colour: 0, rotation: 30 }),
     );
   });
 
@@ -759,7 +864,11 @@ describe('LaserController in a scene', () => {
   it('stays closed after lightdeck stopped, whatever is recalled', () => {
     laser.darken();
     laser.close();
-    laser.recall('lights', { raw: { mode: MANUAL, program: 57 }, effect: { id: 'twist' } }, 'deck');
+    laser.recall(
+      'lights',
+      { raw: { mode: MANUAL, program: 57 }, effect: { id: 'colours' } },
+      'deck',
+    );
     expect(ch(output, LASER_AT)).toBe(0);
     expect(ch(output, LASER_AT + 1)).toBe(57);
   });
@@ -786,11 +895,12 @@ describe('LaserController in a scene', () => {
     const cases: [Parameters<typeof laser.check>[0], unknown][] = [
       ['colour', { raw: { mode: MANUAL } }],
       ['colour', { raw: { rotation: 5 } }],
-      ['colour', { effect: { id: 'pulse' } }],
+      ['colour', { motion: { id: 'pulse' } }],
       ['motion', { raw: { colour: 5 } }],
       ['motion', { effect: { speed: 1 } }],
-      ['lights', { raw: { colour: 5 } }],
+      ['motion', { raw: { colour: 5 } }],
       ['lights', { raw: { size: 5 } }],
+      ['lights', { raw: { rotation: 5 } }],
     ];
     for (const [type, part] of cases) {
       expect(() => laser.check(type, part)).toThrow(PatchError);

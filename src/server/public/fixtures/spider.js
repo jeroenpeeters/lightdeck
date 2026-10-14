@@ -3,7 +3,14 @@
 // The page keeps a copy of the state of the fixture, changes it as the operator moves
 // things, and hands the changes to the shell, which sends them. Changes made on
 // another screen come back through the shell. While an effect runs, the server also
-// sends the bytes that go to the fixture, and the lenses are drawn from those.
+// sends the bytes that go to the fixture, and the lenses and tilts are drawn from those.
+//
+// Three things run on a spider, apart from each other. The light effect (`state.effect`)
+// says how much of each colour of the palette every lens gets, and knows no colour. The
+// palette (`state.colour.palette`, one of `shell.show.palettes`, which are made on the
+// Palettes page) says what the colours are. The movement (`state.motion`) tilts the bars.
+// The Effects view has the first two, the Movement view the third. The Colour view is the
+// colour of each lens by hand; a light effect sets the lenses while it runs.
 //
 // Tempo, blackout, the master and the master speed are not the spider's: they are in the
 // shell.
@@ -17,6 +24,7 @@ import {
   element,
   percent,
   renderReadout,
+  sentence,
   slider,
   speedKeys,
   speedNote,
@@ -40,8 +48,13 @@ const RESET_HOLD_MS = 1000;
 let shell;
 let fixture;
 let effects = [];
-/** Shows which speed of the effect is chosen. */
+let motionEffects = [];
+/** Show which speed of the light effect, of the movement and of the palette is chosen. */
 let showSpeed = () => {};
+let showMotionSpeed = () => {};
+let showPaceSpeed = () => {};
+/** The palettes of the show as the keys were built, to build them again only when they change. */
+let paletteSignature = '';
 /** Bars as the page names them: 1-based lens numbers and the tilt control of the bar. */
 let bars = [];
 let colours = [];
@@ -166,6 +179,7 @@ function build() {
   }
 
   buildEffects();
+  buildMotion();
 
   rows.push(levelSlider($('master-sliders'), 'dimmer', 'Brightness'));
   rows.push(levelSlider($('master-sliders'), 'strobe', 'Strobe'));
@@ -214,9 +228,36 @@ function build() {
   });
 }
 
+/** What an effect says about its colours: dots for the colours it uses, hollow for an extra. */
+function costOf(effect) {
+  const cost = element('span', 'cost');
+  if (effect.slots > 3) {
+    cost.textContent = 'All colours';
+    return cost;
+  }
+  // Three means two, and a third that the effect only uses when the palette has one.
+  const required = effect.slots === 3 ? 2 : effect.slots;
+  for (let i = 0; i < effect.slots; i++) {
+    const dot = element('span', 'cost-dot');
+    dot.dataset.optional = String(i >= required);
+    cost.append(dot);
+  }
+  cost.setAttribute('role', 'img');
+  cost.setAttribute('aria-label', costWords(effect));
+  return cost;
+}
+
+function costWords(effect) {
+  if (effect.slots > 3) return 'uses all colours of the palette';
+  if (effect.slots === 3) return 'uses two colours, and a third when the palette has one';
+  return `uses ${countWord(effect.slots)} ${effect.slots === 1 ? 'colour' : 'colours'}`;
+}
+
 function buildEffects() {
   for (const effect of effects) {
-    const made = button('effect', effect.name, () => setEffect({ id: effect.id }));
+    const made = button('effect', '', () => setEffect({ id: effect.id }));
+    made.append(element('span', 'effect-name', effect.name), costOf(effect));
+    made.setAttribute('aria-label', `${effect.name}, ${costWords(effect)}`);
     made.dataset.effect = effect.id;
     $('effect-list').append(made);
   }
@@ -225,27 +266,78 @@ function buildEffects() {
     setEffect({ speed }),
   );
 
-  // The second colour can be left empty, and then the rest of the lenses show the first dim.
-  const none = button('pick', 'None', () => setEffect({ colourB: null }));
-  none.dataset.none = 'true';
-  $('colour-b').append(none);
+  // The pace of the palette: one of the speeds, or its own.
+  showPaceSpeed = speedKeys($('palette-speed'), fixture.details.speeds ?? [1], (speed) =>
+    setColour({ speed }),
+  );
+  const own = button('pick', 'Own', () => setColour({ speed: null }));
+  own.id = 'pace-own';
+  $('palette-speed').append(own);
 
-  for (const [id, key] of [
-    ['colour-a', 'colourA'],
-    ['colour-b', 'colourB'],
-  ]) {
-    for (const swatch of SWATCHES) {
-      if (swatch.name === 'Off') continue;
-      const { name, ...colour } = swatch;
-      // Colour only, to keep the palette on one row. The name is there for screen readers.
-      const made = swatchButton(swatch, () => setEffect({ [key]: colour }));
-      made.classList.add('chip');
-      made.textContent = '';
-      made.setAttribute('aria-label', name);
-      made.dataset.swatch = name;
-      $(id).append(made);
-    }
+  buildPalettes();
+}
+
+/** The palettes of the show, as keys. Built again when the show says they changed. */
+function buildPalettes() {
+  const palettes = shell.show?.palettes ?? [];
+  const signature = JSON.stringify(palettes);
+  if (signature === paletteSignature) return;
+  paletteSignature = signature;
+
+  const list = $('palette-list');
+  for (const old of list.querySelectorAll('.palette-key')) old.remove();
+
+  // No palette is a single white.
+  list.append(paletteKey(null, 'None', ['#ffffff00'], 'No palette, a single white'));
+  for (const palette of palettes) {
+    const mark = palette.mode === 'cycle' ? (palette.change === 'fade' ? 'fades' : 'cycles') : '';
+    list.append(paletteKey(palette, palette.label, palette.colours, undefined, mark));
   }
+}
+
+function paletteKey(palette, name, colours, label, mark = '') {
+  const made = button('key palette-key', '', () => setColour({ palette: palette?.id ?? null }));
+  made.dataset.palette = palette?.id ?? '';
+  const chips = element('span', 'palette-chips');
+  chips.setAttribute('aria-hidden', 'true');
+  for (const entry of colours) {
+    const chip = element('span', 'palette-chip');
+    if (entry === 'off') chip.dataset.off = 'true';
+    else chip.style.setProperty('--chip', paletteChipColour(entry));
+    chips.append(chip);
+  }
+  const text = element('span', 'palette-label');
+  text.append(element('span', 'palette-name', name));
+  if (mark) text.append(element('span', 'palette-mark', mark));
+  made.append(chips, text);
+  made.setAttribute(
+    'aria-label',
+    label ?? `${name}, ${mark === '' ? 'static' : mark === 'fades' ? 'cycles and fades' : mark}`,
+  );
+  return made;
+}
+
+/** An entry of a palette, '#rrggbb' or '#rrggbbww', as the colour of a chip. */
+function paletteChipColour(entry) {
+  const part = (from) => Number.parseInt(entry.slice(from, from + 2), 16) / 255;
+  return css(
+    mix({ red: part(1), green: part(3), blue: part(5), white: entry.length >= 9 ? part(7) : 0 }),
+    1,
+  );
+}
+
+function buildMotion() {
+  const hold = button('effect', 'Hold', () => setMotion({ id: null }));
+  hold.dataset.motion = 'hold';
+  $('motion-list').append(hold);
+  for (const effect of motionEffects) {
+    const made = button('effect', effect.name, () => setMotion({ id: effect.id }));
+    made.dataset.motion = effect.id;
+    $('motion-list').append(made);
+  }
+  showMotionSpeed = speedKeys($('motion-speed'), fixture.details.speeds ?? [1], (speed) =>
+    setMotion({ speed }),
+  );
 }
 
 function buildReset() {
@@ -293,8 +385,32 @@ function setEffect(patch) {
   render();
 }
 
+function setMotion(patch) {
+  Object.assign(state.motion, patch);
+  shell.send({ motion: patch });
+  render();
+}
+
+function setColour(patch) {
+  Object.assign(state.colour, patch);
+  shell.send({ colour: patch });
+  render();
+}
+
+/** The light effect that is chosen, if it is one the fixture knows. */
 function runningEffect() {
   return effects.find((effect) => effect.id === state.effect.id);
+}
+
+/** The movement that is chosen. Hold is none. */
+function runningMotion() {
+  return motionEffects.find((effect) => effect.id === state.motion.id);
+}
+
+/** The palette that is chosen, or undefined for a single white. */
+function chosenPalette() {
+  const id = state.colour.palette;
+  return id === null ? undefined : (shell.show?.palettes ?? []).find((each) => each.id === id);
 }
 
 // ---- drawing the state ----
@@ -313,11 +429,11 @@ function css([r, g, b], brightness) {
 }
 
 /**
- * The colours and tilts to draw. An effect decides those itself, so while one runs
- * they are read back from the bytes being sent.
+ * The colours and tilts to draw. A light effect decides the colours itself and a movement
+ * the tilts, so while either runs they are read back from the bytes being sent.
  */
 function shownLevels() {
-  if (!runningEffect() || dmx.length === 0) return state.levels;
+  if ((!runningEffect() && !runningMotion()) || dmx.length === 0) return state.levels;
   const levels = { ...state.levels };
   const tilts = new Set(bars.map((bar) => bar.tilt));
   for (const control of fixture.controls) {
@@ -373,7 +489,7 @@ function renderMixer() {
   const effect = runningEffect();
   let hint = '';
   if (effect) {
-    hint = `${effect.name} sets the colours now. What you mix here is kept and comes back when you stop the effect.`;
+    hint = `${effect.name} sets the colours while it runs. What you mix here comes back when it stops.`;
   } else if (!selection) {
     hint = 'No lens is chosen. Tap a lens in the output strip to colour it.';
   } else if (differ) {
@@ -384,57 +500,143 @@ function renderMixer() {
   for (const swatch of document.querySelectorAll('#swatches .swatch')) {
     swatch.disabled = !selection;
   }
-
-  const moving = effect?.moves
-    ? `${effect.name} moves the bars now${effect.setsMotorSpeed ? ' and sets the motor speed when it can' : ''}. What you set here comes back when you stop the effect.`
-    : '';
-  $('motion-hint').textContent = moving;
-  $('motion-hint').hidden = moving === '';
 }
 
-function sameColour(a, b) {
-  // An empty second colour is nothing, and is no swatch.
-  if (!a || !b) return false;
-  return colours.every((c) => Math.abs((a[c] ?? 0) - (b[c] ?? 0)) < 0.005);
+/** What the movement view says about the sliders while a movement runs. */
+function renderMovement() {
+  const motion = runningMotion();
+  for (const made of document.querySelectorAll('[data-motion]')) {
+    const id = made.dataset.motion === 'hold' ? null : made.dataset.motion;
+    made.setAttribute('aria-pressed', String(id === state.motion.id));
+  }
+  let about = 'The bars stay where the tilt sliders below put them.';
+  if (motion) {
+    about = motion.description;
+    if (motion.setsMotorSpeed) about += ' It sets the motor speed when it can.';
+  }
+  $('motion-effect-hint').textContent = about;
+  const speed = state.motion.speed ?? 1;
+  showMotionSpeed(speed);
+  $('motion-speed-hint').textContent = motion
+    ? speedNote(speed, shell.speed(speed))
+    : 'Speed counts when a movement runs.';
+  $('motion-hint').textContent = motion
+    ? `${motion.name} moves the bars now${motion.setsMotorSpeed ? ' and sets the motor speed when it can' : ''}. What you set below comes back when you choose Hold.`
+    : '';
+}
+
+/** The words for the palette under the keys: what the effect does with the colours. */
+const DARK_BETWEEN = {
+  kick: 'it falls to dark between the hits',
+  chase: 'the lenses the chase has not reached are dark',
+  bounce: 'the lenses the bounce has not reached are dark',
+  swap: 'the bar that is not lit is dark',
+  wave: 'the trough of the wave is dark',
+  sparkle: 'the lenses between the sparks are dark',
+  bars: 'the second bar is dark',
+  alternate: 'the bar that is not lit is dark',
+  cross: 'the beam of the second colour is dark',
+  ticktock: 'the right side is dark',
+  scan: 'the way back is dark',
+  pairs: 'the inside pair is dark',
+  stab: 'the second stab is dark',
+  fade: 'it fades to dark and back',
+  strobe: 'every other flash is dark',
+  seesaw: 'the bar that is fading out is dark',
+  glow: 'the lenses the pool of light is not at are dark',
+};
+const COLOUR_ROLES = ['what hits', 'the backdrop', 'the accent'];
+/** The effects whose colours are not a hit over a backdrop. */
+const OTHER_ROLES = {
+  bars: ['the first bar', 'the second bar'],
+  alternate: ['every other lens', 'the lenses between'],
+  cross: ['the beam going along', 'the beam coming the other way'],
+  ticktock: ['the left side', 'the right side'],
+  scan: ['the way along', 'the way back'],
+  pairs: ['the outside pair', 'the inside pair'],
+  stab: ['the first stab', 'the second stab'],
+  fade: ['the colour it fades from', 'the colour it fades to'],
+  strobe: ['the first flash', 'the next flash'],
+  seesaw: ['the bar that glows first', 'the colour it fades to'],
+  glow: ['the heart of the pool', 'the edge of the pool'],
+};
+
+function paletteNote(effect, palette) {
+  if (!effect) return 'The palette colours the lenses while a light effect runs.';
+  const entries = palette?.colours ?? ['#ffffff'];
+  const count = entries.length;
+  const cycles = palette?.mode === 'cycle' && count > 1;
+  const required = effect.slots === 3 ? 2 : effect.slots;
+  const said = [];
+  if (effect.slots > 3) {
+    said.push(
+      count === 1
+        ? `${effect.name} gives the lenses the colours of the palette, and this one has a single colour.`
+        : `${effect.name} gives the lenses the colours of the palette, one after the other.`,
+    );
+  } else if (effect.slots === 1) {
+    said.push('Every lens shows the first colour of the palette.');
+  } else {
+    const roles = (OTHER_ROLES[effect.id] ?? COLOUR_ROLES)
+      .slice(0, Math.min(count, effect.slots))
+      .map((role, i) => `colour ${i + 1} is ${role}`);
+    said.push(sentence(roles.join(', ')));
+    if (count < required) {
+      const dark = DARK_BETWEEN[effect.id] ?? 'the second colour is dark';
+      said.push(
+        `${palette ? 'This palette has one colour' : 'With no palette the colour is white'}, so ${dark}.`,
+      );
+    } else if (effect.slots === 3 && count === 2) {
+      said.push(
+        `With two colours ${effect.name} runs without the third. A palette with three colours looks different.`,
+      );
+    }
+  }
+  const used = effect.slots > 3 ? count : Math.min(count, effect.slots);
+  if (entries.slice(0, used).includes('off')) said.push('A colour that is off is dark.');
+  if (cycles) said.push('Every step shifts the colours one place.');
+  else if (effect.slots <= 3 && count > effect.slots) {
+    said.push(`Only the first ${countWord(effect.slots)} colours are used.`);
+  }
+  return said.join(' ');
 }
 
 function renderEffects() {
   const effect = runningEffect();
-  for (const made of document.querySelectorAll('.effect')) {
+  const motion = runningMotion();
+  for (const made of document.querySelectorAll('.effect[data-effect]')) {
     made.setAttribute('aria-pressed', String(made.dataset.effect === state.effect.id));
   }
   $('effect-stop').disabled = !effect;
-  $('running').dataset.on = String(Boolean(effect));
-  $('running').textContent = effect ? effect.name : 'No effect';
+  const running = [effect?.name, motion?.name].filter(Boolean);
+  $('running').dataset.on = String(running.length > 0);
+  $('running').textContent = running.length > 0 ? running.join(' · ') : 'No effect';
   $('effect-hint').textContent = effect
     ? effect.description
-    : 'Choose an effect. It sets the colours in time with the music. Brightness, strobe and blackout stay with you.';
+    : 'Choose an effect. It lights the lenses in time with the music, in the colours of the palette. Brightness, strobe and blackout stay with you.';
   const speed = state.effect.speed ?? 1;
   showSpeed(speed);
   $('speed-hint').textContent = speedNote(speed, shell.speed(speed));
 
-  for (const [id, key] of [
-    ['colour-a', 'colourA'],
-    ['colour-b', 'colourB'],
-  ]) {
-    for (const made of $(id).querySelectorAll('.swatch')) {
-      const swatch = SWATCHES.find((s) => s.name === made.dataset.swatch);
-      made.setAttribute('aria-pressed', String(sameColour(swatch, state.effect[key])));
-    }
+  const palette = chosenPalette();
+  for (const made of document.querySelectorAll('.palette-key')) {
+    made.setAttribute('aria-pressed', String(made.dataset.palette === (palette?.id ?? '')));
   }
-  $('colour-b')
-    .querySelector('[data-none]')
-    .setAttribute('aria-pressed', String(!state.effect.colourB));
-  const uses = effect?.colours ?? 'both';
-  $('colour-a').disabled = uses === 'none';
-  $('colour-b').disabled = uses !== 'both';
-  let note = '';
-  if (uses !== 'both') note = `${effect.name} brings its own colours.`;
-  else if (!state.effect.colourB) {
-    note = 'With no second colour the rest of the lenses show the first colour, dim.';
+  const cycles = palette?.mode === 'cycle' && palette.colours.length > 1;
+  const pace = state.colour.speed;
+  showPaceSpeed(pace);
+  $('pace-own').setAttribute('aria-pressed', String(pace === null));
+  $('palette-speed').disabled = !cycles;
+  if (cycles) {
+    const own = pace ?? palette.speed;
+    $('pace-hint').textContent =
+      `${pace === null ? 'Own pace of the palette. ' : ''}${speedNote(own, shell.speed(own))}`;
+  } else {
+    $('pace-hint').textContent = palette
+      ? 'This palette does not cycle, so a pace does nothing.'
+      : 'No palette: a single white, and no pace.';
   }
-  $('palette-hint').textContent = note;
-  $('palette-hint').hidden = note === '';
+  $('palette-hint').textContent = paletteNote(effect, palette);
 }
 
 /** What the spider has to say in the notice of the shell. */
@@ -454,6 +656,7 @@ function render() {
   renderFixture();
   renderMixer();
   renderEffects();
+  renderMovement();
   for (const row of rows) row.refresh();
   $('reset').disabled = state.resetting;
   renderReadout($('readout'), dmx, fixture.controls);
@@ -465,11 +668,16 @@ async function main() {
   if (!shell) return;
   fixture = shell.fixture;
   effects = fixture.details.effects;
+  motionEffects = fixture.details.motionEffects ?? [];
   state = fixture.state;
   dmx = fixture.dmx;
 
   build();
   shell.notes(notes);
+  shell.on('show', () => {
+    buildPalettes();
+    render();
+  });
   shell.on('fixture', (message) => {
     // The shell has laid what is still on its way over the state, so nothing is set back.
     state = message.state;

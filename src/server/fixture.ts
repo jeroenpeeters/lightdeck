@@ -11,7 +11,9 @@
  * which gives it with `snapshot` and takes it back with `recall`. A scene is of one type
  * (lights, colour or motion) and keeps only the properties of that type, which the profile
  * names with `part` on a control. Recalling a scene sets those and leaves the rest of the
- * fixture as it is, so scenes of different types put a fixture together.
+ * fixture as it is, so scenes of different types put a fixture together. What is stored in
+ * the show is lights and motion; the colour of a fixture that takes palettes is the palette
+ * that was set on it, which the playback sets with the same `recall` of the colour type.
  */
 
 import type { FixtureProfile, SceneType } from '../fixtures/profile.js';
@@ -25,6 +27,11 @@ export interface FixtureController {
   readonly universe: number;
   /** 1-based DMX start address of the fixture. */
   readonly address: number;
+  /**
+   * True when the fixture is coloured by the palettes of the show. Setting a palette on a
+   * group sets it on the fixtures that take palettes and leaves the others as they are.
+   */
+  readonly takesPalettes: boolean;
 
   /** What the fixture is set to, as plain data for the page. */
   getState(): unknown;

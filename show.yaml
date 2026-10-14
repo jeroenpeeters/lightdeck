@@ -1,0 +1,260 @@
+palettes:
+  white:
+    label: White
+    colours: [ "#000000ff" ]
+    mode: static
+    change: step
+    speed: 0.25
+  rainbow:
+    label: Rainbow
+    colours: [ "#ff0000", "#ffaa00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff" ]
+    mode: cycle
+    change: fade
+    speed: 0.25
+  halloween:
+    label: Halloween
+    colours: [ "#ce5927", "#f90101" ]
+    mode: cycle
+    change: step
+    speed: 1
+  pumpkin:
+    label: Pumpkin
+    colours: [ "#ff5a00", "#6a00ff" ]
+    mode: static
+    change: step
+    speed: 0.25
+  witch:
+    label: Witch
+    colours: [ "#39ff14", "#8a00ff" ]
+    mode: static
+    change: step
+    speed: 0.25
+  ember:
+    label: Ember
+    colours: [ "#ff3c00", off ]
+    mode: static
+    change: step
+    speed: 0.25
+  bloodmoon:
+    label: Blood moon
+    colours: [ "#ff0000", "#6a00ff" ]
+    mode: static
+    change: step
+    speed: 0.25
+  void:
+    label: Void
+    colours: [ "#ff0000", off ]
+    mode: static
+    change: step
+    speed: 0.25
+  lightning:
+    label: Lightning
+    colours: [ "#d8e0ff", "#6a00ff" ]
+    mode: static
+    change: step
+    speed: 0.25
+groups:
+  spider:
+    label: Spider
+    fixtures: [ spider ]
+    scenes:
+      doors-open:
+        label: Doors open
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 1 }
+            effect: { id: wave, speed: 0.5 }
+      creeping-in:
+        label: Creeping in
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.9 }
+            effect: { id: chase, speed: 1 }
+      candles-low:
+        label: Candles low
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.8 }
+            effect: { id: swap, speed: 1 }
+      haunted:
+        label: Haunted
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.75 }
+            effect: { id: ticktock, speed: 1 }
+      crossfire:
+        label: Crossfire
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.7 }
+            effect: { id: cross, speed: 1 }
+      the-void:
+        label: The void
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.6 }
+            effect: { id: stab, speed: 1 }
+      sway:
+        label: Sway
+        type: motion
+        fixtures:
+          spider:
+            levels: { motorSpeed: 0.4 }
+            motion: { id: tiltwave, speed: 0.5 }
+      stalking:
+        label: Stalking
+        type: motion
+        fixtures:
+          spider:
+            levels: { motorSpeed: 0.6 }
+            motion: { id: creep, speed: 1 }
+      drifting:
+        label: Drifting
+        type: motion
+        fixtures:
+          spider:
+            levels: { motorSpeed: 0.5 }
+            motion: { id: drift, speed: 1 }
+      adrift:
+        label: Adrift
+        type: motion
+        fixtures:
+          spider:
+            levels: { motorSpeed: 0.6 }
+            motion: { id: drift, speed: 0.5 }
+      scissors:
+        label: Scissors
+        type: motion
+        fixtures:
+          spider:
+            levels: { motorSpeed: 0.3 }
+            motion: { id: scissor, speed: 0.5 }
+      guillotine:
+        label: Guillotine
+        type: motion
+        fixtures:
+          spider:
+            motion: { id: slice, speed: 1 }
+      floor-glow:
+        label: Floor glow
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.7 }
+            effect: { id: seesaw, speed: 0.25 }
+      lightning:
+        label: Lightning
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.7 }
+            effect: { id: strobe, speed: 1 }
+      storm:
+        label: Storm
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.7 }
+            effect: { id: strobe, speed: 2 }
+      floor:
+        label: Floor
+        type: motion
+        fixtures:
+          spider:
+            levels: { tilt1: 0, tilt2: 0.62, motorSpeed: 0.3 }
+      staring:
+        label: Staring
+        type: motion
+        fixtures:
+          spider:
+            levels: { tilt1: 0.3, tilt2: 0.3, motorSpeed: 0.3 }
+      over-heads:
+        label: Over heads
+        type: motion
+        fixtures:
+          spider:
+            levels: { tilt1: 0.363, tilt2: 0.15, motorSpeed: 0.3 }
+      slightly-down:
+        label: Slightly down
+        type: motion
+        fixtures:
+          spider:
+            levels: { tilt1: 0.15, tilt2: 0.363, motorSpeed: 0.3 }
+      into-crowd:
+        label: Into the crowd
+        type: motion
+        fixtures:
+          spider:
+            levels: { tilt1: 0, tilt2: 0.427, motorSpeed: 0.3 }
+      glow:
+        label: Glow
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.7 }
+            effect: { id: glow, speed: 0.5 }
+    looks:
+      glow:
+        label: 1 Glow
+        lights: glow
+        colour: { palette: pumpkin }
+        motion: slightly-down
+      floor-glow:
+        label: 2 Floor glow
+        lights: floor-glow
+        colour: { palette: ember }
+        motion: floor
+      doors-open:
+        label: 3 Doors open
+        lights: doors-open
+        colour: { palette: pumpkin }
+        motion: sway
+      creeping-in:
+        label: 4 Creeping in
+        lights: creeping-in
+        colour: { palette: witch }
+        motion: stalking
+      candles-low:
+        label: 5 Candles low
+        lights: candles-low
+        colour: { palette: ember }
+        motion: drifting
+      haunted:
+        label: 6 Haunted
+        lights: haunted
+        colour: { palette: witch }
+        motion: scissors
+      crossfire:
+        label: 7 Crossfire
+        lights: crossfire
+        colour: { palette: bloodmoon }
+        motion: guillotine
+      lightning:
+        label: 8 Lightning
+        lights: lightning
+        colour: { palette: lightning }
+        motion: staring
+      storm:
+        label: 9 Storm
+        lights: storm
+        colour: { palette: lightning }
+        motion: guillotine
+      the-void:
+        label: 10 The void
+        lights: the-void
+        colour: { palette: void }
+        motion: adrift
+  laser:
+    label: Laser
+    fixtures: [ laser ]
+    scenes: {}
+  all:
+    label: All
+    fixtures: [ spider, laser ]
+    scenes: {}

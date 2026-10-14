@@ -1,6 +1,7 @@
 /*
  * What belongs to the page of the spider: the output strip with its lenses and bars,
- * the master, the effects, the colours and the reset.
+ * the master, the effects with their palettes, the colours of the lenses, the movement
+ * and the reset.
  */
 
 /* ---- layout ---- */
@@ -154,23 +155,74 @@
   border-color: var(--signal);
   box-shadow: inset 0 0 0 1px var(--signal);
 }
-/* A swatch without its name: the key itself has the colour. */
-.swatch.chip {
-  flex: 1 1 2.5rem;
-  max-width: var(--touch);
-  padding: 0;
+
+/* ---- palettes ---- */
+
+.palette-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 0.5rem;
+}
+.palette-list legend {
+  grid-column: 1 / -1;
+}
+.palette-key {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0.4rem;
+  min-height: 4rem;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.palette-key[aria-pressed="true"] {
+  border-color: var(--signal);
+  box-shadow: inset 0 0 0 1px var(--signal);
+  font-weight: 600;
+}
+.palette-chips {
+  display: flex;
+  gap: 0.15rem;
+}
+.palette-chip {
+  --chip: #000;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 1.25rem;
+  height: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
   background: var(--chip);
 }
-.swatch.chip::before {
-  display: none;
+/* An entry that is off is a dark slot: drawn empty, so it is not taken for black paint. */
+.palette-chip[data-off="true"] {
+  border-style: dashed;
+  border-color: var(--dim);
+  background: transparent;
 }
-.swatch.chip[aria-pressed="true"] {
-  box-shadow: none;
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
+.palette-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
 }
-.swatch.chip:focus-visible {
-  outline: 3px solid var(--focus);
+.palette-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-mark {
+  flex: none;
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.palette-key[aria-pressed="true"] .palette-mark {
+  color: var(--signal);
 }
 
 /* ---- effects view ---- */
@@ -194,6 +246,62 @@
 }
 .effects-settings > .hint {
   margin-top: 0.6rem;
+}
+/* Hints that change with a key get the room of two lines, so nothing below them moves. */
+#speed-hint,
+#pace-hint,
+#motion-speed-hint {
+  min-height: 2.7em;
+}
+#motion-effect-hint {
+  min-height: 5.4em;
+}
+#motion-hint {
+  min-height: 4.05em;
+}
+
+/* What an effect key says about the palette it takes: the colours it uses. */
+.view-effects .effect {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
+}
+.cost {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cost-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+  background: currentcolor;
+}
+/* A colour the effect only uses when the palette has it. */
+.cost-dot[data-optional="true"] {
+  background: transparent;
+}
+/* The chosen key is bold and a little wider: give the speed keys the room for it. */
+#effect-speed .pick,
+#palette-speed .pick,
+#motion-speed .pick {
+  min-width: 3.5rem;
+}
+#palette-speed #pace-own {
+  min-width: 4.5rem;
+}
+.view-movement .effect-list {
+  margin-top: 0;
+}
+.view-movement .choice {
+  margin-top: 1rem;
 }
 
 /* ---- fixture view ---- */

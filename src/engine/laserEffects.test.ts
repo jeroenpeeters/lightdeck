@@ -11,17 +11,22 @@ import {
 import { limitSpeed, MAX_FLASH_HZ } from './effects.js';
 import {
   findLaserEffect,
+  findLaserMotionEffect,
+  LASER_COLOUR_SETTING,
   LASER_EFFECTS,
   LASER_EFFECTS_MODE,
+  LASER_MOTION_EFFECTS,
   type LaserEffectContext,
 } from './laserEffects.js';
 
 const MANUAL = 95;
+/** Every effect of the laser, of the lights and of the motion. */
+const ALL = [...LASER_EFFECTS, ...LASER_MOTION_EFFECTS];
 
 function render(id: string, beat: number, extra: Partial<LaserEffectContext> = {}) {
-  const effect = findLaserEffect(id);
+  const effect = findLaserEffect(id) ?? findLaserMotionEffect(id);
   if (!effect) throw new Error(`no effect ${id}`);
-  return effect.render({ beat, bpm: 126, raw: { mode: MANUAL }, ...extra });
+  return effect.render({ beat, bpm: 126, raw: { mode: MANUAL }, colours: [], ...extra });
 }
 
 function control(name: string): FunctionControl {
@@ -41,10 +46,11 @@ const byte = (id: string, name: string, beat: number, extra: Partial<LaserEffect
 const moments = (beats: number) => Array.from({ length: beats * 40 }, (_, i) => i / 40);
 
 describe('the set of laser effects', () => {
-  it('has five, each with its own id, a name and a description', () => {
-    expect(LASER_EFFECTS).toHaveLength(5);
-    expect(new Set(LASER_EFFECTS.map((e) => e.id)).size).toBe(5);
-    for (const effect of LASER_EFFECTS) {
+  it('has two for the lights and three for the motion, each with its own id, a name and a description', () => {
+    expect(LASER_EFFECTS.map((e) => e.id)).toEqual(['patterns', 'colours']);
+    expect(LASER_MOTION_EFFECTS.map((e) => e.id)).toEqual(['pulse', 'sweep', 'twist']);
+    expect(new Set(ALL.map((e) => e.id)).size).toBe(5);
+    for (const effect of ALL) {
       expect(effect.name.length).toBeGreaterThan(0);
       expect(effect.description.length).toBeGreaterThan(20);
       expect(effect.drives.length).toBeGreaterThan(0);
@@ -55,20 +61,43 @@ describe('the set of laser effects', () => {
     expect(keyOf(LASER_GATE, MANUAL)).toBe(LASER_EFFECTS_MODE);
   });
 
-  it('never drives the mode, so that opening the laser stays with the operator', () => {
+  it('drives the lights with the lights and the movement with the motion', () => {
+    const drives = (list: readonly (typeof ALL)[number][]) =>
+      list.flatMap((effect) => [...effect.drives]).sort();
+    expect(drives(LASER_EFFECTS)).toEqual(['colour', 'program']);
+    expect(drives(LASER_MOTION_EFFECTS)).toEqual(['moveH', 'rotation', 'size']);
+    // The scenes of motion keep the controls of the motion, so an effect of the motion drives only those.
+    for (const effect of LASER_MOTION_EFFECTS) {
+      for (const name of effect.drives)
+        expect(findControl(ALIEN_LASER_10CH, name)?.part).toBe('motion');
+    }
     for (const effect of LASER_EFFECTS) {
+      for (const name of effect.drives)
+        expect(findControl(ALIEN_LASER_10CH, name)?.part).toBe('lights');
+    }
+  });
+
+  it('never drives the mode, so that opening the laser stays with the operator', () => {
+    for (const effect of ALL) {
       expect(effect.drives).not.toContain(LASER_GATE);
       for (const beat of moments(8)) {
-        expect(Object.keys(effect.render({ beat, bpm: 126, raw: {} }))).not.toContain(LASER_GATE);
+        expect(Object.keys(effect.render({ beat, bpm: 126, raw: {}, colours: [] }))).not.toContain(
+          LASER_GATE,
+        );
       }
     }
   });
 
   it('gives a whole byte for every control it drives and for nothing else', () => {
-    for (const effect of LASER_EFFECTS) {
+    for (const effect of ALL) {
       for (const bpm of [30, 126, 400]) {
         for (const beat of [-3.25, ...moments(16), 100_000.5]) {
-          const bytes = effect.render({ beat, bpm, raw: { mode: MANUAL, program: 255 } });
+          const bytes = effect.render({
+            beat,
+            bpm,
+            raw: { mode: MANUAL, program: 255 },
+            colours: [5, 60],
+          });
           expect(Object.keys(bytes).sort()).toEqual([...effect.drives].sort());
           for (const value of Object.values(bytes)) {
             expect(Number.isInteger(value)).toBe(true);
@@ -81,8 +110,8 @@ describe('the set of laser effects', () => {
   });
 
   it('gives the same bytes for the same moment', () => {
-    for (const effect of LASER_EFFECTS) {
-      const context = { beat: 5.3, bpm: 126, raw: { mode: MANUAL, program: 40 } };
+    for (const effect of ALL) {
+      const context = { beat: 5.3, bpm: 126, raw: { mode: MANUAL, program: 40 }, colours: [3] };
       expect(effect.render(context)).toEqual(effect.render(context));
     }
   });
@@ -103,8 +132,11 @@ describe('the set of laser effects', () => {
     }
   });
 
-  it('does not know an effect that is not there', () => {
+  it('does not know an effect that is not there, and keeps the two kinds apart', () => {
     expect(findLaserEffect('tunnel')).toBeUndefined();
+    expect(findLaserMotionEffect('tunnel')).toBeUndefined();
+    expect(findLaserEffect('sweep')).toBeUndefined();
+    expect(findLaserMotionEffect('colours')).toBeUndefined();
   });
 });
 
@@ -136,10 +168,27 @@ describe('pattern chase', () => {
 });
 
 describe('colour chase', () => {
-  it('goes through seven single colours, one per beat', () => {
+  it('goes through seven single colours, one per beat, when no colours are set', () => {
     const bytes = Array.from({ length: 8 }, (_, beat) => byte('colours', 'colour', beat));
     expect(bytes).toEqual([4, 13, 22, 31, 40, 49, 58, 4]);
     for (const value of bytes) expect(keyOf('colour', value)).toBe('single');
+  });
+
+  it('goes through the colours that are set, and only those', () => {
+    const own = (beat: number, colours: number[]) => byte('colours', 'colour', beat, { colours });
+    expect(Array.from({ length: 5 }, (_, beat) => own(beat, [13, 49]))).toEqual([
+      13, 49, 13, 49, 13,
+    ]);
+    expect(Array.from({ length: 4 }, (_, beat) => own(beat, [22, 4, 58]))).toEqual([22, 4, 58, 22]);
+  });
+
+  it('stays on the one colour that is set', () => {
+    for (const beat of [0, 1, 2, 3.5])
+      expect(byte('colours', 'colour', beat, { colours: [31] })).toBe(31);
+  });
+
+  it('can be set to three colours at most', () => {
+    expect(LASER_COLOUR_SETTING).toBe(3);
   });
 });
 

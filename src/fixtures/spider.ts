@@ -48,6 +48,9 @@ const motion: LevelControl[] = [
   },
 ];
 
+// The colours of the lenses are in no part: no scene keeps them. The colour of a lens comes from
+// the palette that is set (see the colour type), and a colour that is set by hand per lens is left
+// out of scenes for now (docs/effects-split-plan.md). The controls stay, so that it can come back.
 const cells: LevelControl[] = [];
 for (let cell = 1; cell <= SPIDER_CELLS; cell++) {
   COLOURS.forEach((colour, i) => {
@@ -58,7 +61,6 @@ for (let cell = 1; cell <= SPIDER_CELLS; cell++) {
       label: `${capitalise(colour)} ${cell} total dimming`,
       attribute: colour,
       cell,
-      part: 'colour',
     });
   });
 }

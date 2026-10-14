@@ -6,8 +6,17 @@
 // operator does into bytes. It knows nothing about one laser in particular.
 //
 // The server also says which effects there are and which channels each of them drives.
-// While an effect shows, the server sends the bytes it renders, and the blocks of the
-// driven channels show those instead of what the operator set.
+// They are of two kinds that are chosen apart and run together: an Effect of the lights
+// (`details.effects`, state `effect`) and a Motion (`details.motionEffects`, state
+// `motion`), each with its own Stop key and its own speed. While one shows, the server
+// sends the bytes it renders, and the blocks of the channels that either of the two
+// drives show those instead of what the operator set.
+//
+// The laser has colours of its own, up to three, which its colour chase steps through
+// (`state.colours`, bytes of the range `details.colourSetting` names). It does not follow
+// the palettes of the show. The manual does not name the seven colours, so the keys of a
+// slot are numbered 1 to 7, and the page spreads them over the range evenly, the way the
+// server does.
 //
 // Blackout, master and tempo are not the laser's: they are in the shell. The laser has
 // no dimmer, so the master at 0 holds it closed the way the blackout does, and the page
@@ -24,9 +33,12 @@ let gate;
 let state;
 let dmx = [];
 let blocks = [];
-let effects = [];
-/** Shows which speed of the effect is chosen. */
-let showSpeed = () => {};
+/** The two kinds of effect, each with its keys: see `buildGroup`. */
+let groups = [];
+/** The slots of the colour setting, each with its keys: see `buildColours`. */
+const slots = [];
+/** The colour setting as the server describes it, or null. */
+let colourSetting = null;
 /** Key of the range of the gate in which effects count. */
 let effectsIn = null;
 /** The last byte the operator had in a range, to come back to. */
@@ -37,20 +49,34 @@ const remembered = new Map();
 const title = (control) => control.title ?? control.label;
 const holds = (range, byte) => byte >= range.from && byte <= range.to;
 
-/** The effect the operator chose, whether it shows or not. */
-const chosenEffect = () => effects.find((effect) => effect.id === state.effect?.id);
+/** The effect of a group that the operator chose, whether it shows or not. */
+const chosenIn = (group) => group.list.find((effect) => effect.id === state[group.key]?.id);
 
-/** The chosen effect, when the laser is in the mode in which effects count. */
-function showingEffect() {
-  const effect = chosenEffect();
-  if (!effect || !gate) return undefined;
+/** True when the laser is in the mode in which effects count. */
+function inEffectsMode() {
+  if (!gate) return false;
   const byte = state.raw[gate.name] ?? gate.idle;
-  const mode = gate.ranges.find((range) => holds(range, byte));
-  return mode?.key === effectsIn ? effect : undefined;
+  return gate.ranges.find((range) => holds(range, byte))?.key === effectsIn;
 }
 
+/** The chosen effect of a group, when it counts: right mode, and the tempo runs. */
+const showingIn = (group) => {
+  const effect = chosenIn(group);
+  return effect && inEffectsMode() && shell.tempo.running ? effect : undefined;
+};
+
+/** The effects that are chosen, in the order of the groups. */
+const chosenEffects = () => groups.map(chosenIn).filter(Boolean);
+
+/** The effects that show now. */
+const showingEffects = () => groups.map(showingIn).filter(Boolean);
+
+/** The effect that sets this control now, if there is one. */
+const drivenBy = (control) =>
+  showingEffects().find((effect) => effect.drives.includes(control.name));
+
 /** True while an effect sets this control instead of the operator. */
-const isDriven = (control) => Boolean(showingEffect()?.drives.includes(control.name));
+const isDriven = (control) => drivenBy(control) !== undefined;
 
 /** The byte of a control as it is being sent: the effect's when it drives the control. */
 function byteOf(control) {
@@ -110,15 +136,46 @@ function heldBy() {
   return shell.master > 0 ? null : 'master';
 }
 
-function setEffect(id) {
-  state.effect = { ...state.effect, id };
-  shell.send({ effect: { id } });
+/** Chooses an effect of a group, or none with null. */
+function setEffect(group, id) {
+  state[group.key] = { ...state[group.key], id };
+  shell.send({ [group.key]: { id } });
   render();
 }
 
-function setSpeed(speed) {
-  state.effect = { ...state.effect, speed };
-  shell.send({ effect: { speed } });
+function setSpeed(group, speed) {
+  state[group.key] = { ...state[group.key], speed };
+  shell.send({ [group.key]: { speed } });
+  render();
+}
+
+// ---- the colours of the colour chase ----
+
+/** The colours the keys of a slot stand for. */
+const COLOURS = 7;
+
+/**
+ * The byte of colour `number`, 1 to 7: the middle of its share of the range. The seven
+ * share the range evenly, a share being a whole number of bytes (9 of the 64), which is
+ * how the server counts the steps of a range.
+ */
+function colourByte(number) {
+  const { from, to } = colourSetting;
+  const width = Math.floor((to - from + 1) / COLOURS);
+  return from + (number - 1) * width + Math.floor(width / 2);
+}
+
+/** Which of the seven a byte is, or 0 when it is none of them. */
+const colourNumber = (byte) =>
+  Array.from({ length: COLOURS }, (_, at) => at + 1).find((n) => colourByte(n) === byte) ?? 0;
+
+/** Sets a slot to colour `number`, or empties it with null. The slots after an empty one are empty too. */
+function setSlot(at, number) {
+  const kept = state.colours.slice(0, at);
+  const next =
+    number === null ? kept : [...kept, colourByte(number), ...state.colours.slice(at + 1)];
+  state.colours = next;
+  shell.send({ colours: next });
   render();
 }
 
@@ -149,7 +206,13 @@ function block(control) {
       return { range, key: made };
     });
 
-  const driven = element('p', 'hint');
+  // A channel that an effect can drive keeps room for the line that says so, so that the
+  // blocks below do not move when an effect is chosen or stopped.
+  const reserved = [
+    ...(fixture.details.effects ?? []),
+    ...(fixture.details.motionEffects ?? []),
+  ].some((effect) => effect.drives.includes(control.name));
+  const driven = element('p', reserved ? 'hint reserved' : 'hint');
   const stepper = element('div', 'stepper');
   const fader = element('div', 'slider');
   const name = element('label');
@@ -192,10 +255,11 @@ function block(control) {
     // An effect has this control: it shows what is sent and cannot be set.
     const taken = isDriven(control);
     section.dataset.driven = String(taken);
-    driven.hidden = !taken;
-    if (taken) {
-      driven.textContent = `${showingEffect().name} sets this now. What you set comes back when you stop the effect.`;
-    }
+    driven.hidden = !taken && !reserved;
+    driven.style.visibility = taken ? '' : 'hidden';
+    driven.textContent = taken
+      ? `${drivenBy(control).name} sets this now. What you set comes back when you stop it.`
+      : '';
     idle.hidden = active.length > 0;
     // One range leaves nothing to choose: the fader says it all.
     choice.hidden = active.length === 1;
@@ -236,16 +300,72 @@ function block(control) {
   return section;
 }
 
-/** The keys of the effects. Without effects the section stays away. */
-function buildEffects() {
-  $('laser-effects').hidden = effects.length === 0;
-  for (const effect of effects) {
-    const made = button('effect', effect.name, () => setEffect(effect.id));
-    made.dataset.effect = effect.id;
-    $('effect-list').append(made);
+/**
+ * One kind of effect: its keys, a Stop key, a line about the chosen one and the keys of
+ * its speed. Without effects of this kind the section stays away.
+ */
+function buildGroup(key, name, list) {
+  const section = element('section', 'laser-effects');
+  section.hidden = list.length === 0;
+  const keys = element('fieldset', 'effect-list');
+  keys.append(
+    element('legend', 'visually-hidden', `Choose ${name === 'Motion' ? 'a motion' : 'an effect'}`),
+  );
+  const group = { key, name, list, section, keys: new Map() };
+  for (const effect of list) {
+    const made = button('effect', effect.name, () => setEffect(group, effect.id));
+    group.keys.set(effect.id, made);
+    keys.append(made);
   }
-  $('effect-stop').addEventListener('click', () => setEffect(null));
-  showSpeed = speedKeys($('effect-speed'), fixture.details.speeds ?? [1], setSpeed);
+  group.stop = button('key stop', `Stop ${name.toLowerCase()}`, () => setEffect(group, null));
+  group.hint = element('p', 'hint effect-hint');
+  const speed = element('fieldset', 'choice');
+  speed.append(element('legend', '', `Speed of ${name.toLowerCase()}`));
+  group.speedHint = element('p', 'hint');
+  section.append(element('h3', '', name), keys, group.stop, group.hint, speed, group.speedHint);
+  group.showSpeed = speedKeys(speed, fixture.details.speeds ?? [1], (each) =>
+    setSpeed(group, each),
+  );
+  return group;
+}
+
+/**
+ * The slots of the colour setting: per slot a row of the seven colours and None. The
+ * section stays away when the laser has no colour setting.
+ */
+function buildColours() {
+  const section = element('section', 'laser-colours');
+  section.hidden = colourSetting === null;
+  if (!colourSetting) return section;
+  section.append(
+    element('h3', '', 'Colours for the colour chase'),
+    element(
+      'p',
+      'hint',
+      'The colour chase steps through these. With none set it goes through all seven. The manual does not name the colours, so they are numbered.',
+    ),
+  );
+  const ordinals = ['First', 'Second', 'Third'];
+  for (let at = 0; at < colourSetting.max; at++) {
+    const row = element('fieldset', 'slot');
+    const note = element('span', 'slot-note');
+    const legend = element('legend', '', `${ordinals[at] ?? `Colour ${at + 1}`} colour`);
+    legend.append(note);
+    const none = button('pick none', 'None', () => setSlot(at, null));
+    const grid = element('div', 'slot-keys');
+    row.append(legend, grid);
+    grid.append(none);
+    const keys = [];
+    for (let number = 1; number <= COLOURS; number++) {
+      const made = button('pick', String(number), () => setSlot(at, number));
+      made.setAttribute('aria-label', `Colour ${number}`);
+      grid.append(made);
+      keys.push(made);
+    }
+    slots.push({ row, note, none, keys });
+    section.append(row);
+  }
+  return section;
 }
 
 // ---- drawing the state ----
@@ -285,7 +405,8 @@ function renderHint() {
   const open = gate
     ? gate.ranges.filter((range) => range.key && !holds(range, gate.idle)).map((r) => r.name)
     : [];
-  const waiting = chosenEffect() && !showingEffect() ? chosenEffect() : undefined;
+  const chosen = chosenEffects();
+  const waiting = chosen.length > 0 && showingEffects().length === 0;
   const held = heldBy();
   let text = '';
   if (held === 'blackout') {
@@ -294,8 +415,10 @@ function renderHint() {
   } else if (held === 'master') {
     text =
       'The master is at 0, so the laser is closed. What you set here is kept and shows when you raise the master on the deck.';
+  } else if (waiting && !inEffectsMode()) {
+    text = `${names(chosen)} is chosen and waits: effects show in ${effectsMode()} mode. Choose ${effectsMode()} to see it.`;
   } else if (waiting) {
-    text = `${waiting.name} is chosen and waits: effects show in ${effectsMode()} mode. Choose ${effectsMode()} to see it.`;
+    text = `${names(chosen)} is chosen and waits: the music has stopped.`;
   } else if (isOff() && open.length > 1) {
     text = `The laser is closed. Choose ${open.slice(0, -1).join(', ')} or ${open[open.length - 1]} to open it.`;
   }
@@ -303,25 +426,48 @@ function renderHint() {
   $('laser-hint').hidden = text === '';
 }
 
-function renderEffects() {
-  const chosen = chosenEffect();
-  const showing = showingEffect();
-  for (const made of document.querySelectorAll('.effect')) {
-    made.setAttribute('aria-pressed', String(made.dataset.effect === chosen?.id));
-  }
-  $('effect-stop').disabled = !chosen;
-  $('running').dataset.on = String(Boolean(showing) && heldBy() === null);
-  $('running').textContent = chosen
-    ? showing
-      ? chosen.name
-      : `${chosen.name}, waiting`
-    : 'No effect';
-  $('effect-hint').textContent = chosen
+/** Names of effects in one line: "Pattern chase · Pulse". */
+const names = (list) => list.map((effect) => effect.name).join(' · ');
+
+function renderGroup(group) {
+  const chosen = chosenIn(group);
+  for (const [id, made] of group.keys) made.setAttribute('aria-pressed', String(id === chosen?.id));
+  group.stop.disabled = !chosen;
+  group.hint.textContent = chosen
     ? chosen.description
-    : `Choose an effect. It moves in time with the music and shows in ${effectsMode()} mode. It never opens the laser: that stays with you.`;
-  const speed = state.effect?.speed ?? 1;
-  showSpeed(speed);
-  $('speed-hint').textContent = speedNote(speed, shell.speed(speed));
+    : `Choose ${group.key === 'motion' ? 'a motion' : 'an effect'}. It follows the music and shows in ${effectsMode()} mode. It never opens the laser: that stays with you.`;
+  const speed = state[group.key]?.speed ?? 1;
+  group.showSpeed(speed);
+  group.speedHint.textContent = speedNote(speed, shell.speed(speed));
+}
+
+function renderEffects() {
+  for (const group of groups) renderGroup(group);
+  const chosen = chosenEffects();
+  const showing = showingEffects();
+  $('running').dataset.on = String(showing.length > 0 && heldBy() === null);
+  $('running').textContent =
+    chosen.length === 0
+      ? 'No effect'
+      : showing.length === 0
+        ? `${names(chosen)}, waiting`
+        : names(chosen);
+}
+
+function renderColours() {
+  const list = state.colours ?? [];
+  slots.forEach((slot, at) => {
+    const byte = list[at];
+    const number = byte === undefined ? 0 : colourNumber(byte);
+    // A slot after an empty one has nothing to be after: the list is the filled slots in order.
+    const open = at <= list.length;
+    slot.none.setAttribute('aria-pressed', String(byte === undefined));
+    slot.keys.forEach((made, index) => {
+      made.setAttribute('aria-pressed', String(index + 1 === number));
+      made.disabled = !open;
+    });
+    slot.note.textContent = byte !== undefined && number === 0 ? `Other (byte ${byte})` : '';
+  });
 }
 
 /** What changes while an effect runs. The rest of the page stays as it is. */
@@ -336,6 +482,7 @@ function render() {
   renderTile();
   renderHint();
   renderEffects();
+  renderColours();
   renderReadout($('readout'), dmx, fixture.controls);
   shell.refresh();
 }
@@ -346,7 +493,7 @@ async function main() {
   fixture = shell.fixture;
   controls = fixture.controls.filter((control) => control.kind === 'function');
   gate = controls.find((control) => control.name === fixture.details.gate);
-  effects = fixture.details.effects ?? [];
+  colourSetting = fixture.details.colourSetting ?? null;
   effectsIn = fixture.details.effectsIn ?? null;
   state = fixture.state;
   dmx = fixture.dmx;
@@ -355,7 +502,12 @@ async function main() {
   // The keys that open the laser stand apart, next to the effects.
   $('laser-gate').append(...blocks.filter((each) => each.control === gate));
   $('laser-blocks').append(...blocks.filter((each) => each.control !== gate));
-  buildEffects();
+  groups = [
+    buildGroup('effect', 'Effect', fixture.details.effects ?? []),
+    buildGroup('motion', 'Motion', fixture.details.motionEffects ?? []),
+  ];
+  // The keys that open the laser, the two kinds of effect and the colours share one grid.
+  $('laser-lead').append(...groups.map((group) => group.section), buildColours());
 
   shell.on('fixture', (message) => {
     // The shell has laid what is still on its way over the state, so nothing is set back.

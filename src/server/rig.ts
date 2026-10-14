@@ -14,6 +14,7 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { PaletteBook } from '../engine/palette.js';
 import { BrowserMicSource } from '../inputs/audio/browserMic.js';
 import { type AudioState, Follower } from '../inputs/audio/follower.js';
 import { FeedRecorder } from '../inputs/audio/recorder.js';
@@ -96,6 +97,8 @@ export class Rig extends EventEmitter {
   readonly audio: Follower;
   readonly fixtures: readonly RigFixture[];
   readonly playback: Playback;
+  /** The palettes of the show, where the fixtures look them up. The playback keeps them. */
+  readonly palettes = new PaletteBook();
 
   private blackout = false;
   /** The grand master. It starts at full every time, and the show file does not keep it. */
@@ -129,7 +132,13 @@ export class Rig extends EventEmitter {
           );
         }
         const output = patch.claim(label, universe, address, kind.profile.footprint);
-        const controller = kind.create({ output, tempo: this.tempo, universe, address });
+        const controller = kind.create({
+          output,
+          tempo: this.tempo,
+          palettes: this.palettes,
+          universe,
+          address,
+        });
         fixtures.push({ ...definition, controller });
       }
     } catch (error) {
@@ -183,6 +192,7 @@ export class Rig extends EventEmitter {
 
     this.playback = new Playback({
       fixtures,
+      palettes: this.palettes,
       ...(options.show === undefined ? {} : { path: options.show }),
     });
     this.playback.on('show', (show: ShowSummary) => this.emit('show', show));

@@ -1,0 +1,272 @@
+/*
+ * What belongs to the palettes page: a panel per palette with a big strip of its colours,
+ * and an editor that opens under it.
+ *
+ * Nothing here takes its size from what it says: the strip, the line under it and the
+ * hint of the settings keep their room, and the keys have a width of their own, so that
+ * no key moves under a finger when a palette is edited or changes its mode.
+ */
+
+.palettes-hint {
+  max-width: 80ch;
+}
+
+.palettes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+}
+
+/* ---- a palette ---- */
+
+.palette {
+  border-left: 4px solid transparent;
+}
+/* On in a group. */
+.palette[data-on="true"] {
+  border-left-color: var(--signal);
+}
+.palette-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0 1rem;
+  align-items: center;
+}
+.palette-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--paper);
+  font-size: var(--large);
+  line-height: 1.1;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-mark {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.edit {
+  width: 5.5rem;
+}
+.uses {
+  min-height: 1.35em;
+  margin-top: 0.5rem;
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 400;
+}
+.palette[data-on="true"] .uses {
+  color: var(--signal);
+}
+
+/* ---- the strip ---- */
+
+.strip {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+.chip {
+  display: grid;
+  flex: 1 1 0;
+  max-width: 12rem;
+  grid-template-rows: 4rem auto;
+  gap: 0.2rem;
+  min-width: 0;
+  text-align: center;
+}
+.chip-colour {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--small);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+/* Off is not black paint: it is a slot that is dark, and it says so. */
+.chip[data-off="true"] .chip-colour {
+  border: 2px dashed var(--dim);
+  background: var(--ground);
+  color: var(--dim);
+}
+.chip-slot {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 400;
+}
+
+/* ---- naming and deleting ---- */
+
+.name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.5rem;
+  max-width: 40rem;
+}
+.name-row label {
+  grid-column: 1 / -1;
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+/* ---- the editor ---- */
+
+.editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+.editor[hidden] {
+  display: none;
+}
+.colours {
+  padding: 0;
+  border: 0;
+}
+.entry-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.entry {
+  display: grid;
+  grid-template-columns: 4.5rem 5rem minmax(10rem, 1fr) auto;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+}
+@media (max-width: 44rem) {
+  .entry {
+    grid-template-columns: 4.5rem 5rem minmax(0, 1fr);
+  }
+  .entry-keys {
+    grid-column: 1 / -1;
+  }
+}
+.slot {
+  display: grid;
+  line-height: 1.15;
+}
+.slot-number {
+  font-size: var(--large);
+  font-weight: 600;
+}
+.slot-role {
+  min-height: 1.15em;
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 400;
+}
+.colour {
+  display: grid;
+  gap: 0.2rem;
+}
+.colour label {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.picker {
+  width: 100%;
+  min-width: 3rem;
+  height: var(--touch);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  cursor: pointer;
+}
+.picker::-webkit-color-swatch-wrapper {
+  padding: 4px;
+}
+.picker::-webkit-color-swatch {
+  border: 0;
+  border-radius: 2px;
+}
+.picker:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.entry .slider label {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.entry .slider output {
+  font-size: var(--base);
+}
+.entry .slider input:disabled {
+  opacity: 0.4;
+}
+.entry-keys {
+  display: flex;
+  gap: 0.35rem;
+}
+.entry-keys > .pick {
+  width: 4rem;
+}
+.entry-keys > .key {
+  min-width: 4rem;
+}
+.add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+}
+.add-row > .key {
+  width: 9rem;
+}
+.room {
+  margin: 0;
+}
+
+/* ---- how it runs ---- */
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2rem;
+}
+.settings > .choice {
+  margin-top: 0;
+}
+/* A fieldset that does not count is dimmed once, not once more for each key in it. */
+.settings > .choice:disabled .pick {
+  opacity: 1;
+}
+.pace {
+  flex-basis: 100%;
+  max-width: none;
+  min-height: 2.8em;
+  margin-top: 0.75rem;
+}
+
+.delete {
+  width: 100%;
+  border-color: var(--stop);
+  color: var(--stop);
+}
+.delete[data-sure="true"] {
+  background: var(--stop);
+  color: var(--ink);
+  font-weight: 600;
+}
+#make-palette {
+  margin-top: 0.5rem;
+}
