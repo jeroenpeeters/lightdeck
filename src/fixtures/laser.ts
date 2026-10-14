@@ -60,6 +60,7 @@ function positionOrSpeed(
     channel,
     label,
     title,
+    part: 'motion',
     idle: 0,
     ranges: [
       {
@@ -89,6 +90,7 @@ const controls: FunctionControl[] = [
     channel: 1,
     label: 'Mode selection',
     title: 'Mode',
+    part: 'lights',
     idle: 0,
     ranges: [
       { from: 0, to: 63, meaning: 'Closed light mode', key: 'off', name: 'Off' },
@@ -103,6 +105,7 @@ const controls: FunctionControl[] = [
     channel: 2,
     label: 'Pattern in manual mode, program in auto and sound mode',
     title: 'Pattern',
+    part: 'lights',
     idle: 0,
     ranges: [
       {
@@ -125,6 +128,7 @@ const controls: FunctionControl[] = [
     channel: 3,
     label: 'Angle control',
     title: 'Rotation',
+    part: 'motion',
     idle: 0,
     ranges: [
       {
@@ -195,6 +199,7 @@ const controls: FunctionControl[] = [
     channel: 8,
     label: 'Pattern size control',
     title: 'Size',
+    part: 'motion',
     idle: 0,
     ranges: [
       {
@@ -237,6 +242,7 @@ const controls: FunctionControl[] = [
     channel: 9,
     label: 'Color control',
     title: 'Colour',
+    part: 'colour',
     idle: 0,
     ranges: [
       {
@@ -280,6 +286,7 @@ const controls: FunctionControl[] = [
     channel: 10,
     label: 'Code control',
     title: 'Drawing',
+    part: 'lights',
     idle: 0,
     ranges: [
       {

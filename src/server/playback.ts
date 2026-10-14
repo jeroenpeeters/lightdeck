@@ -2,31 +2,36 @@
  * The playback: the groups and scenes of the show, and which scenes the fixtures are
  * set to.
  *
- * There is one state per fixture. Recalling a scene sets the fixtures of its group
- * through their controllers, the way their pages do, and after that the operator can go
- * on by hand. Fixtures outside the group are left alone, so several groups have a scene
- * on at once. Per group the playback remembers which scene is on and whether the
- * fixtures of the group still are what it made them: `changed` says they are not.
+ * There is one state per fixture. A scene has a type, lights, colour or motion, and
+ * recalling it sets that type of properties on the fixtures of its group through their
+ * controllers, the way their pages do, and leaves the other types as they are. After that
+ * the operator can go on by hand. Fixtures outside the group are left alone, so several
+ * groups have a scene on at once, and so do the three types within a group. Per group and
+ * type the playback remembers which scene is on and whether the fixtures of the group
+ * still are what it made them, in the properties of that type: `changed` says they are not.
  *
- * Groups can share a fixture, and then the last press wins. A scene of "All" sets the
- * spider, so after it no scene of "Spider" is on. The other way round, a scene of
- * "Spider" leaves the scene of "All" on and shows it as changed.
+ * Groups can share a fixture, and then the last press of a type wins. A scene of "All" sets
+ * the spider, so after it no scene of the same type in "Spider" is on. The other way
+ * round, a scene of "Spider" leaves the scene of "All" on and shows it as changed.
  *
- * Storing takes the fixtures of the group as they are now. A fixture that is dark is
- * left out of the scene, which comes to the same: within its group a scene is a complete
- * look, and what it does not name goes dark.
+ * Storing takes the properties of the type from the fixtures of the group as they are now.
+ * A fixture that has none of them set is left out of the scene, which comes to the same:
+ * within its group and type a scene is complete, and what it does not name goes to rest.
+ * Off is the lights: it darkens the fixtures and leaves their colours and motion.
  *
  * Events: `show` (summary), `playback` (state). The playback has an emitter instead of
  * being one, because `off` is what a group has and cannot also take a listener away.
  */
 
 import { EventEmitter } from 'node:events';
+import { SCENE_TYPES, type SceneType } from '../fixtures/profile.js';
 import { ShowFile, setIn } from '../show/file.js';
 import {
   type Group,
   groupId,
   readGroupFixtures,
   readLabel,
+  readSceneType,
   type Scene,
   type Show,
   sceneId,
@@ -37,7 +42,8 @@ import type { RigFixture } from './rig.js';
 export interface SceneSummary {
   id: string;
   label: string;
-  /** Ids of the fixtures the scene sets. The others of its group go dark. */
+  type: SceneType;
+  /** Ids of the fixtures the scene sets. The others of its group have the type at rest. */
   fixtures: string[];
 }
 
@@ -57,16 +63,17 @@ export interface ShowSummary {
   groups: GroupSummary[];
 }
 
+/** What is on in a group for one type of scene. */
 export interface GroupState {
-  /** Id of the scene of the group that is on, or null. */
+  /** Id of the scene of this type that is on in the group, or null. */
   scene: string | null;
   /** True when the fixtures of the group are no longer what that scene made them. */
   changed: boolean;
 }
 
 export interface PlaybackState {
-  /** By the id of the group. Every group of the show is there. */
-  groups: Record<string, GroupState>;
+  /** By the id of the group, then by type. Every group of the show is there. */
+  groups: Record<string, Record<SceneType, GroupState>>;
 }
 
 export interface PlaybackOptions {
@@ -81,13 +88,18 @@ interface On extends GroupState {
 }
 
 const nothingOn = (): On => ({ scene: null, changed: false, made: '' });
+const nothingOnAtAll = (): Record<SceneType, On> => ({
+  lights: nothingOn(),
+  colour: nothingOn(),
+  motion: nothingOn(),
+});
 
 export class Playback {
   private readonly events = new EventEmitter();
   private readonly fixtures: readonly RigFixture[];
   private readonly file: ShowFile;
-  /** By the id of the group, what is on in it. */
-  private readonly groups = new Map<string, On>();
+  /** By the id of the group, then by type, what is on in it. */
+  private readonly groups = new Map<string, Record<SceneType, On>>();
   /** The state as it was told last, to tell a change by. */
   private told = '';
   private recalling = false;
@@ -97,7 +109,7 @@ export class Playback {
     this.file = new ShowFile({
       ...(options.path === undefined ? {} : { path: options.path }),
       fixtures: this.fixtures.map(({ id, label }) => ({ id, label })),
-      check: (id, part) => this.fixture(id).controller.check(part),
+      check: (id, type, part) => this.fixture(id).controller.check(type, part),
     });
     this.follow();
     this.told = JSON.stringify(this.getState());
@@ -131,6 +143,7 @@ export class Playback {
         scenes: scenes.map((scene) => ({
           id: scene.id,
           label: scene.label,
+          type: scene.type,
           fixtures: Object.keys(scene.fixtures),
         })),
       })),
@@ -138,58 +151,73 @@ export class Playback {
   }
 
   getState(): PlaybackState {
-    const groups: Record<string, GroupState> = {};
+    const groups: PlaybackState['groups'] = {};
     for (const { id } of this.file.getShow().groups) {
-      const { scene, changed } = this.groups.get(id) ?? nothingOn();
-      groups[id] = { scene, changed };
+      const on = this.groups.get(id) ?? nothingOnAtAll();
+      groups[id] = {
+        lights: { scene: on.lights.scene, changed: on.lights.changed },
+        colour: { scene: on.colour.scene, changed: on.colour.changed },
+        motion: { scene: on.motion.scene, changed: on.motion.changed },
+      };
     }
     return { groups };
   }
 
   /**
-   * Sets the fixtures of the group to their part of the scene. Fixtures of the group
-   * that the scene does not name go dark, fixtures outside the group are not touched.
+   * Sets the properties of the scene's type on the fixtures of the group to their part of
+   * the scene. Fixtures of the group that the scene does not name get those properties at
+   * rest, other types and fixtures outside the group are not touched.
    */
   recall(group: unknown, scene: unknown, origin?: string): void {
     const found = this.needGroup(group);
-    const { id, fixtures } = this.needScene(found, scene);
-    this.set(found, fixtures, origin);
-    this.turnOn(found, id);
+    const { id, type, fixtures } = this.needScene(found, scene);
+    this.set(found, type, fixtures, origin);
+    this.turnOn(found, type, id);
   }
 
-  /** Darkens the fixtures of the group. After that no scene of the group is on. */
+  /**
+   * Darkens the fixtures of the group: that is the lights, so the colours and the motion
+   * stay as they are. After that no scene of lights is on in the group.
+   */
   off(group: unknown, origin?: string): void {
     const found = this.needGroup(group);
-    this.set(found, {}, origin);
-    this.turnOn(found, null);
+    this.set(found, 'lights', {}, origin);
+    this.turnOn(found, 'lights', null);
   }
 
   // What changes the show looks up its group, its scene and the ids that are taken in the
   // show as the file has it at that moment, which can be newer than the show in memory.
 
-  /** Stores the fixtures of the group as they are now as a new scene, and gives its id. */
-  store(group: unknown, name: unknown): string {
+  /**
+   * Stores the properties of this type from the fixtures of the group as they are now as a
+   * new scene, and gives its id.
+   */
+  store(group: unknown, type: unknown, name: unknown): string {
+    const kind = readSceneType(type);
     const label = readLabel(name);
     const { found, id } = this.file.edit((document, show) => {
       const found = this.needGroup(group, show);
       const id = sceneId(label, new Set(found.scenes.map((scene) => scene.id)));
-      const fixtures = this.look(found);
-      setIn(document, ['groups', found.id, 'scenes', id], { label, fixtures });
+      const fixtures = this.look(found, kind);
+      setIn(document, ['groups', found.id, 'scenes', id], { label, type: kind, fixtures });
       return { found, id };
     });
-    this.stored(found, id);
+    this.stored(found, kind, id);
     return id;
   }
 
-  /** Stores the fixtures of the group as they are now in a scene that is there already. */
+  /**
+   * Stores the properties of the type of a scene that is there already from the fixtures of
+   * the group as they are now. A scene keeps its type.
+   */
   storeOver(group: unknown, scene: unknown): void {
-    const { found, id } = this.file.edit((document, show) => {
+    const { found, id, type } = this.file.edit((document, show) => {
       const found = this.needGroup(group, show);
-      const { id } = this.needScene(found, scene);
-      setIn(document, ['groups', found.id, 'scenes', id, 'fixtures'], this.look(found));
-      return { found, id };
+      const { id, type } = this.needScene(found, scene);
+      setIn(document, ['groups', found.id, 'scenes', id, 'fixtures'], this.look(found, type));
+      return { found, id, type };
     });
-    this.stored(found, id);
+    this.stored(found, type, id);
   }
 
   rename(group: unknown, scene: unknown, name: unknown): void {
@@ -270,55 +298,77 @@ export class Playback {
     return scene;
   }
 
-  /** The fixtures of the group as they are now, without the ones that are dark. */
-  private look(group: Group): Record<string, unknown> {
+  /**
+   * The properties of this type of the fixtures of the group as they are now, without the
+   * fixtures that have none of them set.
+   */
+  private look(group: Group, type: SceneType): Record<string, unknown> {
     const look: Record<string, unknown> = {};
     for (const id of group.fixtures) {
-      const part = this.fixture(id).controller.snapshot();
+      const part = this.fixture(id).controller.snapshot(type);
       if (Object.keys(part).length > 0) look[id] = part;
     }
     return look;
   }
 
-  /** Sets the fixtures of the group, each to its part. Without a part a fixture goes dark. */
-  private set(group: Group, parts: Record<string, unknown>, origin?: string): void {
+  /**
+   * Sets the properties of the type on the fixtures of the group, each to its part. Without
+   * a part a fixture has them at rest.
+   */
+  private set(
+    group: Group,
+    type: SceneType,
+    parts: Record<string, unknown>,
+    origin?: string,
+  ): void {
     const fixtures = group.fixtures.map((id) => this.fixture(id));
     // All or nothing: no fixture changes when one of them cannot.
-    for (const { id, controller } of fixtures) controller.check(parts[id]);
+    for (const { id, controller } of fixtures) controller.check(type, parts[id]);
     this.recalling = true;
     try {
-      for (const { id, controller } of fixtures) controller.recall(parts[id], origin);
+      for (const { id, controller } of fixtures) controller.recall(type, parts[id], origin);
     } finally {
       this.recalling = false;
     }
   }
 
+  /** What is on in a group, by type. */
+  private onIn(group: string): Record<SceneType, On> {
+    let on = this.groups.get(group);
+    if (!on) {
+      on = nothingOnAtAll();
+      this.groups.set(group, on);
+    }
+    return on;
+  }
+
   /** After the fixtures of the group were set: what is on now, in it and in the others. */
-  private turnOn(group: Group, scene: string | null): void {
-    this.groups.set(group.id, this.made(group, scene));
+  private turnOn(group: Group, type: SceneType, scene: string | null): void {
+    this.onIn(group.id)[type] = this.made(group, type, scene);
     for (const other of this.file.getShow().groups) {
-      const on = this.groups.get(other.id);
+      const on = this.groups.get(other.id)?.[type];
       if (other.id === group.id || !on || on.scene === null) continue;
-      // A group that was set as a whole has lost its scene. One that was set in part
-      // keeps it, and shows it as changed.
+      // A group that was set as a whole has lost its scene of this type. One that was set
+      // in part keeps it, and shows it as changed. Scenes of other types are not touched:
+      // they have other properties.
       if (other.fixtures.every((id) => group.fixtures.includes(id))) {
-        this.groups.set(other.id, nothingOn());
+        this.onIn(other.id)[type] = nothingOn();
       } else {
-        on.changed = JSON.stringify(this.look(other)) !== on.made;
+        on.changed = JSON.stringify(this.look(other, type)) !== on.made;
       }
     }
     this.tell();
   }
 
   /** After the fixtures of the group were stored as the scene: that scene is on in it. */
-  private stored(group: Group, scene: string): void {
-    this.groups.set(group.id, this.made(group, scene));
+  private stored(group: Group, type: SceneType, scene: string): void {
+    this.onIn(group.id)[type] = this.made(group, type, scene);
     this.tell();
   }
 
-  private made(group: Group, scene: string | null): On {
+  private made(group: Group, type: SceneType, scene: string | null): On {
     if (scene === null) return nothingOn();
-    return { scene, changed: false, made: JSON.stringify(this.look(group)) };
+    return { scene, changed: false, made: JSON.stringify(this.look(group, type)) };
   }
 
   /**
@@ -334,11 +384,15 @@ export class Playback {
       if (!groups.some((group) => group.id === id)) this.groups.delete(id);
     }
     for (const group of groups) {
-      const on = this.groups.get(group.id);
-      if (!on || (on.scene !== null && !group.scenes.some((scene) => scene.id === on.scene))) {
-        this.groups.set(group.id, nothingOn());
-      } else if (on.scene !== null) {
-        on.changed = JSON.stringify(this.look(group)) !== on.made;
+      const ons = this.onIn(group.id);
+      for (const type of SCENE_TYPES) {
+        const on = ons[type];
+        // A scene that is on is a scene of the show still, of the same type.
+        if (on.scene !== null && !group.scenes.some((s) => s.id === on.scene && s.type === type)) {
+          ons[type] = nothingOn();
+        } else if (on.scene !== null) {
+          on.changed = JSON.stringify(this.look(group, type)) !== on.made;
+        }
       }
     }
   }
@@ -348,12 +402,16 @@ export class Playback {
     if (this.recalling) return;
     let news = false;
     for (const group of this.file.getShow().groups) {
-      const on = this.groups.get(group.id);
-      if (!on || on.scene === null) continue;
-      const changed = JSON.stringify(this.look(group)) !== on.made;
-      if (changed === on.changed) continue;
-      on.changed = changed;
-      news = true;
+      const ons = this.groups.get(group.id);
+      if (!ons) continue;
+      for (const type of SCENE_TYPES) {
+        const on = ons[type];
+        if (on.scene === null) continue;
+        const changed = JSON.stringify(this.look(group, type)) !== on.made;
+        if (changed === on.changed) continue;
+        on.changed = changed;
+        news = true;
+      }
     }
     if (news) this.tell();
   }

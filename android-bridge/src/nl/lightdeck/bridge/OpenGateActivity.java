@@ -1,6 +1,12 @@
 package nl.lightdeck.bridge;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.graphics.Insets;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
@@ -10,6 +16,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
@@ -61,6 +69,7 @@ public class OpenGateActivity extends Activity {
     private Lamp deviceLamp;
     private Lamp engineLamp;
     private BridgeCore core;
+    private Button background; // shown while Android may still stop the bridge in the background
     private int viewLines = 0;
     private boolean follow = true;
     private boolean touching = false;
@@ -175,18 +184,15 @@ public class OpenGateActivity extends Activity {
         logAt.topMargin = dp(12);
         root.addView(scroll, logAt);
 
-        Button rescan = new Button(this);
-        rescan.setText("Scan for LR512");
-        rescan.setAllCaps(false);
-        rescan.setTextColor(PAPER);
-        rescan.setTextSize(17f);
-        rescan.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        rescan.setStateListAnimator(null);
-        StateListDrawable key = new StateListDrawable();
-        key.addState(new int[] { android.R.attr.state_pressed }, flat(KEY_DOWN));
-        key.addState(new int[0], flat(KEY));
-        rescan.setBackground(key);
-        rescan.setOnClickListener(new View.OnClickListener() {
+        background = key("Allow running in the background", new View.OnClickListener() {
+            @Override public void onClick(View v) { askBatteryExemption(); }
+        });
+        LinearLayout.LayoutParams backgroundAt = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(56));
+        backgroundAt.topMargin = dp(12);
+        root.addView(background, backgroundAt);
+
+        Button rescan = key("Scan for LR512", new View.OnClickListener() {
             @Override public void onClick(View v) { core.reEnumerate(); }
         });
         LinearLayout.LayoutParams keyAt = new LinearLayout.LayoutParams(
@@ -197,6 +203,9 @@ public class OpenGateActivity extends Activity {
         setContentView(root);
 
         core = BridgeCore.get(this);
+        // The service is what keeps the bridge running once this screen is gone.
+        BridgeService.start(this);
+        askNotificationPermission();
     }
 
     @Override
@@ -206,6 +215,7 @@ public class OpenGateActivity extends Activity {
         showRecent();
         core.setSink(sink);
         statusTick.run();
+        showBackground();
     }
 
     @Override
@@ -213,6 +223,78 @@ public class OpenGateActivity extends Activity {
         super.onStop();
         core.setSink(null);
         ui.removeCallbacks(statusTick);
+    }
+
+    private Button key(String text, View.OnClickListener onClick) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setAllCaps(false);
+        b.setTextColor(PAPER);
+        b.setTextSize(17f);
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setStateListAnimator(null);
+        StateListDrawable states = new StateListDrawable();
+        states.addState(new int[] { android.R.attr.state_pressed }, flat(KEY_DOWN));
+        states.addState(new int[0], flat(KEY));
+        b.setBackground(states);
+        b.setOnClickListener(onClick);
+        return b;
+    }
+
+    // --- running in the background ---
+
+    private boolean batteryExempt() {
+        if (Build.VERSION.SDK_INT < 23) return true;
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        return pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+    }
+
+    /** The key is there only while Android may still put the bridge to sleep. */
+    private void showBackground() {
+        boolean exempt = batteryExempt();
+        background.setVisibility(exempt ? View.GONE : View.VISIBLE);
+        core.log("Background: foreground service running, battery optimisation "
+            + (exempt ? "off for this app." : "STILL ON for this app: Android may stop the bridge."));
+    }
+
+    // Android 13 and later: without this the notification of the service is hidden. The
+    // service runs either way, but the notification is how to see and stop it.
+    private void askNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33
+            && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 1);
+        } else {
+            askBatteryOnce();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(code, permissions, results);
+        askBatteryOnce();
+    }
+
+    /** At the first start only; after that the key on the screen does it. */
+    private void askBatteryOnce() {
+        SharedPreferences prefs = getSharedPreferences("bridge", MODE_PRIVATE);
+        if (batteryExempt() || prefs.getBoolean("batteryAsked", false)) return;
+        prefs.edit().putBoolean("batteryAsked", true).apply();
+        askBatteryExemption();
+    }
+
+    private void askBatteryExemption() {
+        try {
+            startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:" + getPackageName())));
+        } catch (Throwable t) {
+            core.log("Battery dialog not available (" + t + "), opening the list instead.");
+            try {
+                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            } catch (Throwable t2) {
+                core.log("Battery settings not available either: " + t2);
+            }
+        }
     }
 
     private View header() {

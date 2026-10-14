@@ -151,9 +151,16 @@ import sys, re
 path, activity, label = sys.argv[1], sys.argv[2], sys.argv[3]
 xml = open(path, encoding='utf-8').read()
 
-# 0. Ensure WAKE_LOCK permission (the bridge holds a partial wake lock).
-if 'android.permission.WAKE_LOCK' not in xml:
-    xml = xml.replace('<application', '<uses-permission android:name="android.permission.WAKE_LOCK"/><application', 1)
+# 0. Permissions of the bridge: the partial wake lock, the foreground service that keeps it
+#    running behind other apps (type connectedDevice, which Android only allows together
+#    with one of CHANGE_WIFI_MULTICAST_STATE and a few others), its notification, and the
+#    dialog that takes the app off the battery optimisation.
+for perm in ('WAKE_LOCK', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_CONNECTED_DEVICE',
+             'POST_NOTIFICATIONS', 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'):
+    if 'android.permission.%s"' % perm not in xml:
+        xml = xml.replace('<application', '<uses-permission android:name="android.permission.%s"/><application' % perm, 1)
+if 'android.permission.CHANGE_WIFI_MULTICAST_STATE' not in xml:
+    sys.exit("the manifest has no CHANGE_WIFI_MULTICAST_STATE: the foreground service of type connectedDevice would be refused")
 
 # 1. Remove EVERY existing LAUNCHER category so the original Light Rider icon(s)
 #    no longer appear. The enclosing intent-filter keeps its MAIN action, which
@@ -170,14 +177,16 @@ if not named:
 # 3. Add our activity as the sole launcher. The dark theme without action bar keeps
 #    the screen from flashing white while the app starts.
 snippet = (
-  '<activity android:name="%s" android:exported="true" '
+  '<activity android:name="%s" android:exported="true" android:launchMode="singleTop" '
   'android:label="%s" '
   'android:theme="@android:style/Theme.Material.NoActionBar">'
   '<intent-filter>'
   '<action android:name="android.intent.action.MAIN"/>'
   '<category android:name="android.intent.category.LAUNCHER"/>'
   '</intent-filter>'
-  '</activity>' % (activity, label)
+  '</activity>'
+  '<service android:name="nl.lightdeck.bridge.BridgeService" android:exported="false" '
+  'android:foregroundServiceType="connectedDevice"/>' % (activity, label)
 )
 if activity not in xml:
     xml = xml.replace('</application>', snippet + '</application>', 1)

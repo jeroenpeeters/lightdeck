@@ -24,9 +24,11 @@ import { EffectClock } from '../engine/effectClock.js';
 import { SPEEDS } from '../engine/effects.js';
 import type { LaserEffect } from '../engine/laserEffects.js';
 import {
+  controlsOf,
   type FixtureProfile,
   findControl,
   rangeAt,
+  type SceneType,
   UNIVERSE_SIZE,
   writeFixture,
 } from '../fixtures/profile.js';
@@ -53,8 +55,15 @@ export interface LaserPatch {
   effect?: unknown;
 }
 
-/** What of the state a change can set and a scene keeps: all of it. */
+/** What of the state a change can set: all of it. A scene keeps the part of its type. */
 type Look = LaserState;
+
+/** What of the effect each type of scene keeps. The laser has no colours of its own for it. */
+const EFFECT_PARTS: Record<SceneType, readonly string[]> = {
+  lights: ['id', 'speed'],
+  colour: [],
+  motion: [],
+};
 
 /** The effects of a laser, and the range of the gate in which they count. */
 export interface LaserEffects {
@@ -189,30 +198,41 @@ export class LaserController extends EventEmitter implements FixtureController {
     this.push(origin);
   }
 
-  /** The channels that are not at rest, and a chosen effect. */
-  snapshot(): Record<string, unknown> {
+  /**
+   * The channels of this type that are not at rest, and for lights the chosen effect. Lights
+   * has the mode, so it is what opens the laser.
+   */
+  snapshot(type: SceneType): Record<string, unknown> {
     const rest = this.rest();
+    const own = new Set(controlsOf(this.profile, type));
     const raw: Record<string, number> = {};
     for (const [name, value] of Object.entries(this.state.raw)) {
-      if (value !== rest.raw[name]) raw[name] = value;
+      if (own.has(name) && value !== rest.raw[name]) raw[name] = value;
     }
     const { effect } = this.state;
     return {
       ...(Object.keys(raw).length > 0 ? { raw } : {}),
-      ...(effect.id !== null ? { effect: { ...effect } } : {}),
+      ...(type === 'lights' && effect.id !== null ? { effect: { ...effect } } : {}),
     };
   }
 
-  check(part: unknown): void {
-    this.apply(this.rest(), part ?? {}, 'the laser in a scene');
+  check(type: SceneType, part: unknown): void {
+    this.apply(this.rest(), part ?? {}, 'the laser in a scene', type);
   }
 
   /**
-   * A scene may open the laser, which an effect may not: recalling one is something the
-   * operator does, or a sequence the operator started.
+   * Sets what the type keeps, from rest and the part, and leaves the rest of the state. A
+   * scene of lights may open the laser, which an effect may not: recalling one is something
+   * the operator does, or a sequence the operator started.
    */
-  recall(part: unknown, origin?: string): void {
-    this.state = this.apply(this.rest(), part ?? {}, 'the laser in a scene');
+  recall(type: SceneType, part: unknown, origin?: string): void {
+    const look = this.apply(this.rest(), part ?? {}, 'the laser in a scene', type);
+    const raw = { ...this.state.raw };
+    for (const name of controlsOf(this.profile, type)) raw[name] = look.raw[name] ?? 0;
+    this.state = {
+      raw,
+      effect: type === 'lights' ? look.effect : this.state.effect,
+    };
     this.emit('wants');
     this.push(origin);
   }
@@ -226,19 +246,24 @@ export class LaserController extends EventEmitter implements FixtureController {
     return { raw, effect: { id: null, speed: 1 } };
   }
 
-  /** `base` with the change on top. Throws when any part of the change is invalid. */
-  private apply(base: Look, change: unknown, what: string): Look {
+  /**
+   * `base` with the change on top. Throws when any part of the change is invalid. With `only`
+   * the change may name properties of that type of scene and no others.
+   */
+  private apply(base: Look, change: unknown, what: string, only?: SceneType): Look {
     const patch = readObject(change, what, ['raw', 'effect']) as LaserPatch;
     const raw = { ...base.raw };
+    const own = only === undefined ? undefined : new Set(controlsOf(this.profile, only));
     const newRaw = patch.raw === undefined ? {} : readObject(patch.raw, 'raw');
     for (const [name, value] of Object.entries(newRaw)) {
       if (!(name in base.raw)) throw new PatchError(`"${name}" is not a channel of the laser`);
+      if (own && !own.has(name)) throw new PatchError(`"${name}" is not part of a ${only} scene`);
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 255) {
         throw new PatchError(`"${name}" must be a whole number between 0 and 255`);
       }
       raw[name] = value;
     }
-    return { raw, effect: this.readEffect(base.effect, patch.effect) };
+    return { raw, effect: this.readEffect(base.effect, patch.effect, only) };
   }
 
   act(name: string): void {
@@ -299,9 +324,17 @@ export class LaserController extends EventEmitter implements FixtureController {
     }
   }
 
-  private readEffect(current: LaserEffectSettings, change: unknown): LaserEffectSettings {
+  private readEffect(
+    current: LaserEffectSettings,
+    change: unknown,
+    only?: SceneType,
+  ): LaserEffectSettings {
     if (change === undefined) return current;
-    const { id, speed } = readObject(change, 'effect', ['id', 'speed']);
+    const { id, speed } = readObject(
+      change,
+      'effect',
+      only === undefined ? ['id', 'speed'] : EFFECT_PARTS[only],
+    );
     const effect = { ...current };
     if (id !== undefined) {
       if (id !== null && !this.effects.some((each) => each.id === id)) {

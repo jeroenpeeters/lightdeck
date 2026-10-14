@@ -1,10 +1,17 @@
 # Show design: groups, scenes, sequences and the deck
 
 Status: steps 1 to 3 are built (2026-09-29): the groups with their scenes, a deck to
-store and recall them with one scene per group on, and the grand master. They ran
-against a local server without a bridge and in desktop Chrome, not on the real fixtures
-and not on a tablet. The other steps are design. Decisions marked
+store and recall them with one scene per group on, and the grand master. Step 3b, the
+scene types, is built (2026-10-07). They ran against a local server or the stand-in
+bridge and in desktop Chrome, not on the real fixtures and not on a tablet. The other
+steps are design. Decisions marked
 "Jeroen" were made by him on 2026-09-29; the rest is a proposal.
+
+Planned and not built (2026-10-14): light effects, motion effects and colours come apart.
+Colours become palettes, lists of colours kept once for the whole show, and the Colour
+type's scenes are replaced by them; tilt wave and the scissors move from Lights to Motion;
+an empty colour is off, which replaces the dim background below. See
+`docs/effects-split-plan.md`. "Scene types" below describes what is built now.
 
 ## What it is for
 
@@ -17,8 +24,9 @@ each for its own part of the rig: a scene for the spider under a scene for the l
 
 - **Group**: a named set of fixtures, such as "Spider", "Laser" or "All". A fixture can
   be in more than one group.
-- **Scene**: a named look for the fixtures of one group. For every fixture of its group
-  it holds what that fixture should be doing: its effect, colours, levels and raw bytes.
+- **Scene**: a named part of a look for the fixtures of one group, of one **type**:
+  Lights, Colour or Motion. For every fixture of its group it holds the properties of that
+  type and no others. See "Scene types" below.
 - **Off**: what every group has besides its scenes. It darkens the fixtures of the group.
 - **Sequence**: a list of steps that runs on the master tempo and loops. A step lasts a
   number of bars and names a scene for one or more groups.
@@ -32,8 +40,10 @@ each for its own part of the rig: a scene for the spider under a scene for the l
 1. **One state per fixture** (Jeroen). Recalling a scene sets the fixtures through their
    controllers, the same way their pages do. The operator can adjust by hand afterwards;
    the deck then shows the scene as changed and offers to store it back. There are no
-   layers and no priorities: a fixture is set by one scene at a time, and nothing is
-   merged.
+   layers and no priorities. Since 2026-10-07 a scene sets one type of properties, and
+   scenes of different types put together what a fixture does; that is still one state
+   per fixture, because every property belongs to exactly one type and so two scenes can
+   never disagree. See "Scene types".
 2. **What a scene holds is up to the kind of fixture**, like the state of a
    `FixtureController` already is. The normalized model in `src/model/` cannot express
    spider effects or laser ranges. It is meant for the Zigbee lamps.
@@ -73,15 +83,19 @@ This is the way Daslight does it, per fixture. A professional console gets the s
 result with partial cues on several playbacks, and needs priorities for it. Groups need
 none.
 
-- **One scene per group is on.** A press on another scene of the group takes its place.
-- **A scene sets the fixtures of its group and no others.** Within its group it is a
-  complete look: a fixture of the group that the scene does not name goes dark, or closed
-  for the laser.
-- **Off darkens the fixtures of the group**, and then no scene of the group is on.
+- **One scene per group and type is on.** A press on another scene of the same type in the
+  group takes its place.
+- **A scene sets the fixtures of its group and no others.** Within its group and its
+  type it is complete: a fixture of the group that the scene does not name goes to rest
+  for that type (for Lights that is dark, or closed for the laser).
+- **Off darkens the fixtures of the group**: it is the Lights part only, and the colour
+  and motion scenes stay as they are, so the same look is there when the lights come on
+  again. After it no Lights scene of the group is on.
 - **Storing takes the fixtures of the group as they are.** The deck asks for the group
   by where the scene is stored: every group has its own place to store.
-- **Changed by hand is kept per group.** A group shows its scene as changed when one of
-  its fixtures is no longer what the scene made it.
+- **Changed by hand is kept per group and type.** A group shows a scene as changed when
+  one of its fixtures is no longer what the scene made it, in the properties of that
+  type: moving a tilt marks the Motion scene and no other.
 - **When two groups share a fixture, the last press wins.** A scene of "All" sets the
   spider, so the scene that was on in "Spider" is not on any more. The other way round,
   a scene of "Spider" leaves the scene of "All" on and shows it as changed, because the
@@ -90,9 +104,48 @@ none.
   are made, named and taken away on the deck in its edit mode, or in the file. Taking a
   group away takes its scenes away.
 
-Left out on purpose: splitting within a fixture, so that the colours come from one scene
-and the movement from another. That needs merging of state. It can be added later if it
-is missed, for example for the tilt of the spider.
+## Scene types
+
+Added on 2026-10-07, at Jeroen's request, for playing live: build the effects of the
+evening from parts. One scene says which lights are on and what they do, another which
+colours, a third how things move, and any of each can be pressed without the others
+changing.
+
+- **Three types: Lights, Colour, Motion.** A scene has one. Storing a scene takes the
+  properties of its type from the fixtures of its group and nothing else; recalling it
+  sets those and leaves the rest of the fixture alone.
+- **Every property of a fixture belongs to one type**, which the profile says
+  (`part` of a control). That is what makes merging free of priorities: two scenes of
+  different types write different properties.
+- **What is in each type:**
+
+  | | Lights | Colour | Motion |
+  |---|---|---|---|
+  | Spider | dimmer, strobe, the effect and its speed, the fixture's own programs | the first and second colour of the effect, the colours of the lenses when no effect runs | tilt of both bars, motor speed |
+  | Laser | mode (which opens it), pattern, drawing | colour | rotation, flips, horizontal and vertical position, size |
+
+  The laser has no effect colours. Its effect and its speed are in Lights. A moving
+  effect still sets the tilt while it runs, as before.
+- **The first colour is the foreground and the second is the background** (Jeroen). The
+  first is what flashes, hits or moves, and the second is what the rest of the lenses
+  show. With the second colour empty, which is how a fixture starts and what a colour
+  scene normally leaves it, the rest is the first colour dim. Sparkle with blue and red
+  flashes blue lenses on a red wash, and with only blue it flashes blue on dim blue.
+  This replaces the roles the ten effects had, where the second colour was often an
+  accent: they are changed to follow it.
+- **Off is the Lights part.** The colours and the motion stay.
+- **A scene without a type is a mistake in the file.** The scenes of before types were
+  dropped (Jeroen), nothing is migrated.
+- **A step of a sequence names a scene per group and type**, and only sets what
+  changes, for each of them. Parallel scenes of a sequence are these.
+- **Scenes of Lights, Colour and Motion are told apart on the deck by rows**, three per
+  group, with Off in the Lights row.
+
+Zigbee lamps fit it the same way: on and brightness are Lights, colour and temperature
+are Colour, and they have no Motion.
+
+Left out on purpose: crossfades between scenes of one type (step 7), a scene that holds
+more than one type, and priorities.
 
 ## Sequences
 
@@ -124,29 +177,42 @@ groups:
     label: Spider
     fixtures: [spider]
     scenes:
-      amber-chase:
-        label: Amber chase
+      chase:
+        label: Chase
+        type: lights
         fixtures:
-          spider:
-            levels: { dimmer: 1 }
-            effect:
-              id: chase
-              colourA: { red: 1, green: 0.58, blue: 0, white: 0 }
-              colourB: { red: 0, green: 0.15, blue: 1, white: 0 }
-      blue-wave:
-        label: Blue wave
+          spider: { levels: { dimmer: 1 }, effect: { id: chase } }
+      wave:
+        label: Wave
+        type: lights
         fixtures:
           spider: { levels: { dimmer: 0.6 }, effect: { id: wave } }
-      burst:
-        label: Burst
+      amber:
+        label: Amber
+        type: colour
         fixtures:
-          spider: { levels: { dimmer: 1 }, effect: { id: burst } }
+          spider:
+            effect: { colourA: { red: 1, green: 0.58, blue: 0, white: 0 } }
+      blue-on-red:
+        label: Blue on red
+        type: colour
+        fixtures:
+          spider:
+            effect:
+              colourA: { red: 0, green: 0.15, blue: 1, white: 0 }
+              colourB: { red: 0.6, green: 0, blue: 0, white: 0 }
+      scissor-tilt:
+        label: Wide
+        type: motion
+        fixtures:
+          spider: { levels: { tilt1: 0.2, tilt2: 0.8 } }
   laser:
     label: Laser
     fixtures: [laser]
     scenes:
       tunnel:
         label: Tunnel
+        type: lights
         fixtures:
           laser: { raw: { mode: manual, program: "pattern:12" }, effect: { id: twist } }
   all:
@@ -159,16 +225,18 @@ sequences:
     label: Peak
     steps:
       - bars: 8
-        scenes: { spider: amber-chase, laser: tunnel }
+        scenes: { spider: [chase, amber], laser: tunnel }
       - bars: 8
-        scenes: { spider: blue-wave } # the laser stays on tunnel
+        scenes: { spider: [wave, blue-on-red] } # the laser stays on tunnel
       - bars: 1
-        scenes: { spider: burst, laser: off }
+        scenes: { spider: off, laser: off }
 ```
 
-- The id of a scene is its own within its group. `off` cannot be the id of a scene.
-- In a step, `scenes` goes from the id of a group to the id of a scene of that group, or
-  to `off`.
+- The id of a scene is its own within its group, whatever its type. `off` cannot be the
+  id of a scene. `type` is `lights`, `colour` or `motion`, and a scene without one is a
+  mistake.
+- In a step, `scenes` goes from the id of a group to the id of a scene of that group, to
+  a list of such ids (one per type at most), or to `off`, which is the Lights part.
 - An id has small letters, digits and dashes. It is what was typed: `12` and `true` are
   the ids "12" and "true", and the deck writes them back with quotes.
 - A file from step 1, with `scenes:` at the top, is read as the groups a new show starts
@@ -181,7 +249,8 @@ sequences:
   raw bytes: `raw: { mode: 95, program: 60 }`.
 - What is at rest is left out of the file: levels at 0, function channels at their idle
   value, and the effect when none is chosen. A scene written by hand can do the same,
-  because recalling starts from the fixture at rest.
+  because recalling starts from the fixture at rest. A Colour scene of the spider always
+  names the first colour, and names the second only when it is set.
 
 ## Order of building
 
@@ -190,6 +259,7 @@ sequences:
 | 1 | Scenes: store from live, recall, rename, delete, saved to the show file. **Built** | A look set by hand on two fixture pages comes back with one press, also after a restart |
 | 2 | Groups: a scene belongs to a group, one scene per group is on, off per group. **Built** | A spider scene and a laser scene are on together, and each is changed without the other |
 | 3 | Grand master on the deck. **Built** | The evening can be run from one page |
+| 3b | Scene types: Lights, Colour and Motion, per group, with the first colour as foreground and the second as background. **Built 2026-10-07** | A colour scene is pressed under a running chase and the chase goes on in the new colour, and a motion scene moves the bars without touching either |
 | 4 | Sequences, one at a time | A loop runs by itself for an hour and stays on the bar, and a laser scene chosen by hand stays on under it |
 | 5 | Switching on the beat: a pressed scene starts on the next bar | A change never lands in the middle of a bar, unless asked |
 | 6 | Holds | Strobe burst while pressed, the scene is back on release |
@@ -197,8 +267,8 @@ sequences:
 
 Steps 1 to 4 come before the dress rehearsal, 5 to 7 after.
 
-Left out on purpose: layers and priorities, splitting within a fixture, palettes, a
-timeline, undo, a generic fixture library.
+Left out on purpose: layers and priorities, palettes, a timeline, undo, a generic
+fixture library.
 
 ## Where it attaches
 
@@ -206,10 +276,10 @@ timeline, undo, a generic fixture library.
   groups and their scenes). Sequences are added to what the file can hold. Which step
   of a sequence it is, is to be a pure function from beat to step, so it is tested frame
   by frame like the effects.
-- `FixtureController`: `snapshot()` gives what a scene stores of this fixture, `check()`
-  and `recall()` take it back (built). `recall` is not `update`: it starts from the
-  fixture at rest, and shares the validation with `update`. A recall without a part is
-  what off is. `setMaster(level)` takes the grand master (built): it is kept outside the
+- `FixtureController`: `snapshot(type)` gives what a scene of that type stores of this
+  fixture, `check(type, part)` and `recall(type, part)` take it back (built). `recall`
+  is not `update`: it starts from the properties of the type at rest, and shares the
+  validation with `update`. A recall of Lights without a part is what off is. `setMaster(level)` takes the grand master (built): it is kept outside the
   state, next to the blackout, and put into what goes out. `darken()` of the laser is
   final: after it nothing opens the laser again, whatever is set or recalled.
 - `src/server/playback.ts`: the playback, which the rig owns (built). It keeps per group
@@ -220,12 +290,14 @@ timeline, undo, a generic fixture library.
   what "only sets what changes" counts on, and to apply the steps on the tempo.
 - `http.ts`: built are `POST /api/playback`, which takes `group` with `scene` or with
   `off`, `POST /api/groups`, `POST /api/groups/<group>/rename` and `/delete`,
-  `POST /api/groups/<group>/scenes`, `POST /api/groups/<group>/scenes/<scene>/store`,
+  `POST /api/groups/<group>/scenes` (which takes the `type` of the scene),
+  `POST /api/groups/<group>/scenes/<scene>/store`,
   `/rename` and `/delete`, and the events `show` and `playback`. The endpoints under
   `/api/scenes` of step 1 are gone. `POST /api/master` and the event `master` are built,
   and `GET /api/state` has `master`. `sequence` in `POST /api/playback` is to come.
-- `public/deck.html`, `.js`, `.css`: the deck (built). It has a row per group, with the
-  keys of its scenes and its off key. Show is the mode it opens in, where a press
+- `public/deck.html`, `.js`, `.css`: the deck (built). It has a row per group, with a
+  lane per type of scene holding the keys of its scenes, and the off key at the end of the
+  lights lane. Show is the mode it opens in, where a press
   recalls and nothing moves under a finger. Program adds storing, naming and deleting,
   of scenes and of groups, and the off keys wait there, so that a slip does not throw
   away a look that is not stored yet. A press is asked once: one that does not reach

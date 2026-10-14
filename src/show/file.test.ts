@@ -11,7 +11,7 @@ const FIXTURES: ShowFixture[] = [
   { id: 'spider', label: 'Spider' },
   { id: 'laser', label: 'Laser' },
 ];
-const check = (_fixture: string, part: unknown) => {
+const check = (_fixture: string, _type: string, part: unknown) => {
   if (part === 'wrong') throw new PatchError('this is not what the fixture can do');
 };
 
@@ -23,6 +23,7 @@ groups:
     scenes:
       warm:
         label: Warm # the opener
+        type: lights
         fixtures:
           spider:
             levels:
@@ -40,6 +41,7 @@ scenes:
   # Starts the night.
   warm:
     label: Warm # the opener
+    type: lights
     fixtures:
       spider:
         levels:
@@ -47,6 +49,7 @@ scenes:
       laser: { raw: { mode: 95 } }
   dark:
     label: Dark
+    type: colour
     fixtures: {}
 `;
 
@@ -58,14 +61,18 @@ const NUMBERS = `groups:
     scenes:
       warm:
         label: Warm
+        type: lights
       2:
         label: Two
+        type: motion
         fixtures: { spider: { levels: { dimmer: 0.5 } } }
       1:
         label: One # the first
+        type: lights
         fixtures: { spider: { levels: { dimmer: 1 } } }
       true:
         label: Sure
+        type: colour
   2024:
     label: This year
     fixtures: [laser]
@@ -80,7 +87,7 @@ const NOWHERE = `groups:
 
 /** A change that adds a scene without fixtures to a group. */
 const addScene = (group: string, id: string) => (document: Document) =>
-  setIn(document, ['groups', group, 'scenes', id], { label: id, fixtures: {} });
+  setIn(document, ['groups', group, 'scenes', id], { label: id, type: 'lights', fixtures: {} });
 
 describe('ShowFile', () => {
   let dir: string;
@@ -131,7 +138,14 @@ describe('ShowFile', () => {
         id: 'spider',
         label: 'Spider',
         fixtures: ['spider'],
-        scenes: [{ id: 'warm', label: 'Warm', fixtures: { spider: { levels: { dimmer: 1 } } } }],
+        scenes: [
+          {
+            id: 'warm',
+            label: 'Warm',
+            type: 'lights',
+            fixtures: { spider: { levels: { dimmer: 1 } } },
+          },
+        ],
       },
       { id: 'both', label: 'Both', fixtures: ['spider', 'laser'], scenes: [] },
     ]);
@@ -144,6 +158,7 @@ describe('ShowFile', () => {
     show.edit((document) =>
       setIn(document, ['groups', 'spider', 'scenes', 'amber'], {
         label: 'Amber',
+        type: 'colour',
         fixtures: { spider: { effect: { id: 'chase', colourA: colour, colourB: colour } } },
       }),
     );
@@ -170,6 +185,7 @@ describe('ShowFile', () => {
     scenes:
       tunnel:
         label: tunnel
+        type: lights
         fixtures: {}
   all:
     label: All
@@ -207,6 +223,7 @@ describe('ShowFile', () => {
       expect(show.getShow().groups[2]?.scenes[0]).toEqual({
         id: 'warm',
         label: 'Warm',
+        type: 'lights',
         fixtures: { spider: { levels: { dimmer: 1 } }, laser: { raw: { mode: 95 } } },
       });
       expect(readFileSync(path, 'utf8')).toBe(STEP_ONE);
@@ -245,7 +262,7 @@ describe('ShowFile', () => {
     });
 
     it('keeps the scenes with the one fixture there is', () => {
-      writeFileSync(path, 'scenes:\n  warm:\n    label: Warm\n');
+      writeFileSync(path, 'scenes:\n  warm:\n    label: Warm\n    type: lights\n');
       const show = open([{ id: 'spider', label: 'Spider' }]);
       expect(ids(show)).toEqual([['spider', 'warm']]);
       show.edit(addScene('spider', 'cold'));
@@ -290,6 +307,7 @@ describe('ShowFile', () => {
       expect(show.getShow().groups[0]?.scenes[2]).toEqual({
         id: '1',
         label: 'Opening',
+        type: 'lights',
         fixtures: { spider: { levels: { dimmer: 1 } } },
       });
       expect(show.getShow().groups[0]?.scenes[3]?.label).toBe('Certain');
@@ -355,6 +373,7 @@ describe('ShowFile', () => {
     const tunnel = (document: Document) =>
       setIn(document, ['groups', 'laser', 'scenes', 'tunnel'], {
         label: 'Tunnel',
+        type: 'lights',
         fixtures: { laser: { raw: { mode: 95, program: 60 }, effect: { id: 'twist' } } },
       });
 
@@ -374,12 +393,14 @@ describe('ShowFile', () => {
     scenes:
       tunnel:
         label: Tunnel
+        type: lights
         fixtures:
           laser:
             raw: { mode: 95, program: 60 }
             effect: { id: twist }
       second:
         label: second
+        type: lights
         fixtures: {}
 `);
     });
@@ -402,7 +423,7 @@ describe('ShowFile', () => {
 
     it('leaves what was written by hand on one line on its line', () => {
       const byHand =
-        '      warm: { label: Warm, fixtures: { spider: { levels: { dimmer: 1 } } } }\n';
+        '      warm: { label: Warm, type: lights, fixtures: { spider: { levels: { dimmer: 1 } } } }\n';
       writeFileSync(path, `groups:\n  spider:\n    fixtures: [spider]\n    scenes:\n${byHand}`);
       const show = open();
       show.edit(addScene('spider', 'cold'));
@@ -495,6 +516,18 @@ describe('ShowFile', () => {
     },
   );
 
+  it('does not use a scene without a type, and says which one', () => {
+    const untyped =
+      'groups:\n  spider:\n    fixtures: [spider]\n    scenes:\n      warm:\n        label: Warm\n';
+    writeFileSync(path, untyped);
+    const show = open();
+    expect(show.getProblem()).toBe(
+      'Scene "warm" of group "spider": a scene needs a type: lights, colour, motion',
+    );
+    expect(() => show.edit(addScene('spider', 'one'))).toThrow(/has a mistake/);
+    expect(readFileSync(path, 'utf8')).toBe(untyped);
+  });
+
   it('does not know sequences yet', () => {
     writeFileSync(path, `${HAND_MADE}sequences: {}\n`);
     expect(open().getProblem()).toBe('The show cannot have "sequences", only groups');
@@ -510,12 +543,18 @@ describe('ShowFile', () => {
     const show = open();
     expect(() =>
       show.edit((document) =>
-        setIn(document, ['groups', 'spider', 'scenes', 'one'], { fixtures: { laser: {} } }),
+        setIn(document, ['groups', 'spider', 'scenes', 'one'], {
+          type: 'lights',
+          fixtures: { laser: {} },
+        }),
       ),
     ).toThrow(/"laser" is not a fixture of this group/);
     expect(() =>
       show.edit((document) =>
-        setIn(document, ['groups', 'both', 'scenes', 'one'], { fixtures: { laser: 'wrong' } }),
+        setIn(document, ['groups', 'both', 'scenes', 'one'], {
+          type: 'lights',
+          fixtures: { laser: 'wrong' },
+        }),
       ),
     ).toThrow(/not what the fixture can do/);
     expect(ids(show)).toEqual([['spider', 'warm'], ['both']]);

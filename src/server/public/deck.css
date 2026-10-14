@@ -1,6 +1,7 @@
 /*
- * What belongs to the deck: a row per group with the keys of its scenes, and what
- * Program adds to it, the rows to name a scene or a group with.
+ * What belongs to the deck: a row per group with a lane per type of scene (lights, colour,
+ * motion) holding the keys of its scenes, and what Program adds to it, the rows to name a
+ * scene or a group with.
  *
  * In a row nothing takes its size from what it says, so that no key moves under a
  * finger when a scene goes on or off: the columns are fixed and text that changes stays
@@ -92,12 +93,6 @@
   gap: var(--gap);
 }
 .group-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: baseline;
-}
-.group-ident {
   display: flex;
   align-items: baseline;
   gap: 0.9rem;
@@ -110,33 +105,48 @@
   letter-spacing: 0;
 }
 .group-name,
-.group-ident > .where,
-.group-head > .running {
+.group-head > .where {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.group-head > .running {
-  margin-left: 0;
-  text-align: right;
-}
 
-.group-keys {
+/*
+ * A lane per type of scene. The name of the type is on the left, the keys of its scenes in
+ * the middle, and at the end a place that only the lights use, for Off. The columns are
+ * fixed, so the keys of the lanes line up and nothing moves when a scene goes on.
+ */
+.lanes {
+  margin-top: 0.25rem;
+}
+.lane {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 7rem;
+  grid-template-columns: 5.5rem minmax(0, 1fr) 7rem;
   gap: 0.5rem;
   align-items: start;
   margin-top: 0.75rem;
 }
-.group-scenes > .hint {
+.lane-name {
+  padding-top: 0.2rem;
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.lane-scenes > .hint {
   display: flex;
   align-items: center;
   min-height: 5.5rem;
+  margin: 0;
 }
-@media (max-width: 30rem) {
-  .group-keys {
+@media (max-width: 40rem) {
+  .lane {
     grid-template-columns: minmax(0, 1fr) 4.5rem;
+  }
+  .lane-name {
+    grid-column: 1 / -1;
+    padding-top: 0;
   }
 }
 
@@ -236,6 +246,11 @@
 }
 
 /* ---- what Program adds to a group ---- */
+
+/* The keys that say which type of scene is stored. */
+.type-choice {
+  margin-top: 0.5rem;
+}
 
 .group-program {
   display: grid;

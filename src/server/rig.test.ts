@@ -316,11 +316,14 @@ describe('Rig', () => {
     change('laser', { raw: { mode: MANUAL }, effect: { id: 'pulse' } });
     const controllers = rig.fixtures.map((fixture) => fixture.controller);
     const states = controllers.map((controller) => controller.getState());
-    const kept = controllers.map((controller) => controller.snapshot());
+    const types = ['lights', 'colour', 'motion'] as const;
+    const keptNow = () =>
+      controllers.map((controller) => types.map((type) => controller.snapshot(type)));
+    const kept = keptNow();
     for (const master of [0.5, 0, 0.01, 1]) {
       rig.setMaster(master);
       expect(controllers.map((controller) => controller.getState())).toEqual(states);
-      expect(controllers.map((controller) => controller.snapshot())).toEqual(kept);
+      expect(keptNow()).toEqual(kept);
     }
   });
 
@@ -443,7 +446,7 @@ describe('Rig', () => {
 
   it('keeps the laser closed after lightdeck stopped, whatever comes by which way', () => {
     change('laser', { raw: { mode: MANUAL } });
-    const scene = rig.playback.store('laser', 'Open');
+    const scene = rig.playback.store('laser', 'lights', 'Open');
     rig.setMaster(0);
     // The order in which lightdeck stops. The server still handles what was under way.
     rig.darken();

@@ -10,6 +10,17 @@ import { type Attribute, clamp01, type Look } from '../model/fixture.js';
 
 export const UNIVERSE_SIZE = 512;
 
+/**
+ * What a scene can be about. Every property of a fixture belongs to one of these, so that
+ * scenes of different types put a fixture together without ever disagreeing:
+ * lights (is it on, and what does it do), colour, and motion.
+ */
+export const SCENE_TYPES = ['lights', 'colour', 'motion'] as const;
+export type SceneType = (typeof SCENE_TYPES)[number];
+
+export const isSceneType = (value: unknown): value is SceneType =>
+  SCENE_TYPES.includes(value as SceneType);
+
 /** What a byte range on a channel means, as printed in the fixture manual. */
 export interface ByteRange {
   from: number;
@@ -43,6 +54,11 @@ interface ControlBase {
   attribute?: Attribute;
   /** 1-based cell (LED, head) this control belongs to, when the fixture has several. */
   cell?: number;
+  /**
+   * The type of scene that keeps this control. Without one no scene does, which is right
+   * for a trigger such as a reset.
+   */
+  part?: SceneType;
 }
 
 /** A continuous value, driven with a normalized level 0..1. */
@@ -78,6 +94,11 @@ export interface FixtureProfile {
   /** Number of DMX channels the fixture occupies in this mode. */
   footprint: number;
   controls: readonly Control[];
+}
+
+/** The names of the controls that a scene of this type keeps, in the order of the profile. */
+export function controlsOf(profile: FixtureProfile, type: SceneType): string[] {
+  return profile.controls.filter((control) => control.part === type).map((control) => control.name);
 }
 
 export interface FixtureValues {

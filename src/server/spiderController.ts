@@ -7,8 +7,9 @@
  *
  * While an effect is chosen and the tempo runs, the engine of the console asks for a frame
  * at every point of the grid of the beat (`render`). The controller has no timer of its
- * own. The effect sets the colours of the cells, and the tilt when it moves; brightness,
- * strobe and motor speed stay with the operator. Rendered frames are not state: browsers
+ * own. The effect sets the colours of the cells, and the tilt when it moves, and the motor speed
+ * when it works it out (`setsMotorSpeed`); brightness and strobe stay with the operator, and so
+ * does the motor speed otherwise. Rendered frames are not state: browsers
  * get them as `frame` events, only to draw what the fixture shows, and what they get is
  * the frame that was sent.
  *
@@ -18,8 +19,21 @@
 
 import { EventEmitter } from 'node:events';
 import { EffectClock } from '../engine/effectClock.js';
-import { EFFECTS, type EffectFrame, findEffect, type Rgbw, SPEEDS } from '../engine/effects.js';
-import { type FixtureProfile, UNIVERSE_SIZE, writeFixture } from '../fixtures/profile.js';
+import {
+  EFFECTS,
+  type EffectFrame,
+  findEffect,
+  palette,
+  type Rgbw,
+  SPEEDS,
+} from '../engine/effects.js';
+import {
+  controlsOf,
+  type FixtureProfile,
+  type SceneType,
+  UNIVERSE_SIZE,
+  writeFixture,
+} from '../fixtures/profile.js';
 import { clamp01 } from '../model/fixture.js';
 import type { UniverseOutput } from '../outputs/patch.js';
 import { type FixtureController, PatchError, readObject } from './fixture.js';
@@ -33,13 +47,22 @@ export interface CellLayout {
   tilt: readonly string[];
   /** Colour names; the control of a cell is the colour name followed by the cell number. */
   colours: readonly (keyof Rgbw)[];
+  /** How the fixture is built, for the simulator. See `SPIDER_LAYOUT`. */
+  side?: readonly ('back' | 'front')[];
+  /** Per bar, points of [tilt 0..1, degrees from neutral, positive to the front]. */
+  tiltCurve?: readonly (readonly (readonly [number, number])[])[];
+  /** Points of [motor speed 0..1, degrees per second], for both bars. */
+  motorSpeedCurve?: readonly (readonly [number, number])[];
+  aim?: readonly number[];
 }
 
 export interface EffectSettings {
   /** Id of the running effect, or null when the operator controls the colours. */
   id: string | null;
+  /** The foreground colour of the effect. */
   colourA: Rgbw;
-  colourB: Rgbw;
+  /** The background colour, or null when it is left empty: the effect then uses colour A dim. */
+  colourB: Rgbw | null;
   /** Speed of the effect relative to the tempo, one of `SPEEDS`. At 1 it changes per beat. */
   speed: number;
 }
@@ -89,12 +112,20 @@ const BLACKOUT_CONTROLS = ['dimmer', 'strobe'];
 /** The attribute of the controls that the grand master scales. */
 const MASTER_ATTRIBUTE = 'dimmer';
 const RESET_CONTROL = 'reset';
+/** The control that an effect may set when it says `setsMotorSpeed`. */
+const MOTOR_SPEED_CONTROL = 'motorSpeed';
 const RESET_VALUE = 255;
 const DEFAULT_EFFECT: EffectSettings = {
   id: null,
   colourA: { red: 1, green: 0.58, blue: 0, white: 0 },
-  colourB: { red: 0, green: 0.15, blue: 1, white: 0 },
+  colourB: null,
   speed: 1,
+};
+/** What of the effect each type of scene keeps. Motion has none: the effect moves what it moves. */
+const EFFECT_PARTS: Record<SceneType, readonly string[]> = {
+  lights: ['id', 'speed'],
+  colour: ['colourA', 'colourB'],
+  motion: [],
 };
 
 function readColour(value: unknown, name: string): Rgbw {
@@ -169,7 +200,7 @@ export class SpiderController extends EventEmitter implements FixtureController 
       effect: {
         ...this.state.effect,
         colourA: { ...this.state.effect.colourA },
-        colourB: { ...this.state.effect.colourB },
+        colourB: this.state.effect.colourB ? { ...this.state.effect.colourB } : null,
       },
     };
   }
@@ -179,12 +210,13 @@ export class SpiderController extends EventEmitter implements FixtureController 
     return {
       layout: this.layout,
       speeds: SPEEDS,
-      effects: EFFECTS.map(({ id, name, description, colours, moves }) => ({
+      effects: EFFECTS.map(({ id, name, description, colours, moves, setsMotorSpeed }) => ({
         id,
         name,
         description,
         colours,
         moves,
+        setsMotorSpeed: setsMotorSpeed === true,
       })),
     };
   }
@@ -220,35 +252,62 @@ export class SpiderController extends EventEmitter implements FixtureController 
     this.push(origin);
   }
 
-  /** Levels that are not 0, function channels that are not at rest, and a chosen effect. */
-  snapshot(): Record<string, unknown> {
+  /**
+   * What a scene of this type keeps: the levels that are not 0 and the function channels
+   * that are not at rest among the controls of the type, and of the effect what the type
+   * keeps. Lights keeps the effect when one is chosen, with its speed. Colour always keeps
+   * the first colour, and the second only when it is set.
+   */
+  snapshot(type: SceneType): Record<string, unknown> {
     const rest = this.rest();
+    const own = new Set(controlsOf(this.profile, type));
     const levels: Record<string, number> = {};
     const raw: Record<string, number> = {};
     for (const [name, value] of Object.entries(this.state.levels)) {
-      if (value !== rest.levels[name]) levels[name] = value;
+      if (own.has(name) && value !== rest.levels[name]) levels[name] = value;
     }
     for (const [name, value] of Object.entries(this.state.raw)) {
-      if (name !== RESET_CONTROL && value !== rest.raw[name]) raw[name] = value;
+      if (own.has(name) && name !== RESET_CONTROL && value !== rest.raw[name]) raw[name] = value;
     }
     const { effect } = this.getState();
+    let kept: Record<string, unknown> | undefined;
+    if (type === 'lights' && effect.id !== null) kept = { id: effect.id, speed: effect.speed };
+    if (type === 'colour') {
+      kept = { colourA: effect.colourA, ...(effect.colourB ? { colourB: effect.colourB } : {}) };
+    }
     return {
       ...(Object.keys(levels).length > 0 ? { levels } : {}),
       ...(Object.keys(raw).length > 0 ? { raw } : {}),
-      ...(effect.id !== null ? { effect } : {}),
+      ...(kept ? { effect: kept } : {}),
     };
   }
 
-  check(part: unknown): void {
-    this.apply(this.rest(), part ?? {}, 'the spider in a scene');
+  check(type: SceneType, part: unknown): void {
+    this.apply(this.rest(), part ?? {}, 'the spider in a scene', type);
   }
 
-  /** A reset that is going on goes on: it is not part of a look. */
-  recall(part: unknown, origin?: string): void {
-    const look = this.apply(this.rest(), part ?? {}, 'the spider in a scene');
-    const reset = this.state.raw[RESET_CONTROL];
-    if (reset !== undefined) look.raw[RESET_CONTROL] = reset;
-    this.state = { ...this.state, ...look };
+  /**
+   * Sets what the type keeps, from rest and the part, and leaves the rest of the state.
+   * A reset that is going on goes on: it is not part of a look.
+   */
+  recall(type: SceneType, part: unknown, origin?: string): void {
+    const look = this.apply(this.rest(), part ?? {}, 'the spider in a scene', type);
+    const own = controlsOf(this.profile, type);
+    const levels = { ...this.state.levels };
+    const raw = { ...this.state.raw };
+    for (const name of own) {
+      if (name in look.levels) levels[name] = look.levels[name] ?? 0;
+      if (name in look.raw) raw[name] = look.raw[name] ?? 0;
+    }
+    const effect = { ...this.state.effect };
+    if (type === 'lights') {
+      effect.id = look.effect.id;
+      effect.speed = look.effect.speed;
+    } else if (type === 'colour') {
+      effect.colourA = look.effect.colourA;
+      effect.colourB = look.effect.colourB;
+    }
+    this.state = { ...this.state, levels, raw, effect };
     this.emit('wants');
     this.push(origin);
   }
@@ -264,24 +323,29 @@ export class SpiderController extends EventEmitter implements FixtureController 
     return {
       levels,
       raw,
-      effect: {
-        ...DEFAULT_EFFECT,
-        colourA: { ...DEFAULT_EFFECT.colourA },
-        colourB: { ...DEFAULT_EFFECT.colourB },
-      },
+      effect: { ...DEFAULT_EFFECT, colourA: { ...DEFAULT_EFFECT.colourA } },
     };
   }
 
-  /** `base` with the change on top. Throws when any part of the change is invalid. */
-  private apply(base: Look, change: unknown, what: string): Look {
+  /**
+   * `base` with the change on top. Throws when any part of the change is invalid. With `only`
+   * the change may name properties of that type of scene and no others.
+   */
+  private apply(base: Look, change: unknown, what: string, only?: SceneType): Look {
     const patch = readObject(change, what, ['levels', 'raw', 'effect']) as StatePatch;
     const levels = { ...base.levels };
     const raw = { ...base.raw };
+    const own = only === undefined ? undefined : new Set(controlsOf(this.profile, only));
+    const owned = (name: string) => {
+      if (own && only && !own.has(name))
+        throw new PatchError(`"${name}" is not part of a ${only} scene`);
+    };
 
     const newLevels = patch.levels === undefined ? {} : readObject(patch.levels, 'levels');
     const newRaw = patch.raw === undefined ? {} : readObject(patch.raw, 'raw');
     for (const [name, value] of Object.entries(newLevels)) {
       if (!(name in base.levels)) throw new PatchError(`"${name}" is not a level of this fixture`);
+      owned(name);
       if (typeof value !== 'number' || !Number.isFinite(value)) {
         throw new PatchError(`level "${name}" must be a number between 0 and 1`);
       }
@@ -290,12 +354,13 @@ export class SpiderController extends EventEmitter implements FixtureController 
     for (const [name, value] of Object.entries(newRaw)) {
       if (!(name in base.raw)) throw new PatchError(`"${name}" is not a function channel`);
       if (name === RESET_CONTROL) throw new PatchError('use the reset action to reset the fixture');
+      owned(name);
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 255) {
         throw new PatchError(`"${name}" must be a whole number between 0 and 255`);
       }
       raw[name] = value;
     }
-    return { levels, raw, effect: this.readEffect(base.effect, patch.effect) };
+    return { levels, raw, effect: this.readEffect(base.effect, patch.effect, only) };
   }
 
   act(name: string, origin?: string): void {
@@ -351,14 +416,13 @@ export class SpiderController extends EventEmitter implements FixtureController 
     this.removeAllListeners();
   }
 
-  private readEffect(current: EffectSettings, change: unknown): EffectSettings {
+  private readEffect(current: EffectSettings, change: unknown, only?: SceneType): EffectSettings {
     if (change === undefined) return current;
-    const patch = readObject(change, 'effect', [
-      'id',
-      'colourA',
-      'colourB',
-      'speed',
-    ]) as EffectPatch;
+    const patch = readObject(
+      change,
+      'effect',
+      only === undefined ? ['id', 'colourA', 'colourB', 'speed'] : EFFECT_PARTS[only],
+    ) as EffectPatch;
 
     const effect: EffectSettings = { ...current };
     if (patch.id !== undefined) {
@@ -370,7 +434,10 @@ export class SpiderController extends EventEmitter implements FixtureController 
       effect.id = patch.id;
     }
     if (patch.colourA !== undefined) effect.colourA = readColour(patch.colourA, 'colourA');
-    if (patch.colourB !== undefined) effect.colourB = readColour(patch.colourB, 'colourB');
+    // Null empties the background: the effect then shows colour A dim there.
+    if (patch.colourB !== undefined) {
+      effect.colourB = patch.colourB === null ? null : readColour(patch.colourB, 'colourB');
+    }
     if (patch.speed !== undefined) {
       if (typeof patch.speed !== 'number' || !SPEEDS.includes(patch.speed)) {
         throw new PatchError(`the speed of an effect must be one of ${SPEEDS.join(', ')}`);
@@ -409,8 +476,8 @@ export class SpiderController extends EventEmitter implements FixtureController 
       bpm: bpm * speed,
       cells: this.layout.cells,
       bars: this.layout.bars,
-      a: colourA,
-      b: colourB,
+      ...palette(colourA, colourB),
+      motion: { tilt: this.layout.tiltCurve, motorSpeed: this.layout.motorSpeedCurve },
     });
   }
 
@@ -427,6 +494,7 @@ export class SpiderController extends EventEmitter implements FixtureController 
         const name = this.layout.tilt[bar];
         if (name !== undefined) levels[name] = clamp01(tilt);
       });
+      if (frame.motorSpeed !== undefined) levels[MOTOR_SPEED_CONTROL] = clamp01(frame.motorSpeed);
     }
     for (const name of this.dimmers) levels[name] = (levels[name] ?? 0) * this.master;
     if (this.blackout) {

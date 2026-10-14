@@ -52,6 +52,7 @@ final class BridgeCore {
     private static final long RESCAN_AFTER_MS = 5000;        // pause between two scans
     private static final long SCAN_PATIENCE_MS = 15000;      // stop waiting for a scan to end
     private static final long RETRY_AFTER_FAILED_OPEN_MS = 3000;
+    // The log file is kept in two parts, the current one and the one before: at most twice this.
     private static final long MAX_LOG_FILE_BYTES = 512 * 1024;
 
     private static BridgeCore instance;
@@ -68,6 +69,8 @@ final class BridgeCore {
     private final ArrayDeque<String> recent = new ArrayDeque<String>();
     private volatile LogSink sink;
     private File logFile;
+    private final Object fileLock = new Object();
+    private long logFileBytes;
 
     private XHL x;
     private volatile BridgeServer server; // null until the vendor library is up
@@ -100,7 +103,8 @@ final class BridgeCore {
     private void start() {
         try {
             logFile = new File(ctx.getExternalFilesDir(null), "lr512-gate.log");
-            if (logFile.length() > MAX_LOG_FILE_BYTES) logFile.delete();
+            logFileBytes = logFile.length();
+            rotateLogFile();
         } catch (Throwable t) {
             logFile = null;
         }
@@ -326,13 +330,34 @@ final class BridgeCore {
             recent.addLast(line);
             while (recent.size() > RECENT_LINES) recent.removeFirst();
         }
-        if (logFile != null) {
-            try (FileWriter w = new FileWriter(logFile, true)) { w.write(line + "\n"); } catch (Throwable ignored) { }
-        }
+        writeToFile(line + "\n");
         LogSink s = sink;
         if (s != null) {
             try { s.onLine(line); } catch (Throwable ignored) { }
         }
+    }
+
+    private void writeToFile(String text) {
+        synchronized (fileLock) {
+            if (logFile == null) return;
+            try (FileWriter w = new FileWriter(logFile, true)) {
+                w.write(text);
+                logFileBytes += text.length();
+            } catch (Throwable ignored) { }
+            rotateLogFile();
+        }
+    }
+
+    // Past the limit the file becomes lr512-gate.log.1, replacing the one before, and a
+    // new one starts. Without this a show of many hours fills the phone's storage.
+    private void rotateLogFile() {
+        if (logFile == null || logFileBytes <= MAX_LOG_FILE_BYTES) return;
+        File old = new File(logFile.getPath() + ".1");
+        try {
+            old.delete();
+            if (!logFile.renameTo(old)) logFile.delete();
+        } catch (Throwable ignored) { }
+        logFileBytes = 0;
     }
 
     // --- helpers ---

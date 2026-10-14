@@ -170,20 +170,21 @@ describe('SpiderController', () => {
   it('keeps what is set whatever the master says', () => {
     controller.update({ levels: { dimmer: 0.8, red1: 1 }, effect: { id: 'wave' } });
     const state = controller.getState();
-    const kept = controller.snapshot();
+    const kept = controller.snapshot('lights');
     for (const master of [0.5, 0, 0.01, 1]) {
       controller.setMaster(master);
       expect(controller.getState()).toEqual(state);
-      expect(controller.snapshot()).toEqual(kept);
+      expect(controller.snapshot('lights')).toEqual(kept);
     }
-    expect(kept.levels).toEqual({ dimmer: 0.8, red1: 1 });
+    expect(kept.levels).toEqual({ dimmer: 0.8 });
+    expect(controller.snapshot('colour').levels).toEqual({ red1: 1 });
   });
 
   it('dims a change that comes while the master is down', () => {
     controller.setMaster(0.5);
     controller.update({ levels: { dimmer: 1 } });
     expect(ch(output, 6)).toBe(128);
-    controller.recall({ levels: { dimmer: 0.5 } });
+    controller.recall('lights', { levels: { dimmer: 0.5 } });
     expect(ch(output, 6)).toBe(64);
     expect(controller.getState().levels.dimmer).toBe(0.5);
     controller.setMaster(1);
@@ -289,13 +290,27 @@ describe('SpiderController', () => {
   it('tells the page how the lenses are arranged and which effects there are', () => {
     // biome-ignore lint/suspicious/noExplicitAny: shape is asserted field by field below
     const details = controller.describe() as any;
+    // From left to right, looking at the front: L4 L3 L2 L1 on the back bar, L5 L6 L7 L8 on the
+    // front bar. From the back, where the LCD is, it reads L1 L2 L3 L4 and L8 L7 L6 L5.
     expect(details.layout.bars).toEqual([
-      [0, 1, 2, 3],
+      [3, 2, 1, 0],
       [4, 5, 6, 7],
     ]);
-    expect(details.effects).toHaveLength(10);
+    expect(details.layout.side).toEqual(['back', 'front']);
+    // Neutral at 30 for both bars, which turn opposite ways, and the movement is not linear.
+    expect(details.layout.tiltCurve[0]).toContainEqual([0.3, 0]);
+    expect(details.layout.tiltCurve[1]).toContainEqual([0.3, 0]);
+    expect(details.layout.motorSpeedCurve.length).toBeGreaterThanOrEqual(2);
+    expect(details.layout.aim).toEqual([-12, -5, 5, 12]);
+    expect(details.effects).toHaveLength(12);
     expect(details.effects[0]).toEqual(
-      expect.objectContaining({ id: 'kick', name: 'Kick', colours: 'both', moves: false }),
+      expect.objectContaining({
+        id: 'kick',
+        name: 'Kick',
+        colours: 'both',
+        moves: false,
+        setsMotorSpeed: false,
+      }),
     );
   });
 });
@@ -418,9 +433,9 @@ describe('SpiderController effects', () => {
       levels: { dimmer: 0.5, strobe: 0.2, motorSpeed: 0.3, tilt1: 0.9, green5: 1 },
       effect: { id: 'kick' },
     });
-    // On the first beat of the bar the kick shows the second colour, blue by default.
-    expect(ch(output, 9)).toBe(255); // blue1
-    expect(ch(output, 24)).toBe(38); // green5 comes from the effect, not from the operator
+    // On the beat the kick hits in the first colour, amber by default.
+    expect(ch(output, 7)).toBe(255); // red1
+    expect(ch(output, 24)).toBe(148); // green5 comes from the effect, not from the operator
     expect(ch(output, 6)).toBe(128); // dimmer
     expect(ch(output, 5)).toBe(77); // motor speed
     expect(ch(output, 1)).toBe(230); // tilt1, this effect does not move
@@ -430,10 +445,72 @@ describe('SpiderController effects', () => {
 
   it('lets a moving effect tilt the bars', () => {
     tempo.update({ sync: true });
-    controller.update({ levels: { tilt1: 0, tilt2: 0 }, effect: { id: 'scissor' } });
+    controller.update({ levels: { tilt1: 0, tilt2: 0 }, effect: { id: 'tiltwave' } });
     advance(((60_000 / 126) * 2) | 0); // two beats: a quarter of the swing
     expect(ch(output, 1)).toBeGreaterThan(190);
     expect(ch(output, 3)).toBeLessThan(65);
+  });
+
+  it('lets the scissor by motor speed set the motor speed when the spider is calibrated for it', () => {
+    controller.close();
+    engine.remove(controller);
+    controller = new SpiderController({
+      profile: SPIDER_43CH,
+      layout: {
+        ...SPIDER_LAYOUT,
+        motorSpeedCurve: [
+          [0, 30],
+          [1, 300],
+        ],
+      },
+      output,
+      tempo,
+      universe: 0,
+      address: 1,
+    });
+    engine.add(controller);
+    tempo.update({ sync: true });
+    controller.update({ levels: { motorSpeed: 0.9 }, effect: { id: 'scissor-motor' } });
+    advance(((60_000 / 126) * 2) | 0);
+    // 80 degrees in three beats at 126 bpm is 56 degrees per second, which is 10% of the range.
+    expect(ch(output, 5)).toBe(Math.round(((56 - 30) / 270) * 255));
+    expect(controller.getState().levels.motorSpeed).toBe(0.9);
+    controller.update({ effect: { id: null } });
+    expect(ch(output, 5)).toBe(Math.round(0.9 * 255));
+  });
+
+  it('sets the motor speed of the spider as timed while the scissor by motor speed runs', () => {
+    tempo.update({ sync: true });
+    controller.update({ levels: { motorSpeed: 0.3 }, effect: { id: 'scissor-motor' } });
+    advance(((60_000 / 126) * 2) | 0);
+    // The motor is slow at the top of the channel: 56 degrees per second is between 50 and 90 percent.
+    expect(ch(output, 5)).toBeGreaterThan(Math.round(0.5 * 255));
+    expect(ch(output, 5)).toBeLessThan(Math.round(0.9 * 255));
+    expect(controller.getState().levels.motorSpeed).toBe(0.3);
+  });
+
+  it('leaves the motor speed with the operator while the scissor by motor speed has a calibration that cannot tell', () => {
+    controller.close();
+    engine.remove(controller);
+    controller = new SpiderController({
+      profile: SPIDER_43CH,
+      layout: {
+        ...SPIDER_LAYOUT,
+        motorSpeedCurve: [
+          [0, 200],
+          [1, 200],
+        ],
+      },
+      output,
+      tempo,
+      universe: 0,
+      address: 1,
+    });
+    engine.add(controller);
+    tempo.update({ sync: true });
+    controller.update({ levels: { motorSpeed: 0.3 }, effect: { id: 'scissor-motor' } });
+    advance(((60_000 / 126) * 2) | 0);
+    expect(ch(output, 5)).toBe(77);
   });
 
   it('goes back to the operator colours when the effect stops', () => {
@@ -462,10 +539,10 @@ describe('SpiderController effects', () => {
       levels: { dimmer: 1, strobe: 0.2, motorSpeed: 0.3, tilt1: 0.9 },
       effect: { id: 'kick' },
     });
-    expect(ch(output, 9)).toBe(255); // blue1, from the effect
+    expect(ch(output, 7)).toBe(255); // red1, from the effect
     controller.setMaster(0.5);
     expect(ch(output, 6)).toBe(128);
-    expect(ch(output, 9)).toBe(255);
+    expect(ch(output, 7)).toBe(255);
     expect(ch(output, 1)).toBe(230); // tilt1
     expect(ch(output, 5)).toBe(77); // motor speed
 
@@ -477,7 +554,7 @@ describe('SpiderController effects', () => {
   });
 
   it('sends the frames of an effect with the dimmer scaled and nothing else', () => {
-    for (const id of ['chase', 'scissor', 'burst']) {
+    for (const id of ['chase', 'tiltwave', 'scissor', 'burst']) {
       const change = {
         levels: { dimmer: 1, strobe: 0.2, motorSpeed: 0.3, tilt1: 0.9 },
         effect: { id, speed: 4 },
@@ -608,7 +685,7 @@ describe('SpiderController effects', () => {
     expect(controller.describe().speeds).toEqual([0.25, 0.5, 1, 2, 4]);
   });
 
-  it('uses the chosen colours', () => {
+  it('uses the first colour as the foreground and the second as the background', () => {
     tempo.update({ sync: true });
     controller.update({
       effect: {
@@ -617,10 +694,34 @@ describe('SpiderController effects', () => {
         colourB: { red: 0, green: 0, blue: 0, white: 1 },
       },
     });
-    expect(ch(output, 10)).toBe(255); // white1 on the first beat
-    advance(60_000 / 126 + 25);
-    expect(ch(output, 8)).toBeGreaterThan(150); // green1 on the second
+    expect(ch(output, 8)).toBe(255); // green1 hits on the beat
     expect(ch(output, 10)).toBe(0);
+    advance(400);
+    expect(ch(output, 8)).toBeLessThan(40); // it has fallen back to white1
+    expect(ch(output, 10)).toBeGreaterThan(200);
+  });
+
+  it('starts with the second colour empty, and then the background is the first colour dim', () => {
+    expect(controller.getState().effect.colourB).toBeNull();
+    tempo.update({ sync: true });
+    controller.update({
+      effect: { id: 'kick', colourA: { red: 0, green: 1, blue: 0, white: 0 } },
+    });
+    expect(ch(output, 8)).toBe(255);
+    advance(400);
+    const green = ch(output, 8);
+    expect(green).toBeGreaterThan(5);
+    expect(green).toBeLessThan(40);
+    expect([7, 9, 10].map((channel) => ch(output, channel))).toEqual([0, 0, 0]);
+  });
+
+  it('takes the second colour back with null', () => {
+    const blue = { red: 0, green: 0, blue: 1, white: 0 };
+    controller.update({ effect: { colourB: blue } });
+    expect(controller.getState().effect.colourB).toEqual(blue);
+    controller.update({ effect: { colourB: null } });
+    expect(controller.getState().effect.colourB).toBeNull();
+    expect(() => controller.update({ effect: { colourB: 'blue' } })).toThrow(PatchError);
   });
 
   it('tells browsers every frame it sends, with the beat the frame is for', () => {
@@ -650,7 +751,7 @@ describe('SpiderController effects', () => {
       tempo.update({ bpm, sync: true });
       controller.update({
         levels: { dimmer: 1 },
-        effect: { id: 'kick', speed: 1, colourA: red, colourB: red },
+        effect: { id: 'kick', speed: 1, colourA: red },
       });
       advance(30_000);
       controller.off('frame', record);
@@ -755,6 +856,16 @@ describe('SpiderController effects', () => {
 describe('SpiderController in a scene', () => {
   let output: RecordingOutput;
   let controller: SpiderController;
+  const green = { red: 0, green: 1, blue: 0, white: 0 };
+  const red = { red: 1, green: 0, blue: 0, white: 0 };
+
+  /** Everything set at once, a bit of every type. */
+  const everything = () =>
+    controller.update({
+      levels: { dimmer: 1, red3: 0.5, tilt1: 0.7, motorSpeed: 0.4, strobe: 0.2 },
+      raw: { effectSpeed: 40 },
+      effect: { id: 'wave', speed: 0.5, colourA: green, colourB: red },
+    });
 
   beforeEach(() => {
     output = new RecordingOutput();
@@ -770,75 +881,157 @@ describe('SpiderController in a scene', () => {
   });
   afterEach(() => controller.close());
 
-  it('gives nothing while it is at rest', () => {
-    expect(controller.snapshot()).toEqual({});
-  });
-
-  it('gives what is set and leaves out what is at rest', () => {
-    controller.update({ levels: { dimmer: 1, red3: 0.5, strobe: 0 }, raw: { effectSpeed: 40 } });
-    expect(controller.snapshot()).toEqual({
-      levels: { dimmer: 1, red3: 0.5 },
-      raw: { effectSpeed: 40 },
+  it('gives nothing while it is at rest, except the first colour for a colour scene', () => {
+    expect(controller.snapshot('lights')).toEqual({});
+    expect(controller.snapshot('motion')).toEqual({});
+    // A colour scene always says its first colour, so that it does not change when the default does.
+    expect(controller.snapshot('colour')).toEqual({
+      effect: { colourA: controller.getState().effect.colourA },
     });
   });
 
-  it('gives the effect with its colours while one is chosen', () => {
-    const colourA = { red: 0, green: 1, blue: 0, white: 0 };
-    controller.update({ effect: { id: 'wave', colourA } });
-    expect(controller.snapshot()).toEqual({
-      effect: { id: 'wave', colourA, colourB: controller.getState().effect.colourB, speed: 1 },
+  it('gives every type its own properties and no others', () => {
+    everything();
+    expect(controller.snapshot('lights')).toEqual({
+      levels: { dimmer: 1, strobe: 0.2 },
+      raw: { effectSpeed: 40 },
+      effect: { id: 'wave', speed: 0.5 },
+    });
+    expect(controller.snapshot('colour')).toEqual({
+      levels: { red3: 0.5 },
+      effect: { colourA: green, colourB: red },
+    });
+    expect(controller.snapshot('motion')).toEqual({ levels: { tilt1: 0.7, motorSpeed: 0.4 } });
+  });
+
+  it('leaves out what is at rest', () => {
+    controller.update({ levels: { dimmer: 1, red3: 0, strobe: 0 }, effect: { id: 'kick' } });
+    expect(controller.snapshot('lights')).toEqual({
+      levels: { dimmer: 1 },
+      effect: { id: 'kick', speed: 1 },
     });
     controller.update({ effect: { id: null } });
-    expect(controller.snapshot()).toEqual({});
+    expect(controller.snapshot('lights')).toEqual({ levels: { dimmer: 1 } });
   });
 
-  it('keeps the speed of the effect, and takes 1 for a scene that names none', () => {
-    controller.update({ effect: { id: 'chase', speed: 0.25 } });
-    const kept = controller.snapshot();
-    expect(kept.effect).toEqual(expect.objectContaining({ id: 'chase', speed: 0.25 }));
-    controller.recall({ effect: { id: 'kick' } });
-    expect(controller.getState().effect.speed).toBe(1);
-    controller.recall(kept);
-    expect(controller.getState().effect.speed).toBe(0.25);
-    expect(() => controller.check({ effect: { id: 'chase', speed: 3 } })).toThrow(PatchError);
+  it('names the second colour only while it is set', () => {
+    controller.update({ effect: { colourA: green } });
+    expect(controller.snapshot('colour')).toEqual({ effect: { colourA: green } });
+    controller.update({ effect: { colourB: red } });
+    expect(controller.snapshot('colour')).toEqual({ effect: { colourA: green, colourB: red } });
   });
 
-  it('comes back to what was kept, and what the part does not name goes to rest', () => {
-    controller.update({ levels: { dimmer: 1, red3: 0.5 }, effect: { id: 'wave' } });
-    const kept = controller.snapshot();
+  it('sets what its type keeps and leaves the other types alone', () => {
+    everything();
     const before = controller.getState();
-    controller.update({
-      levels: { dimmer: 0.2, green1: 1, tilt1: 0.7 },
-      raw: { effectSpeed: 40 },
-      effect: { id: 'kick', colourA: { red: 0, green: 0, blue: 1, white: 0 } },
-    });
-    controller.recall(kept, 'deck');
+    for (const type of ['lights', 'colour', 'motion'] as const) {
+      const kept = controller.snapshot(type);
+      controller.update({
+        levels: { dimmer: 0.1, red3: 0.1, red5: 1, tilt1: 0.1, tilt2: 0.9, motorSpeed: 1 },
+        raw: { effectSpeed: 200 },
+        effect: { id: 'kick', speed: 2, colourA: red, colourB: green },
+      });
+      const others = {
+        lights: controller.snapshot('lights'),
+        colour: controller.snapshot('colour'),
+        motion: controller.snapshot('motion'),
+      };
+      controller.recall(type, kept, 'deck');
+      expect(controller.snapshot(type)).toEqual(kept);
+      for (const other of ['lights', 'colour', 'motion'] as const) {
+        if (other !== type) expect(controller.snapshot(other)).toEqual(others[other]);
+      }
+    }
+    expect(controller.getState()).not.toEqual(before);
+  });
+
+  it('puts a look together from a scene of every type', () => {
+    everything();
+    const lights = controller.snapshot('lights');
+    const colour = controller.snapshot('colour');
+    const motion = controller.snapshot('motion');
+    const before = controller.getState();
+    controller.recall('lights', undefined);
+    controller.recall('colour', { effect: { colourA: red } });
+    controller.recall('motion', undefined);
+    expect(controller.getState()).not.toEqual(before);
+    controller.recall('lights', lights);
+    controller.recall('colour', colour);
+    controller.recall('motion', motion);
     expect(controller.getState()).toEqual(before);
-    expect(controller.snapshot()).toEqual(kept);
+  });
+
+  it('keeps an effect going when a colour scene or a motion scene is set', () => {
+    controller.update({ levels: { dimmer: 1 }, effect: { id: 'chase', speed: 0.25 } });
+    controller.recall('colour', { effect: { colourA: green } });
+    controller.recall('motion', { levels: { tilt1: 0.3 } });
+    expect(controller.getState().effect).toEqual({
+      id: 'chase',
+      speed: 0.25,
+      colourA: green,
+      colourB: null,
+    });
+    expect(controller.getState().levels.tilt1).toBe(0.3);
+    expect(ch(output, 6)).toBe(255);
+  });
+
+  it('takes the second colour back when a colour scene does not name it', () => {
+    controller.update({ effect: { colourA: red, colourB: green } });
+    controller.recall('colour', { effect: { colourA: green } });
+    expect(controller.getState().effect.colourB).toBeNull();
+    controller.recall('colour', { effect: { colourA: green, colourB: red } });
+    expect(controller.getState().effect.colourB).toEqual(red);
+  });
+
+  it('keeps the speed of the effect with lights, and takes 1 for a scene that names none', () => {
+    controller.update({ effect: { id: 'chase', speed: 0.25 } });
+    const kept = controller.snapshot('lights');
+    expect(kept.effect).toEqual({ id: 'chase', speed: 0.25 });
+    controller.recall('lights', { effect: { id: 'kick' } });
+    expect(controller.getState().effect.speed).toBe(1);
+    controller.recall('lights', kept);
+    expect(controller.getState().effect.speed).toBe(0.25);
+    expect(() => controller.check('lights', { effect: { id: 'chase', speed: 3 } })).toThrow(
+      PatchError,
+    );
+  });
+
+  it('is what off is: lights without a part darkens and leaves colour and motion', () => {
+    controller.update({
+      levels: { dimmer: 1, red1: 1, white8: 1, tilt1: 0.4, strobe: 0.5 },
+      raw: { effectSpeed: 40 },
+      effect: { id: 'kick', colourA: green },
+    });
+    controller.recall('lights', undefined);
+    const state = controller.getState();
+    expect(state.levels.dimmer).toBe(0);
+    expect(state.levels.strobe).toBe(0);
+    expect(state.raw.effectSpeed).toBe(0);
+    expect(state.effect.id).toBeNull();
+    expect(ch(output, 6)).toBe(0);
+    expect(state.levels.red1).toBe(1);
+    expect(state.levels.white8).toBe(1);
+    expect(state.levels.tilt1).toBe(0.4);
+    expect(state.effect.colourA).toEqual(green);
   });
 
   it('tells the listeners who recalled', () => {
     const told = vi.fn();
     controller.on('state', told);
-    controller.recall({ levels: { dimmer: 1 } }, 'deck');
+    controller.recall('lights', { levels: { dimmer: 1 } }, 'deck');
     expect(told).toHaveBeenCalledTimes(1);
     expect(told.mock.calls[0]?.[1]).toBe('deck');
     expect(ch(output, 6)).toBe(255);
-  });
-
-  it('goes dark without a part', () => {
-    controller.update({ levels: { dimmer: 1, white8: 1 }, effect: { id: 'kick' } });
-    controller.recall(undefined);
-    expect([...output.last].every((b) => b === 0)).toBe(true);
-    expect(controller.getState().effect.id).toBeNull();
   });
 
   it('lets a reset that is going on go on, and does not keep it in a scene', () => {
     vi.useFakeTimers();
     try {
       controller.resetFixture();
-      expect(controller.snapshot()).toEqual({});
-      controller.recall({ levels: { dimmer: 1 } });
+      for (const type of ['lights', 'colour', 'motion'] as const) {
+        expect(controller.snapshot(type).raw).toBeUndefined();
+      }
+      controller.recall('lights', { levels: { dimmer: 1 } });
       expect(controller.getState().resetting).toBe(true);
       expect(ch(output, 43)).toBe(255);
       vi.advanceTimersByTime(3500);
@@ -853,10 +1046,10 @@ describe('SpiderController in a scene', () => {
     controller.update({ levels: { dimmer: 0.8 } });
     controller.setMaster(0.5);
     expect(ch(output, 6)).toBe(102);
-    const kept = controller.snapshot();
+    const kept = controller.snapshot('lights');
     expect(kept).toEqual({ levels: { dimmer: 0.8 } });
-    controller.recall(undefined);
-    controller.recall(kept);
+    controller.recall('lights', undefined);
+    controller.recall('lights', kept);
     expect(ch(output, 6)).toBe(102);
     controller.setMaster(1);
     expect(ch(output, 6)).toBe(204);
@@ -872,11 +1065,32 @@ describe('SpiderController in a scene', () => {
       { colour: 'red' },
       'bright',
     ]) {
-      expect(() => controller.check(part)).toThrow(PatchError);
-      expect(() => controller.recall(part)).toThrow(PatchError);
+      expect(() => controller.check('lights', part)).toThrow(PatchError);
+      expect(() => controller.recall('lights', part)).toThrow(PatchError);
     }
     expect(controller.getState()).toEqual(before);
-    expect(() => controller.check({ levels: { dimmer: 0.5 } })).not.toThrow();
+    expect(() => controller.check('lights', { levels: { dimmer: 0.5 } })).not.toThrow();
+    expect(controller.getState()).toEqual(before);
+  });
+
+  it('refuses a part that names what belongs to another type', () => {
+    controller.update({ levels: { dimmer: 1 } });
+    const before = controller.getState();
+    const cases: [Parameters<typeof controller.check>[0], unknown][] = [
+      ['colour', { levels: { dimmer: 1 } }],
+      ['colour', { raw: { effectSpeed: 3 } }],
+      ['colour', { effect: { id: 'kick' } }],
+      ['motion', { levels: { red1: 1 } }],
+      ['motion', { effect: { colourA: red } }],
+      ['lights', { levels: { tilt1: 0.5 } }],
+      ['lights', { levels: { red1: 1 } }],
+      ['lights', { effect: { colourA: red } }],
+      ['lights', { effect: { colourB: null } }],
+    ];
+    for (const [type, part] of cases) {
+      expect(() => controller.check(type, part)).toThrow(/not part of a|cannot set/);
+      expect(() => controller.recall(type, part)).toThrow(PatchError);
+    }
     expect(controller.getState()).toEqual(before);
   });
 });

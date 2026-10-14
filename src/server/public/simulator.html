@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f1114" />
+    <title>Simulator</title>
+    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/simulator.css" />
+    <!-- three.js is served from here, so that the tablet and the laptop need no internet. -->
+    <script type="importmap">
+      { "imports": { "three": "/lib/three/three.module.min.js" } }
+    </script>
+  </head>
+  <body>
+    <canvas id="stage" aria-label="The fixtures in 3D, as lightdeck sends them"></canvas>
+
+    <header class="tools">
+      <a class="key home" href="/deck">Deck</a>
+      <h1 class="title">Simulator</h1>
+
+      <fieldset class="group" aria-label="Fixture">
+        <div class="row" id="fixtures"></div>
+      </fieldset>
+
+      <fieldset class="group" aria-label="Move or turn the fixture">
+        <div class="row">
+          <button type="button" class="key" id="mode-translate" aria-pressed="true">Move</button>
+          <button type="button" class="key" id="mode-rotate" aria-pressed="false">Rotate</button>
+          <button type="button" class="key" id="space" aria-pressed="false">Local axes</button>
+          <button type="button" class="key" id="snap" aria-pressed="false">Snap</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="group" aria-label="How the fixture is mounted">
+        <div class="row" id="mounts"></div>
+      </fieldset>
+
+      <fieldset class="group" aria-label="Reset and calibration">
+        <div class="row">
+          <button type="button" class="key" id="calibrate-toggle" aria-pressed="false">Calibrate</button>
+          <button type="button" class="key" id="reset-fixture">Reset fixture</button>
+          <button type="button" class="key" id="reset-view">Reset view</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="group settings" aria-label="Look">
+        <label for="haze">Haze <output id="haze-value"></output></label>
+        <input type="range" id="haze" min="0" max="100" step="5" />
+      </fieldset>
+    </header>
+
+    <section class="calibrate" id="calibrate" aria-labelledby="calibrate-title" hidden>
+      <h2 id="calibrate-title">Calibrate the bars</h2>
+      <p class="hint">
+        Set a tilt value on the real spider, for example on its Movement page. Then move the
+        angle here until the bar stands where the real one does. Each change stores a point for
+        that value, and between points the bar turns in a straight line. Kept in this browser.
+      </p>
+      <p class="hint" id="calibrate-hint">Choose a fixture first.</p>
+      <div id="calibrate-bars"></div>
+      <div class="cal-export">
+        <label for="calibrate-export">Calibration as in the config (<code>tiltCurve</code>)</label>
+        <textarea id="calibrate-export" rows="3" readonly></textarea>
+        <button type="button" class="key" id="calibrate-copy">Copy</button>
+      </div>
+    </section>
+
+    <ul class="links" id="links" aria-label="Connection">
+      <li class="link" id="link-stream" data-state="unknown">
+        <span class="lamp" aria-hidden="true"></span><span class="link-text">Lightdeck</span>
+      </li>
+      <li class="link" id="link-bridge" data-state="unknown">
+        <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
+      </li>
+    </ul>
+
+    <p class="note" id="note" role="status" hidden></p>
+    <script type="module" src="/simulator.js"></script>
+  </body>
+</html>

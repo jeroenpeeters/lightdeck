@@ -6,6 +6,11 @@
  * effects that move, a tilt per bar. No timers and no state in here, so every effect
  * is reproducible and can be tested frame by frame.
  *
+ * The first colour is the foreground: what flashes, hits or moves. The second is the
+ * background: what the rest of the lenses show. An operator who leaves the second colour
+ * empty gets the first colour dim there (`palette`), so an effect never sees an empty
+ * colour and one colour is enough for every effect.
+ *
  * Brightness lives in the cell colours. The fixture's master dimmer stays with the
  * operator.
  *
@@ -17,12 +22,25 @@
  */
 
 import { clamp01 } from '../model/fixture.js';
+import { type Curve, curveInverse, curveRange } from './curve.js';
 
 export interface Rgbw {
   red: number;
   green: number;
   blue: number;
   white: number;
+}
+
+/**
+ * How the bars of a fixture move, for an effect that works in degrees and not in tilt values.
+ * Both are optional: an effect that is given none moves as if the tilt ran in a straight line
+ * from 90 degrees to the front at 0 to 90 degrees to the back at 1.
+ */
+export interface MotionModel {
+  /** Per bar, points of [tilt 0..1, degrees from neutral, positive to the front]. */
+  tilt?: readonly Curve[] | undefined;
+  /** Points of [motor speed 0..1, degrees per second], the same for every bar. */
+  motorSpeed?: Curve | undefined;
 }
 
 export interface EffectContext {
@@ -34,15 +52,23 @@ export interface EffectContext {
   cells: number;
   /** 0-based cell indices per bar, in order along the bar. */
   bars: readonly (readonly number[])[];
-  /** First and second colour of the palette. */
+  /** The foreground colour: what flashes, hits or moves. */
   a: Rgbw;
+  /** The background colour: what the rest shows. See `palette` for when it was left empty. */
   b: Rgbw;
+  /** How the bars turn, when the fixture says. */
+  motion?: MotionModel;
 }
 
 export interface EffectFrame {
   cells: Rgbw[];
   /** Tilt 0..1 per bar. Absent when the effect leaves the bars where the operator put them. */
   tilt?: number[];
+  /**
+   * Motor speed 0..1. Absent when the effect leaves it with the operator, which is what every
+   * effect does but the ones that say `setsMotorSpeed`.
+   */
+  motorSpeed?: number;
 }
 
 export interface Effect {
@@ -54,6 +80,8 @@ export interface Effect {
   colours: 'both' | 'first' | 'none';
   /** True when the effect tilts the bars. */
   moves: boolean;
+  /** True when the effect also sets the motor speed, if it can work it out, so the page says so. */
+  setsMotorSpeed?: boolean;
   render(context: EffectContext): EffectFrame;
 }
 
@@ -77,7 +105,17 @@ export function limitSpeed(bpm: number, wanted: number): number {
   return speed;
 }
 
-const BLACK: Rgbw = { red: 0, green: 0, blue: 0, white: 0 };
+/** How bright the background is when the second colour was left empty: the first colour, dim. */
+export const REST_LEVEL = 0.07;
+
+/**
+ * The two colours an effect is given, from what the operator chose. The second colour may
+ * be empty (`null`), and then the background is the first colour at `REST_LEVEL`.
+ */
+export function palette(a: Rgbw, b: Rgbw | null): { a: Rgbw; b: Rgbw } {
+  return { a, b: b ?? scale(a, REST_LEVEL) };
+}
+
 const TAU = Math.PI * 2;
 
 const frac = (x: number) => x - Math.floor(x);
@@ -153,13 +191,12 @@ const kick: Effect = {
   id: 'kick',
   name: 'Kick',
   description:
-    'Every lens hits on the beat and fades, like the kick drum. The first beat of each bar takes the second colour.',
+    'Every lens hits on the beat in the first colour and falls back to the second, like the kick drum. The first beat of each bar rings a little longer.',
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
     const downbeat = mod(Math.floor(beat), 4) === 0;
-    const level = 0.06 + 0.94 * hit(beat, 5);
-    return { cells: fill(cells, () => scale(downbeat ? b : a, level)) };
+    return { cells: fill(cells, () => mix(b, a, hit(beat, downbeat ? 3.5 : 5))) };
   },
 };
 
@@ -167,7 +204,7 @@ const chase: Effect = {
   id: 'chase',
   name: 'Chase',
   description:
-    'One bright lens steps along all eight with a fading tail, one lens per beat, over a dim second colour.',
+    'One bright lens of the first colour steps along all eight with a fading tail, one lens per beat, over the second colour.',
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
@@ -175,7 +212,7 @@ const chase: Effect = {
     return {
       cells: fill(cells, (i) => {
         const behind = (head - i + cells) % cells;
-        return mix(scale(b, 0.07), a, Math.exp(-1.3 * behind));
+        return mix(b, a, Math.exp(-1.3 * behind));
       }),
     };
   },
@@ -185,7 +222,7 @@ const bounce: Effect = {
   id: 'bounce',
   name: 'Bounce',
   description:
-    'A spot of light steps to the far end and back, one lens per beat, changing from the first colour to the second on the way.',
+    'A spot of the first colour steps to the far end and back, one lens per beat, over the second colour.',
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
@@ -193,11 +230,10 @@ const bounce: Effect = {
     // lenses it turns around on the bar.
     const step = mod(Math.floor(beat), 2 * cells);
     const position = step < cells ? step : 2 * cells - 1 - step;
-    const colour = mix(a, b, cells > 1 ? position / (cells - 1) : 0);
     return {
       cells: fill(cells, (i) => {
         const near = clamp01(1 - Math.abs(i - position) / 1.4);
-        return scale(colour, near * near);
+        return mix(b, a, near * near);
       }),
     };
   },
@@ -207,7 +243,7 @@ const swap: Effect = {
   id: 'swap',
   name: 'Bar swap',
   description:
-    'The two bars answer each other: bar 1 hits in the first colour, bar 2 on the next beat in the second.',
+    'The two bars answer each other: bar 1 hits in the first colour, bar 2 on the next beat, each falling back to the second.',
   colours: 'both',
   moves: false,
   render({ beat, cells, bars, a, b }) {
@@ -215,11 +251,7 @@ const swap: Effect = {
     const lit = mod(Math.floor(beat), count);
     const level = hit(beat, 3.5);
     return {
-      cells: fill(cells, (i) => {
-        const bar = barOf(bars, i);
-        if (bar !== lit) return scale(bar % 2 === 0 ? a : b, 0.04);
-        return scale(bar % 2 === 0 ? a : b, level);
-      }),
+      cells: fill(cells, (i) => (barOf(bars, i) === lit ? mix(b, a, level) : b)),
     };
   },
 };
@@ -228,15 +260,14 @@ const wave: Effect = {
   id: 'wave',
   name: 'Wave',
   description:
-    'Brightness rolls along the lenses as a smooth wave while the colour drifts between the two colours.',
+    'A smooth wave rolls along the lenses: its crest is the first colour and its troughs the second.',
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
     return {
       cells: fill(cells, (i) => {
         const swell = 0.5 + 0.5 * Math.sin(TAU * (beat / 4 - i / cells));
-        const blend = 0.5 + 0.5 * Math.sin(TAU * (beat / 8 + i / cells));
-        return scale(mix(a, b, blend), 0.05 + 0.95 * swell * swell);
+        return mix(b, a, swell * swell);
       }),
     };
   },
@@ -259,15 +290,14 @@ const sparkle: Effect = {
   id: 'sparkle',
   name: 'Sparkle',
   description:
-    'A dim wash of the first colour with single lenses flashing in the second colour, at random, other lenses on every beat.',
+    'Single lenses flash in the first colour over a wash of the second, at random, other lenses on every beat.',
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
     const slot = Math.floor(beat);
     const level = hit(beat, 3);
-    const base = scale(a, 0.1);
     return {
-      cells: fill(cells, (i) => (noise(slot, i) < 0.22 ? mix(base, b, level) : base)),
+      cells: fill(cells, (i) => (noise(slot, i) < 0.22 ? mix(b, a, level) : b)),
     };
   },
 };
@@ -276,13 +306,13 @@ const build: Effect = {
   id: 'build',
   name: 'Build-up',
   description:
-    'Eight bars of tension: the flashes get faster and brighter and spread from the middle outwards, then everything drops on the second colour.',
+    'Eight bars of tension: flashes of the first colour get faster and brighter and spread from the middle outwards over the second, then everything drops on the first.',
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
     const position = mod(beat, BUILD_BEATS);
     const last = BUILD_BEATS - 1;
-    if (position >= last) return { cells: fill(cells, () => scale(b, hit(position, 2.2))) };
+    if (position >= last) return { cells: fill(cells, () => mix(b, a, hit(position, 2.2))) };
 
     const progress = position / last;
     // A flash every bar, then every two beats, then on every beat.
@@ -293,7 +323,7 @@ const build: Effect = {
     const reach = 0.5 + (Math.floor(position) / last) * (cells / 2);
     const middle = (cells - 1) / 2;
     return {
-      cells: fill(cells, (i) => (Math.abs(i - middle) <= reach ? scale(a, level) : BLACK)),
+      cells: fill(cells, (i) => (Math.abs(i - middle) <= reach ? mix(b, a, level) : b)),
     };
   },
 };
@@ -302,33 +332,138 @@ const burst: Effect = {
   id: 'burst',
   name: 'Strobe burst',
   description:
-    'Three bars of kick in the first colour, then a bar of hard flashes on the beat in the second colour.',
+    'Three bars of kick in the first colour over the second, then a bar of hard flashes of the first colour on the beat.',
   colours: 'both',
   moves: false,
   render({ beat, cells, a, b }) {
     if (mod(beat, 16) < 12) {
       const level = 0.05 + 0.6 * hit(beat, 5);
-      return { cells: fill(cells, () => scale(a, level)) };
+      return { cells: fill(cells, () => mix(b, a, level)) };
     }
     const on = frac(beat) < 0.4;
-    return { cells: fill(cells, () => (on ? scale(b, 1) : BLACK)) };
+    return { cells: fill(cells, () => (on ? a : b)) };
   },
 };
 
-const scissor: Effect = {
-  id: 'scissor',
-  name: 'Scissor',
+const tiltWave: Effect = {
+  id: 'tiltwave',
+  name: 'Tilt wave',
   description:
-    'The bars swing against each other, one cycle every two bars. Bar 1 holds the first colour and bar 2 the second, with a soft pump on the beat.',
+    'The tilts of the two bars rise and fall against each other on a slow wave, one cycle every two bars, with a soft pump on the beat in the first colour over the second.',
   colours: 'both',
   moves: true,
   render({ beat, cells, bars, a, b }) {
     const swing = 0.3 * Math.sin(TAU * (beat / 8));
     const pump = 0.7 + 0.3 * hit(beat, 3);
     return {
-      cells: fill(cells, (i) => scale(barOf(bars, i) % 2 === 0 ? a : b, pump)),
+      cells: fill(cells, () => mix(b, a, pump)),
       tilt: bars.map((_, bar) => clamp01(0.5 + (bar % 2 === 0 ? swing : -swing))),
     };
+  },
+};
+
+/** What a bar does when the fixture gives no calibration: 90 degrees to the front down to 90 to the back. */
+const LINEAR_TILT: Curve = [
+  [0, 90],
+  [1, -90],
+];
+
+/** The furthest a scissor goes to either side, in degrees, when the bars can. */
+const SCISSOR_DEGREES = 60;
+/** One cycle of a scissor, in beats: crossed on the first beat of the cycle, open on the fifth. */
+const SCISSOR_BEATS = 8;
+/**
+ * The beats a bar takes for its whole swing when the motor speed does the timing. The swing is
+ * over a beat before the bar reverses, so the bars stand still on the beat they have arrived.
+ */
+const SCISSOR_TRAVEL_BEATS = 3;
+
+/** The tilt that puts bar number `bar` at `degrees`. */
+function tiltFor(model: MotionModel | undefined, bar: number, degrees: number): number {
+  const curve = model?.tilt?.[bar] ?? LINEAR_TILT;
+  return clamp01(curveInverse(curve, degrees) ?? 0.5);
+}
+
+/**
+ * How far a scissor can cross its beams and how far it can open them, in degrees. The bar on an
+ * even place (the back bar) turns to the front and the one on an odd place to the back when the
+ * beams cross, and the other way when they open, so each side is as far as the bar that reaches
+ * the least that way, and no further than `SCISSOR_DEGREES`. The two are not the same when a bar
+ * does not reach as far to one side as to the other, and then the swing is lopsided: that is
+ * what the bars can do.
+ */
+function scissorSpan(
+  bars: number,
+  model: MotionModel | undefined,
+): { cross: number; open: number } {
+  let cross = SCISSOR_DEGREES;
+  let open = SCISSOR_DEGREES;
+  for (let bar = 0; bar < bars; bar++) {
+    const range = curveRange(model?.tilt?.[bar] ?? LINEAR_TILT);
+    if (!range) continue;
+    const front = Math.max(0, range.max);
+    const back = Math.max(0, -range.min);
+    cross = Math.min(cross, bar % 2 === 0 ? front : back);
+    open = Math.min(open, bar % 2 === 0 ? back : front);
+  }
+  return { cross, open };
+}
+
+/** Positive turns the bar to the cross side: the back bar to the front, the front bar to the back. */
+const scissorSide = (bar: number) => (bar % 2 === 0 ? 1 : -1);
+
+const scissor: Effect = {
+  id: 'scissor',
+  name: 'Scissor',
+  description:
+    'The bars swing through each other like scissors, on a smooth curve of the beat: the beams cross on the first beat of every second bar and are furthest apart four beats later, with a soft pump on the beat.',
+  colours: 'both',
+  moves: true,
+  render({ beat, cells, bars, a, b, motion }) {
+    const pump = 0.7 + 0.3 * hit(beat, 3);
+    const { cross, open } = scissorSpan(bars.length, motion);
+    const swing =
+      (cross - open) / 2 + ((cross + open) / 2) * Math.cos(TAU * (beat / SCISSOR_BEATS));
+    return {
+      cells: fill(cells, () => mix(b, a, pump)),
+      tilt: bars.map((_, bar) => tiltFor(motion, bar, scissorSide(bar) * swing)),
+    };
+  },
+};
+
+const scissorMotor: Effect = {
+  id: 'scissor-motor',
+  name: 'Scissor, by motor speed',
+  description:
+    'The same scissor, but the bars are sent to their end point only twice per cycle, and the motor speed is set to make them take three of the four beats to get there.',
+  colours: 'both',
+  moves: true,
+  setsMotorSpeed: true,
+  render({ beat, bpm, cells, bars, a, b, motion }) {
+    const pump = 0.7 + 0.3 * hit(beat, 3);
+    const travelSeconds = (SCISSOR_TRAVEL_BEATS * 60) / bpm;
+    let { cross, open } = scissorSpan(bars.length, motion);
+    // A motor that is too slow for the swing at this tempo gets a shorter swing, not a late one.
+    const rates = motion?.motorSpeed ? curveRange(motion.motorSpeed) : undefined;
+    const whole = cross + open;
+    if (rates && whole > 0) {
+      const shorter = Math.min(1, (rates.max * travelSeconds) / whole);
+      cross *= shorter;
+      open *= shorter;
+    }
+    // The target changes on the beat that is the swing's time before the beat it should arrive on.
+    const half = SCISSOR_BEATS / 2;
+    const crossed = mod(beat - (half - SCISSOR_TRAVEL_BEATS), SCISSOR_BEATS) >= half;
+    const target = crossed ? cross : -open;
+    const frame: EffectFrame = {
+      cells: fill(cells, () => mix(b, a, pump)),
+      tilt: bars.map((_, bar) => tiltFor(motion, bar, scissorSide(bar) * target)),
+    };
+    if (motion?.motorSpeed && cross + open > 0) {
+      const speed = curveInverse(motion.motorSpeed, (cross + open) / travelSeconds);
+      if (speed !== undefined) frame.motorSpeed = clamp01(speed);
+    }
+    return frame;
   },
 };
 
@@ -342,7 +477,9 @@ export const EFFECTS: readonly Effect[] = [
   sparkle,
   build,
   burst,
+  tiltWave,
   scissor,
+  scissorMotor,
 ];
 
 export function findEffect(id: string): Effect | undefined {

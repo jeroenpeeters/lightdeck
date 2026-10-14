@@ -126,13 +126,23 @@ describe('readShow', () => {
           laser: {
             label: 'Laser',
             fixtures: ['laser'],
-            scenes: { tunnel: { label: 'Tunnel', fixtures: { laser: { raw: { mode: 95 } } } } },
+            scenes: {
+              tunnel: {
+                label: 'Tunnel',
+                type: 'lights',
+                fixtures: { laser: { raw: { mode: 95 } } },
+              },
+            },
           },
           both: {
             fixtures: ['laser', 'spider'],
             scenes: {
-              warm: { label: 'Warm', fixtures: { spider: { levels: { dimmer: 1 } } } },
-              dark: {},
+              warm: {
+                label: 'Warm',
+                type: 'lights',
+                fixtures: { spider: { levels: { dimmer: 1 } } },
+              },
+              dark: { type: 'motion' },
             },
           },
           bare: { fixtures: ['spider'] },
@@ -145,15 +155,27 @@ describe('readShow', () => {
         id: 'laser',
         label: 'Laser',
         fixtures: ['laser'],
-        scenes: [{ id: 'tunnel', label: 'Tunnel', fixtures: { laser: { raw: { mode: 95 } } } }],
+        scenes: [
+          {
+            id: 'tunnel',
+            label: 'Tunnel',
+            type: 'lights',
+            fixtures: { laser: { raw: { mode: 95 } } },
+          },
+        ],
       },
       {
         id: 'both',
         label: 'both',
         fixtures: ['laser', 'spider'],
         scenes: [
-          { id: 'warm', label: 'Warm', fixtures: { spider: { levels: { dimmer: 1 } } } },
-          { id: 'dark', label: 'dark', fixtures: {} },
+          {
+            id: 'warm',
+            label: 'Warm',
+            type: 'lights',
+            fixtures: { spider: { levels: { dimmer: 1 } } },
+          },
+          { id: 'dark', label: 'dark', type: 'motion', fixtures: {} },
         ],
       },
       { id: 'bare', label: 'bare', fixtures: ['spider'], scenes: [] },
@@ -162,9 +184,9 @@ describe('readShow', () => {
 
   it('keeps the order of a map, also where an id is a number', () => {
     const scenes = new Map([
-      ['warm', { label: 'Warm' }],
-      ['2', { label: 'Two' }],
-      ['1', { label: 'One' }],
+      ['warm', { label: 'Warm', type: 'lights' }],
+      ['2', { label: 'Two', type: 'colour' }],
+      ['1', { label: 'One', type: 'motion' }],
     ]);
     const groups = new Map([
       ['spider', { fixtures: ['spider'], scenes }],
@@ -186,7 +208,7 @@ describe('readShow', () => {
   });
 
   it('gives two groups a scene of the same id', () => {
-    const scenes = { peak: {} };
+    const scenes = { peak: { type: 'lights' } };
     const show = readShow(
       {
         groups: {
@@ -203,8 +225,12 @@ describe('readShow', () => {
     const show = readShow(
       {
         scenes: {
-          warm: { label: 'Warm', fixtures: { spider: { levels: { dimmer: 1 } }, laser: {} } },
-          dark: {},
+          warm: {
+            label: 'Warm',
+            type: 'lights',
+            fixtures: { spider: { levels: { dimmer: 1 } }, laser: {} },
+          },
+          dark: { type: 'colour' },
         },
       },
       RIG,
@@ -217,44 +243,52 @@ describe('readShow', () => {
     expect(show.groups[2]?.scenes[0]).toEqual({
       id: 'warm',
       label: 'Warm',
+      type: 'lights',
       fixtures: { spider: { levels: { dimmer: 1 } }, laser: {} },
     });
     expect(readShow({ scenes: null }, RIG)).toEqual({ groups: startingGroups(RIG.fixtures) });
   });
 
   it('puts the scenes from before there were groups with the one fixture there is', () => {
-    const show = readShow({ scenes: { warm: {} } }, { ...RIG, fixtures: [SPIDER] });
+    const show = readShow({ scenes: { warm: { type: 'lights' } } }, { ...RIG, fixtures: [SPIDER] });
     expect(show.groups).toEqual([
       {
         id: 'spider',
         label: 'Spider',
         fixtures: ['spider'],
-        scenes: [{ id: 'warm', label: 'warm', fixtures: {} }],
+        scenes: [{ id: 'warm', label: 'warm', type: 'lights', fixtures: {} }],
       },
     ]);
   });
 
   it('hands every part to the check, and says which scene it refused', () => {
     const seen: unknown[] = [];
-    const check = (fixture: string, part: unknown) => {
-      seen.push([fixture, part]);
+    const check = (fixture: string, type: string, part: unknown) => {
+      seen.push([fixture, type, part]);
       if (fixture === 'laser') throw new PatchError('"mode" must be a whole number');
     };
     const fixtures = { spider: { a: 1 }, laser: {} };
     expect(() =>
       readShow(
-        { groups: { both: { fixtures: ['spider', 'laser'], scenes: { one: { fixtures } } } } },
+        {
+          groups: {
+            both: {
+              fixtures: ['spider', 'laser'],
+              scenes: { one: { type: 'colour', fixtures } },
+            },
+          },
+        },
         { ...RIG, check },
       ),
     ).toThrow(new ShowError('scene "one" of group "both": "mode" must be a whole number'));
     expect(seen).toEqual([
-      ['spider', { a: 1 }],
-      ['laser', {}],
+      ['spider', 'colour', { a: 1 }],
+      ['laser', 'colour', {}],
     ]);
 
-    expect(() => readShow({ scenes: { one: { fixtures } } }, { ...RIG, check })).toThrow(
-      new ShowError('scene "one": "mode" must be a whole number'),
-    );
+    expect(() =>
+      readShow({ scenes: { one: { type: 'colour', fixtures } } }, { ...RIG, check }),
+    ).toThrow(new ShowError('scene "one": "mode" must be a whole number'));
   });
 
   it('says what is wrong with a show that is not one', () => {
@@ -308,10 +342,25 @@ describe('readShow', () => {
         group({ off: {} }),
         'scene "off" of group "spider": "off" cannot be the id of a scene, every group has an off already',
       ],
-      [group({ one: 'warm' }), 'scene "one" of group "spider" must have a label and fixtures'],
+      [
+        group({ one: 'warm' }),
+        'scene "one" of group "spider" must have a label, a type and fixtures',
+      ],
       [
         group({ one: { colour: 'red' } }),
-        'scene "one" of group "spider" cannot have "colour", only label and fixtures',
+        'scene "one" of group "spider" cannot have "colour", only label, type and fixtures',
+      ],
+      [
+        group({ one: {} }),
+        'scene "one" of group "spider": a scene needs a type: lights, colour, motion',
+      ],
+      [
+        group({ one: { type: 'full' } }),
+        'scene "one" of group "spider": a scene needs a type: lights, colour, motion',
+      ],
+      [
+        group({ one: { type: 7, fixtures: {} } }),
+        'scene "one" of group "spider": a scene needs a type: lights, colour, motion',
       ],
       [
         group({ one: { fixtures: ['spider'] } }),
@@ -319,11 +368,11 @@ describe('readShow', () => {
       ],
       [group({ one: { label: '' } }), 'scene "one" of group "spider": a scene needs a name'],
       [
-        group({ one: { fixtures: { laser: {} } } }),
+        group({ one: { type: 'lights', fixtures: { laser: {} } } }),
         'scene "one" of group "spider": "laser" is not a fixture of this group, which has spider',
       ],
       [
-        group({ one: { fixtures: { strobe: {} } } }),
+        group({ one: { type: 'lights', fixtures: { strobe: {} } } }),
         'scene "one" of group "spider": there is no fixture called "strobe", only spider, laser',
       ],
       [{ scenes: [] }, '"scenes" must be a list of scenes by their id'],
@@ -335,9 +384,9 @@ describe('readShow', () => {
         { scenes: { off: {} } },
         'scene "off": "off" cannot be the id of a scene, every group has an off already',
       ],
-      [{ scenes: { one: 'warm' } }, 'scene "one" must have a label and fixtures'],
+      [{ scenes: { one: 'warm' } }, 'scene "one" must have a label, a type and fixtures'],
       [
-        { scenes: { one: { fixtures: { strobe: {} } } } },
+        { scenes: { one: { type: 'lights', fixtures: { strobe: {} } } } },
         'scene "one": there is no fixture called "strobe", only spider, laser',
       ],
     ];
@@ -350,7 +399,7 @@ describe('readShow', () => {
   it('cannot put scenes from before there were groups anywhere without a fixture', () => {
     const nothing: KnownFixtures = { fixtures: [], check: () => {} };
     expect(readShow({ scenes: {} }, nothing)).toEqual({ groups: [] });
-    expect(() => readShow({ scenes: { warm: {} } }, nothing)).toThrow(
+    expect(() => readShow({ scenes: { warm: { type: 'lights' } } }, nothing)).toThrow(
       new ShowError('the show has scenes, and there is no fixture they can be for'),
     );
   });

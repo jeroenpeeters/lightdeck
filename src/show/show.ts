@@ -1,11 +1,12 @@
 /**
  * The show: what has been programmed. For now that is the groups with their scenes.
  *
- * A group is a named set of fixtures, and a scene is a look for the fixtures of one
- * group. For every fixture it names, a scene holds what that fixture should be doing, in
- * the form the controller of the fixture gives and takes; a fixture of the group that it
- * does not name is dark. The show knows fixtures by their id only. Which fixtures there
- * are, and whether one of them can take a part, is handed to it.
+ * A group is a named set of fixtures, and a scene is a part of a look for the fixtures of
+ * one group, of one type: lights, colour or motion. For every fixture it names, a scene
+ * holds the properties of its type that fixture should have, in the form the controller of
+ * the fixture gives and takes; a fixture of the group that it does not name has those
+ * properties at rest. The show knows fixtures by their id only. Which fixtures there are,
+ * and whether one of them can take a part, is handed to it.
  *
  * In the file the groups are a map from id to group, and so are the scenes of a group:
  *
@@ -14,18 +15,27 @@
  *       label: Spider
  *       fixtures: [spider]
  *       scenes:
- *         amber-chase:
- *           label: Amber chase
+ *         chase:
+ *           label: Chase
+ *           type: lights
  *           fixtures:
  *             spider:
  *               levels: { dimmer: 1 }
- *               effect: { id: chase, colourA: ..., colourB: ... }
+ *               effect: { id: chase }
+ *         amber:
+ *           label: Amber
+ *           type: colour
+ *           fixtures:
+ *             spider:
+ *               effect: { colourA: ... }
  *
  * A show without a file starts with a group for every fixture and one for all of them.
  * A file from before there were groups has `scenes:` at the top. It is read as those
- * starting groups, with its scenes in the group of all fixtures.
+ * starting groups, with its scenes in the group of all fixtures. A scene without a type is
+ * a mistake, so the scenes of before there were types are not read.
  */
 
+import { isSceneType, SCENE_TYPES, type SceneType } from '../fixtures/profile.js';
 import { PatchError } from '../server/fixture.js';
 
 export interface Scene {
@@ -33,7 +43,9 @@ export interface Scene {
   id: string;
   /** What the operator calls it. */
   label: string;
-  /** By fixture id, what the controller of that fixture keeps of it. */
+  /** Which properties of the fixtures it sets. */
+  type: SceneType;
+  /** By fixture id, what the controller of that fixture keeps of it for this type. */
   fixtures: Record<string, unknown>;
 }
 
@@ -62,8 +74,8 @@ export interface ShowFixture {
   label: string;
 }
 
-/** Throws when the fixture cannot take this part. */
-export type CheckPart = (fixture: string, part: unknown) => void;
+/** Throws when the fixture cannot take this part of a scene of this type. */
+export type CheckPart = (fixture: string, type: SceneType, part: unknown) => void;
 
 /** What the show is told about the fixtures of the rig. */
 export interface KnownFixtures {
@@ -103,6 +115,14 @@ export function readLabel(value: unknown, what = 'scene'): string {
     throw new PatchError(`the name of a ${what} can have ${MAX_LABEL} characters at most`);
   }
   return label;
+}
+
+/** The type of a scene as it was given. Throws a `PatchError` when it is none of the three. */
+export function readSceneType(value: unknown): SceneType {
+  if (!isSceneType(value)) {
+    throw new PatchError(`a scene needs a type: ${SCENE_TYPES.join(', ')}`);
+  }
+  return value;
 }
 
 /** An id made from the name, with a number behind it when that id is taken. */
@@ -192,15 +212,18 @@ function readScenes(listed: unknown, group: Group, known: KnownFixtures, place: 
         `${where}: "${OFF}" cannot be the id of a scene, every group has an off already`,
       );
     }
-    if (!isObject(scene)) throw new ShowError(`${where} must have a label and fixtures`);
-    const extra = Object.keys(scene).find((key) => key !== 'label' && key !== 'fixtures');
+    if (!isObject(scene)) throw new ShowError(`${where} must have a label, a type and fixtures`);
+    const extra = Object.keys(scene).find(
+      (key) => key !== 'label' && key !== 'type' && key !== 'fixtures',
+    );
     if (extra !== undefined) {
-      throw new ShowError(`${where} cannot have "${extra}", only label and fixtures`);
+      throw new ShowError(`${where} cannot have "${extra}", only label, type and fixtures`);
     }
     const fixtures = scene.fixtures ?? {};
     if (!isObject(fixtures)) throw new ShowError(`${where}: "fixtures" must name fixtures`);
     try {
       const label = scene.label === undefined ? id : readLabel(scene.label);
+      const type = readSceneType(scene.type);
       for (const [fixture, part] of Object.entries(fixtures)) {
         if (!known.fixtures.some((each) => each.id === fixture)) {
           throw new PatchError(noFixture(fixture, known.fixtures));
@@ -210,9 +233,9 @@ function readScenes(listed: unknown, group: Group, known: KnownFixtures, place: 
             `"${fixture}" is not a fixture of this group, which has ${group.fixtures.join(', ')}`,
           );
         }
-        known.check(fixture, part);
+        known.check(fixture, type, part);
       }
-      scenes.push({ id, label, fixtures });
+      scenes.push({ id, label, type, fixtures });
     } catch (error) {
       throw new ShowError(`${where}: ${message(error)}`);
     }

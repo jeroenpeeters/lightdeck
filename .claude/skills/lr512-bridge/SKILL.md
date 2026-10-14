@@ -71,7 +71,7 @@ Things that look like a fault and are not:
   device itself when the network fails: watch the state of the device.
 - Universe 1 reporting 0 channels. That is the licence of an LR512.
 - A drop while the app was in the background. Android freezes it, and the library's
-  keep-alive stops. There is no foreground service yet.
+  keep-alive stops. Since 2026-10-14 a foreground service should prevent that (not yet run on the phone); if the bridge still drops in the background, check whether the notification is there and whether the battery use of the app is Unrestricted.
 
 ## Changing the bridge
 

@@ -1,23 +1,28 @@
 // The deck: the groups of the show with their scenes. Plain browser JavaScript, no build
 // step.
 //
-// A group is a set of fixtures, and a scene is what the fixtures of its group do. Every
-// group has a row here, with a key per scene and a key for off. One scene per group is
-// on, so several scenes are on at once, each for its own fixtures.
+// A group is a set of fixtures, and a scene is a part of what the fixtures of its group do.
+// A scene is of one type: Lights (what is on, and what it does), Colour or Motion. Every
+// group has a row here with a lane per type, and a lane has a key per scene of that type. One
+// scene per lane is on, so several scenes are on at once, each for its own fixtures and its
+// own properties: a colour scene is pressed under a chase and the chase goes on in the new
+// colour. The lane of the lights has the key for off, which darkens the fixtures and leaves
+// their colours and their motion as they are.
 //
 // The deck has two modes, and the address remembers which (#program):
 //
-//   Show      what the page opens in. A press on a scene sets the fixtures of its group
-//             to it, a press on Off darkens them. There is nothing to type and nothing
-//             that deletes, and no key changes size or place when a scene goes on or off.
+//   Show      what the page opens in. A press on a scene sets its type of properties on the
+//             fixtures of its group, a press on Off darkens them. There is nothing to type
+//             and nothing that deletes, and no key changes size or place when a scene goes
+//             on or off.
 //   Program   storing, naming and deleting, of scenes and of groups. A press on a scene
 //             chooses it, and the fixtures stay as they are.
 //
-// Storing takes the fixtures of the group as they are now, so a scene is made on the
-// pages of the fixtures and kept here.
+// Storing takes the properties of the chosen type from the fixtures of the group as they are
+// now, so a scene is made on the pages of the fixtures and kept here.
 //
-// The deck draws what the server says: the groups of the show, which scene is on in
-// each, and whether its fixtures were changed by hand since. It asks for what the
+// The deck draws what the server says: the groups of the show, which scene is on in each lane
+// of each, and whether its fixtures were changed by hand since. It asks for what the
 // operator wants and waits for the answer to come by as an event. A press is asked once:
 // when it does not reach lightdeck the deck says so and the operator presses again.
 //
@@ -38,6 +43,13 @@ const SURE_MS = 3000;
 /** What the address ends in while the deck is in Program. */
 const PROGRAM = '#program';
 const NAME_LENGTH = 40;
+/** The types of scene, in the order of the lanes of a row. */
+const TYPES = [
+  { id: 'lights', name: 'Lights', hint: 'What is on, and what it does' },
+  { id: 'colour', name: 'Colour', hint: 'The first and the second colour' },
+  { id: 'motion', name: 'Motion', hint: 'How the bars and the beam move' },
+];
+const typeName = (id) => TYPES.find((type) => type.id === id)?.name ?? id;
 
 /**
  * What the page has from the start. It is found once, by ids that no row can have: the
@@ -84,18 +96,18 @@ const same = (one, other) => one !== null && one.group === other.group && one.sc
 const count = (number, word) => (number === 1 ? `1 ${word}` : `${number} ${word}s`);
 
 /**
- * What is on in a group. Right after the show changed the server may not have said yet,
- * and then no scene is on.
+ * What is on in a lane of a group. Right after the show changed the server may not have
+ * said yet, and then no scene is on.
  */
-function onIn(group) {
-  const on = shell.playback.groups?.[group.id];
-  const scene = group.scenes.find((each) => each.id === on?.scene);
+function onIn(group, type) {
+  const on = shell.playback.groups?.[group.id]?.[type];
+  const scene = group.scenes.find((each) => each.id === on?.scene && each.type === type);
   return { scene, changed: Boolean(scene && on.changed) };
 }
 
 /** What a scene sets, where that says more than the row does already. */
 function setsOf(scene, group) {
-  if (scene.fixtures.length === 0) return 'Dark';
+  if (scene.fixtures.length === 0) return scene.type === 'lights' ? 'Dark' : 'Nothing set';
   return group.fixtures.length > 1 ? scene.fixtures.map(labelOf).join(', ') : '';
 }
 
@@ -142,14 +154,16 @@ function switchMode() {
 }
 
 async function storeNew(group, field) {
-  const answer = await ask(`/api/groups/${group}/scenes`, { label: field.value });
+  const type = rows.get(group)?.type ?? TYPES[0].id;
+  const answer = await ask(`/api/groups/${group}/scenes`, { label: field.value, type });
   if (answer.ok) field.value = '';
   return answer.ok;
 }
 
 function storeOver(id) {
   const group = groupOf(id);
-  const { scene } = group ? onIn(group) : {};
+  const type = rows.get(id)?.type;
+  const { scene } = group && type ? onIn(group, type) : {};
   if (scene) ask(`/api/groups/${id}/scenes/${scene.id}/store`);
 }
 
@@ -236,6 +250,22 @@ function block(title, ...parts) {
   return { made, head };
 }
 
+/** The keys that say which type of scene is stored. */
+function buildTypeKeys(row) {
+  const fieldset = element('fieldset', 'choice type-choice');
+  fieldset.append(element('legend', '', 'Type of scene'));
+  row.typeKeys = TYPES.map(({ id, name, hint }) => {
+    const made = button('pick', name, () => {
+      row.type = id;
+      render();
+    });
+    made.title = hint;
+    fieldset.append(made);
+    return { id, made };
+  });
+  return fieldset;
+}
+
 /** What Program adds to the row of a group: storing, the chosen scene, the group itself. */
 function buildProgram(row) {
   const { id } = row;
@@ -246,7 +276,12 @@ function buildProgram(row) {
     done: () => storeNew(id, row.storeNew.field),
   });
   row.storeOver = button('key wide', '', () => storeOver(id));
-  const store = block('Store what the fixtures do', row.storeNew.form, row.storeOver);
+  const store = block(
+    'Store what the fixtures do',
+    buildTypeKeys(row),
+    row.storeNew.form,
+    row.storeOver,
+  );
 
   row.rename = nameRow({
     id: `row.${id}.scene`,
@@ -273,30 +308,47 @@ function buildProgram(row) {
   return program;
 }
 
+/** One lane of a row: the name of the type, the keys of its scenes, and for lights Off. */
+function buildLane(row, type) {
+  const lane = { type: type.id };
+  lane.section = element('div', 'lane');
+  lane.section.setAttribute('role', 'group');
+  lane.name = element('span', 'lane-name', type.name);
+  lane.name.title = type.hint;
+  lane.grid = element('div', 'scene-grid');
+  lane.none = element('p', 'hint', `No ${type.name.toLowerCase()} scenes yet.`);
+  const scenes = element('div', 'lane-scenes');
+  scenes.append(lane.none, lane.grid);
+  lane.section.append(lane.name, scenes);
+  // Off has a place of its own at the end of the lane of the lights, the same in every
+  // group. The other lanes keep the place free, so that the keys line up.
+  const end = element('div', 'lane-end');
+  if (type.id === 'lights') {
+    row.off = button('scene off', 'Off', () => pressOff(row.id));
+    end.append(row.off);
+  }
+  lane.section.append(end);
+  return lane;
+}
+
 function buildRow(id) {
-  const row = { id, keys: new Map(), label: null, edited: null };
+  const row = { id, keys: new Map(), label: null, edited: null, type: TYPES[0].id, lanes: {} };
   row.section = element('section', 'panel group');
   row.name = element('h2', 'group-name');
   row.name.id = `row.${id}.title`;
   row.section.setAttribute('aria-labelledby', row.name.id);
   row.holds = element('p', 'where');
-  row.running = element('p', 'running');
-  const ident = element('div', 'group-ident');
-  ident.append(row.name, row.holds);
   const head = element('div', 'group-head');
-  head.append(ident, row.running);
+  head.append(row.name, row.holds);
 
-  row.grid = element('div', 'scene-grid');
-  row.none = element('p', 'hint', 'No scenes yet.');
-  const scenes = element('div', 'group-scenes');
-  scenes.append(row.none, row.grid);
-  // Off has a place of its own at the end of the row, the same in every group.
-  row.off = button('scene off', 'Off', () => pressOff(id));
-  const keys = element('div', 'group-keys');
-  keys.append(scenes, row.off);
+  const lanes = element('div', 'lanes');
+  for (const type of TYPES) {
+    row.lanes[type.id] = buildLane(row, type);
+    lanes.append(row.lanes[type.id].section);
+  }
 
   row.program = buildProgram(row);
-  row.section.append(head, keys, row.program);
+  row.section.append(head, lanes, row.program);
   return row;
 }
 
@@ -332,7 +384,7 @@ function buildTicks() {
 
 function stateOf(group, scene) {
   if (programming && same(chosen, { group: group.id, scene: scene.id })) return 'chosen';
-  const on = onIn(group);
+  const on = onIn(group, scene.type);
   if (on.scene !== scene) return 'idle';
   return on.changed ? 'changed' : 'set';
 }
@@ -343,37 +395,49 @@ function renderKeys(row, group) {
     key.remove();
     row.keys.delete(id);
   }
-  group.scenes.forEach((scene, index) => {
-    let key = row.keys.get(scene.id);
-    if (!key) {
-      key = button('scene', undefined, () => press(group.id, scene.id));
-      key.append(element('span', 'scene-name'), element('span', 'scene-sets'));
-      row.keys.set(scene.id, key);
-    }
-    if (row.grid.children[index] !== key) {
-      row.grid.insertBefore(key, row.grid.children[index] ?? null);
-    }
-    const state = stateOf(group, scene);
-    key.dataset.state = state;
-    key.setAttribute('aria-pressed', String(state !== 'idle'));
-    key.firstElementChild.textContent = scene.label;
-    key.lastElementChild.textContent =
-      state === 'changed' ? 'Changed by hand' : setsOf(scene, group);
-  });
-  row.none.hidden = group.scenes.length > 0;
+  for (const { id: type } of TYPES) {
+    const lane = row.lanes[type];
+    const scenes = group.scenes.filter((scene) => scene.type === type);
+    scenes.forEach((scene, index) => {
+      let key = row.keys.get(scene.id);
+      if (!key) {
+        key = button('scene', undefined, () => press(group.id, scene.id));
+        key.append(element('span', 'scene-name'), element('span', 'scene-sets'));
+        row.keys.set(scene.id, key);
+      }
+      // Putting a key in a lane also takes it out of the lane it was in, which is how a scene
+      // that got another type in the file moves.
+      if (lane.grid.children[index] !== key) {
+        lane.grid.insertBefore(key, lane.grid.children[index] ?? null);
+      }
+      const state = stateOf(group, scene);
+      key.dataset.state = state;
+      key.setAttribute('aria-pressed', String(state !== 'idle'));
+      key.firstElementChild.textContent = scene.label;
+      key.lastElementChild.textContent =
+        state === 'changed' ? 'Changed by hand' : setsOf(scene, group);
+    });
+    lane.none.hidden = scenes.length > 0;
+    lane.section.setAttribute('aria-label', `${group.label} ${typeName(type)}`);
+  }
 }
 
 function renderProgram(row, group) {
-  const { scene: running, changed } = onIn(group);
+  for (const { id, made } of row.typeKeys)
+    made.setAttribute('aria-pressed', String(row.type === id));
+  const { scene: running, changed } = onIn(group, row.type);
+  const kind = typeName(row.type).toLowerCase();
   row.storeOver.disabled = !changed;
   row.storeOver.textContent = !running
-    ? 'No scene is on'
+    ? `No ${kind} scene is on`
     : changed
       ? `Store the changes in "${running.label}"`
       : `"${running.label}" is as it was stored`;
 
   const edited = chosen?.group === group.id ? sceneOf(group.id, chosen.scene) : undefined;
-  row.sceneTitle.textContent = edited ? `Scene "${edited.label}"` : 'No scene chosen';
+  row.sceneTitle.textContent = edited
+    ? `Scene "${edited.label}", ${typeName(edited.type).toLowerCase()}`
+    : 'No scene chosen';
   // The field gets the name when the scene is chosen. After that it is the operator's.
   if (row.edited !== (edited?.id ?? null)) {
     row.edited = edited?.id ?? null;
@@ -402,21 +466,14 @@ function renderProgram(row, group) {
 }
 
 function renderRow(row, group) {
-  const { scene: running, changed } = onIn(group);
   const names = group.fixtures.map(labelOf).join(', ');
   row.name.textContent = group.label;
   // A group of one fixture is mostly called after it, and then the name says it.
   row.holds.textContent = names === group.label ? '' : names;
-  row.running.dataset.on = String(Boolean(running));
-  row.running.textContent = !running
-    ? 'No scene'
-    : changed
-      ? `${running.label}, changed by hand`
-      : running.label;
 
   renderKeys(row, group);
   row.off.disabled = programming;
-  row.off.setAttribute('aria-label', `${group.label} off`);
+  row.off.setAttribute('aria-label', `${group.label} lights off`);
   row.program.hidden = !programming;
   if (programming) renderProgram(row, group);
 }
@@ -460,7 +517,7 @@ function render() {
 
   const { hint } = page;
   hint.textContent = programming
-    ? 'Program is on. Set the fixtures on their pages, then store what they do in a group. A press on a scene chooses it, to rename or delete it. The fixtures stay as they are, and Off waits. Press Program again for the show.'
+    ? 'Program is on. Set the fixtures on their pages, then store what they do in a group: pick the type, Lights, Colour or Motion, and a scene keeps only that. A press on a scene chooses it, to rename or delete it. The fixtures stay as they are, and Off waits. Press Program again for the show.'
     : 'There are no groups yet. Press Program to make one.';
   hint.hidden = !programming && show.groups.length > 0;
 

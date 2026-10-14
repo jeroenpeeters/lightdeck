@@ -1,0 +1,306 @@
+/*
+ * The simulator: a canvas over the whole window with the controls laid over it, so that
+ * nothing takes room from the picture and nothing in the picture moves when a note comes.
+ * Colours and sizes are the tokens of styles.css.
+ */
+
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.tools {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem clamp(0.5rem, 1.5vw, 1rem);
+  pointer-events: none;
+}
+.tools > * {
+  pointer-events: auto;
+}
+.title {
+  align-self: center;
+  margin-right: 0.5rem;
+}
+.home {
+  display: inline-flex;
+  align-items: center;
+  color: var(--paper);
+  text-decoration: none;
+}
+
+.group {
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.key {
+  min-height: var(--touch);
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  font-weight: 500;
+}
+.key:active {
+  background: var(--key-down);
+}
+.key[aria-pressed="true"] {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--ink);
+  font-weight: 600;
+}
+/* A key that says one of two things keeps one width: the longer word sets it. */
+#space {
+  min-width: 8.5rem;
+}
+
+.settings {
+  display: grid;
+  grid-template-columns: auto minmax(7rem, 1fr);
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+}
+.settings label {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+}
+.settings output {
+  display: inline-block;
+  min-width: 3.5ch;
+  color: var(--paper);
+  text-align: right;
+}
+.settings input[type="range"] {
+  min-height: var(--touch);
+  accent-color: var(--signal);
+}
+
+/* The link lamps and the note sit at the bottom, over the picture, and move nothing. */
+.links {
+  position: fixed;
+  left: clamp(0.5rem, 1.5vw, 1rem);
+  bottom: max(0.5rem, env(safe-area-inset-bottom));
+  display: flex;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.25rem 0.75rem;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  font-size: var(--small);
+}
+.link {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--dim);
+}
+.lamp {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: var(--line);
+}
+.link[data-state="ok"] .lamp {
+  background: var(--go);
+}
+.link[data-state="down"] .lamp {
+  background: var(--stop);
+}
+
+.note {
+  position: fixed;
+  right: clamp(0.5rem, 1.5vw, 1rem);
+  bottom: max(0.5rem, env(safe-area-inset-bottom));
+  max-width: min(36rem, calc(100vw - 2rem));
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--signal);
+  border-radius: var(--radius);
+  background: var(--panel);
+  font-size: var(--small);
+}
+.note[hidden] {
+  display: none;
+}
+
+/* ---- the calibrate panel, laid over the picture at the right ---- */
+
+.calibrate {
+  position: fixed;
+  right: clamp(0.5rem, 1.5vw, 1rem);
+  bottom: 4.5rem;
+  width: min(23rem, calc(100vw - 1.5rem));
+  max-height: calc(100dvh - 10rem);
+  overflow-y: auto;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+}
+.calibrate[hidden] {
+  display: none;
+}
+.cal-bar {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.cal-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--dim);
+  font-size: var(--small);
+}
+.cal-value {
+  min-width: 6ch;
+  color: var(--paper);
+  font-weight: 600;
+  text-align: right;
+}
+.cal-angle {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cal-angle input[type="range"] {
+  min-height: var(--touch);
+  min-width: 0;
+  accent-color: var(--signal);
+}
+.cal-bar h4 {
+  margin: 0;
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+}
+.points {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.point {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: var(--touch);
+  padding-left: 0.5rem;
+  background: var(--key);
+  border-radius: var(--radius);
+}
+.point .key {
+  min-width: var(--touch);
+  padding: 0;
+}
+.point-fields {
+  display: flex;
+  flex: 1;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.point-field {
+  display: grid;
+  flex: 1;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0.25rem 0;
+}
+.point-field span {
+  overflow: hidden;
+  color: var(--dim);
+  font-size: var(--small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.point-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.25rem;
+}
+/* The key that adds a typed point and the key that removes one have the same width. */
+.point .key {
+  min-width: 4.5rem;
+}
+.cal-export {
+  display: grid;
+  gap: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+.cal-export label {
+  color: var(--dim);
+  font-size: var(--small);
+}
+.cal-export textarea {
+  width: 100%;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+  color: var(--paper);
+  font: inherit;
+  font-size: var(--small);
+  resize: none;
+}
+/* The copy key keeps its width when its word changes. */
+#calibrate-copy {
+  min-width: 9rem;
+  justify-self: start;
+}
+
+/* The timing of a move: two fields and a key. The line for what happened keeps its room. */
+.cal-form {
+  display: grid;
+  gap: 0.25rem;
+}
+.cal-form label {
+  color: var(--dim);
+  font-size: var(--small);
+}
+.cal-message {
+  min-height: 2.6em;
+}

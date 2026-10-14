@@ -197,6 +197,7 @@ export async function start({ page = 'fixture' } = {}) {
       here: each.id === id,
     })),
     { name: 'Listen', href: '/listen', here: page === 'listen' },
+    { name: 'Simulator', href: '/simulator', here: false },
   ];
   for (const each of pages) {
     const link = element('a', 'page-link', each.name);
@@ -564,10 +565,13 @@ export async function start({ page = 'fixture' } = {}) {
 
   function renderLinks() {
     const bridge = $('link-bridge');
-    bridge.dataset.state = status.bridge ? 'ok' : 'down';
-    bridge.querySelector('.link-text').textContent = status.bridge
-      ? 'Bridge connected'
-      : 'Bridge not connected';
+    // Started without a bridge: nothing is wrong, the simulator is the output.
+    bridge.dataset.state = !initial.bridgeUrl ? 'unknown' : status.bridge ? 'ok' : 'down';
+    bridge.querySelector('.link-text').textContent = !initial.bridgeUrl
+      ? 'No bridge'
+      : status.bridge
+        ? 'Bridge connected'
+        : 'Bridge not connected';
 
     const device = $('link-device');
     const known = status.bridge && status.device !== 'unknown';
@@ -683,7 +687,7 @@ export async function start({ page = 'fixture' } = {}) {
         held.size > 0
           ? 'This page cannot reach lightdeck. It keeps trying; your last change is sent as soon as it is back.'
           : 'This page cannot reach lightdeck. It keeps trying.';
-    } else if (!status.bridge) {
+    } else if (initial.bridgeUrl && !status.bridge) {
       text = `The bridge app does not answer at ${initial.bridgeUrl}. Open Lightdeck LR512 Bridge on the phone and keep it on screen.`;
     } else if (status.device === 'lost') {
       text =

@@ -14,7 +14,7 @@ the Light Rider app. Lamps and switches in Home Assistant are planned.
 |---|---|
 | Live DMX to the LR512, from Linux | Works on real hardware, through an Android phone as bridge |
 | Fixture pages for manual control | Work, for the two fixtures below |
-| Beat-synced effects, tap tempo, blackout | Work: ten effects for the spider, five for the laser |
+| Beat-synced effects, tap tempo, blackout | Work: twelve effects for the spider, five for the laser |
 | Scenes: store what the fixtures do, recall it | Built, not yet tested on the real fixtures |
 | Sequences, grand master, crossfades, holds | Not built, see [docs/show-design.md](docs/show-design.md) |
 | Home Assistant lamps and switches | Not built, see [docs/hass-fixtures-plan.md](docs/hass-fixtures-plan.md) |
@@ -84,6 +84,10 @@ pnpm install
 pnpm dev --bridge ws://<phone-ip>:9010
 ```
 
+No phone or LR512 at hand? Leave `--bridge` out and open `http://localhost:8080/simulator`: it
+draws the spiders in 3D from the bytes lightdeck sends. Move and rotate them with the mouse
+or a finger. With a bridge it shows the same as the real fixtures get.
+
 ### 3. Open the console
 
 Go to `http://<computer-ip>:8080` on the tablet. The console has:
@@ -134,21 +138,35 @@ Lightdeck watches the file. A file with a mistake never replaces the show that i
 running: the deck says what is wrong and keeps the show as it was.
 
 ```yaml
-scenes:
-  amber-chase:
-    label: Amber chase
-    fixtures:
-      spider:
-        levels: { dimmer: 1 }
-        effect:
-          id: chase
-          colourA: { red: 1, green: 0.58, blue: 0, white: 0 }
-          colourB: { red: 0, green: 0.15, blue: 1, white: 0 }
-      laser:
-        raw: { mode: 95, program: 60 }
+groups:
+  spider:
+    label: Spider
+    fixtures: [spider]
+    scenes:
+      chase:
+        label: Chase
+        type: lights
+        fixtures:
+          spider: { levels: { dimmer: 1 }, effect: { id: chase, speed: 1 } }
+      amber:
+        label: Amber
+        type: colour
+        fixtures:
+          spider:
+            effect: { colourA: { red: 1, green: 0.58, blue: 0, white: 0 } }
+      wide:
+        label: Wide
+        type: motion
+        fixtures:
+          spider: { levels: { tilt1: 0.2, tilt2: 0.8 } }
 ```
 
-A scene is a complete look. A fixture that a scene does not name goes dark.
+A scene is of one type, `lights`, `colour` or `motion`, and keeps and sets only the
+properties of that type. A group has one scene on per type, so a colour scene can be
+pressed under a chase that is running. The first colour of an effect is what flashes and
+the second is the background; leave the second out and the background is the first
+colour, dim. A fixture that a scene does not name has those properties at rest, and off
+is the lights.
 
 ## Safety
 

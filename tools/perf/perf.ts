@@ -63,7 +63,7 @@ own.length = 0;
 const red = { red: 1, green: 0, blue: 0, white: 0 };
 rig.tempo.update({ bpm, sync: true });
 const spider = rig.find('spider')!.controller;
-spider.update({ levels: { dimmer: 1 }, effect: { id: effect, speed: 1, colourA: red, colourB: red } });
+spider.update({ levels: { dimmer: 1 }, effect: { id: effect, speed: 1, colourA: red } });
 if (laser) rig.find('laser')!.controller.update({ raw: { mode: 95 }, effect: { id: 'sweep', speed: 1 } });
 // the beat grid, on the clock of this process
 const t = performance.now(); const beat = rig.tempo.getBeat();

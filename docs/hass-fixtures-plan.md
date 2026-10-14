@@ -365,7 +365,10 @@ became unavailable.
 | The entity is unavailable | The page says so, commands still go out | The same |
 
 **A scene that does not name a lamp switches it off.** That follows from "scenes are
-complete looks" and is what the spider and the laser do. A scene stored from live holds
+complete looks" and is what the spider and the laser do. Since scene types (2026-10-07,
+`show-design.md`) it holds within a type: a lamp that a scene of lights does not name goes
+off, and its colour is left to the scenes of colour. On and brightness are the lights of a
+lamp, colour and temperature are its colour, and it has no motion. A scene stored from live holds
 every lamp that is on, so it only matters for scenes written by hand and for scenes stored
 before the lamps were added: those switch the room dark.
 

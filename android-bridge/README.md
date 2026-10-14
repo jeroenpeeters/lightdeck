@@ -206,7 +206,9 @@ Bridge: 10s stats: rx=21 sent=52 (new=1 refresh=51) skipped=20 failed=0 cap=25fp
 `refresh`es), `skipped` the received frames that were the same as the last one
 sent. The line `Bridge: frame cap is now N fps.` says when the engine set another
 cap, and again when it has gone. The same log is on screen and in
-`/sdcard/Android/data/com.lightingsoft.djapp/files/lr512-gate.log`.
+`/sdcard/Android/data/com.lightingsoft.djapp/files/lr512-gate.log`. The screen keeps the last 300
+lines in memory; the file rolls over at 512 KB into `lr512-gate.log.1` (replacing the one before),
+so the log is never more than about 1 MB on the phone, however long the show.
 
 Send from the engine side, in the repository root:
 
@@ -217,11 +219,16 @@ node tools/lr512-send.mjs 192.168.68.101 0 set 6=255 7=255   # raw channels
 
 ## Known limits
 
-- **The app has to stay in the foreground.** Android freezes background apps,
-  which stops the vendor library's keep-alive and the device drops the
-  connection. The reconnect recovers once the app is visible again. Running
-  with the screen off or behind another app needs a foreground service, which
-  is not built yet.
+- **Background running is built and has not run on the phone (2026-10-14).** A
+  foreground service (`BridgeService`, type `connectedDevice`, notification
+  "Lightdeck LR512 Bridge" with the two connections and a Stop key) keeps the process
+  from being frozen, restarts the core if Android kills the process (`START_STICKY`),
+  and the app asks once to be taken off the battery optimisation (and has a key for it
+  while it is still on). Before this, Android froze the app in the background, which
+  stopped the vendor library's keep-alive and made the device drop the connection. On
+  the phone: allow notifications, and allow "Unrestricted" battery use for the app
+  (Settings, Apps, Lightdeck LR512 Bridge, Battery). Stop in the notification ends the
+  process; the bridge then holds the last frame, as after a crash.
 - **Why the device once left is not established.** On 2026-09-29 the log showed
   `onDeviceLeft` some time after opening. Whether the cause was the app being
   backgrounded, an idle timeout or Wi-Fi power saving is unknown.
@@ -246,7 +253,10 @@ path that is known to work.
   reconnect, logging.
 - `src/nl/lightdeck/bridge/BridgeServer.java`: WebSocket server, DMX pump, the
   change test, the cap and the alive message.
+- `src/nl/lightdeck/bridge/BridgeService.java`: the foreground service and its
+  notification.
 - `src/nl/lightdeck/bridge/OpenGateActivity.java`: the screen with the lamps
-  and the log.
+  and the log, and the requests for the notification permission and the battery
+  exemption.
 - `build.sh`: repackaging pipeline.
 - `tools/`, `work/`: downloaded tools and build scratch, both ignored by git.

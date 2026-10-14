@@ -225,6 +225,11 @@ function buildEffects() {
     setEffect({ speed }),
   );
 
+  // The second colour can be left empty, and then the rest of the lenses show the first dim.
+  const none = button('pick', 'None', () => setEffect({ colourB: null }));
+  none.dataset.none = 'true';
+  $('colour-b').append(none);
+
   for (const [id, key] of [
     ['colour-a', 'colourA'],
     ['colour-b', 'colourB'],
@@ -381,13 +386,15 @@ function renderMixer() {
   }
 
   const moving = effect?.moves
-    ? `${effect.name} moves the bars now. The tilt you set here comes back when you stop the effect.`
+    ? `${effect.name} moves the bars now${effect.setsMotorSpeed ? ' and sets the motor speed when it can' : ''}. What you set here comes back when you stop the effect.`
     : '';
   $('motion-hint').textContent = moving;
   $('motion-hint').hidden = moving === '';
 }
 
 function sameColour(a, b) {
+  // An empty second colour is nothing, and is no swatch.
+  if (!a || !b) return false;
   return colours.every((c) => Math.abs((a[c] ?? 0) - (b[c] ?? 0)) < 0.005);
 }
 
@@ -415,10 +422,17 @@ function renderEffects() {
       made.setAttribute('aria-pressed', String(sameColour(swatch, state.effect[key])));
     }
   }
+  $('colour-b')
+    .querySelector('[data-none]')
+    .setAttribute('aria-pressed', String(!state.effect.colourB));
   const uses = effect?.colours ?? 'both';
   $('colour-a').disabled = uses === 'none';
   $('colour-b').disabled = uses !== 'both';
-  const note = uses === 'both' ? '' : `${effect.name} brings its own colours.`;
+  let note = '';
+  if (uses !== 'both') note = `${effect.name} brings its own colours.`;
+  else if (!state.effect.colourB) {
+    note = 'With no second colour the rest of the lenses show the first colour, dim.';
+  }
   $('palette-hint').textContent = note;
   $('palette-hint').hidden = note === '';
 }

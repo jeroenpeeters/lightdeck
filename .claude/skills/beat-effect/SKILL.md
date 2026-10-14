@@ -37,14 +37,24 @@ beat at speed 1 breaks the limit without anyone noticing, which is the other rea
 the rule above.
 
 **An effect sets only what it says it sets.** For the spider: the colours of the cells,
-and the tilt when `moves` is true. Brightness, the strobe channel and the motor speed
-stay with the operator. For the laser: the controls in `drives`, and the rest stays with
+and the tilt when `moves` is true, and the motor speed only for an effect that says
+`setsMotorSpeed` (`scissor-motor`, which works it out from `motion`, the calibration of the
+layout, and leaves it alone when it cannot). Brightness and the strobe channel stay with the
+operator. For the laser: the controls in `drives`, and the rest stays with
 the operator, so a colour set by hand goes together with an effect.
 
 **An effect never opens the laser.** It may not drive the mode channel, the controller
 refuses one that does, and effects count in manual mode only. A scene may open the
 laser, an effect may not. Keep this for any fixture that can hurt: what opens or arms it
 is never in `drives`.
+
+**The first colour is the foreground and the second is the background** (Jeroen,
+2026-10-07). The first is what flashes, hits or moves; the second is what the rest of the
+lenses show. An effect is given `a` and `b`, with `b` already worked out by `palette`:
+when the operator left the second colour empty it is the first colour dim, so an effect
+never sees an empty colour and works with one colour. Write the effect so that it reads
+as "a over b": `mix(b, a, level)`. An effect that gives a second colour a job of its own,
+such as an accent on the downbeat, takes that job away from the background.
 
 **Calm is the default.** Most effects keep a dim floor instead of going to black between
 flashes, and use the two colours of the operator instead of their own. Full white, full

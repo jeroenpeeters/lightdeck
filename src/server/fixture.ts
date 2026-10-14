@@ -8,10 +8,13 @@
  * `kinds.ts` and a page in `public/fixtures/`.
  *
  * The same goes for scenes: what a scene keeps of a fixture is up to its controller,
- * which gives it with `snapshot` and takes it back with `recall`.
+ * which gives it with `snapshot` and takes it back with `recall`. A scene is of one type
+ * (lights, colour or motion) and keeps only the properties of that type, which the profile
+ * names with `part` on a control. Recalling a scene sets those and leaves the rest of the
+ * fixture as it is, so scenes of different types put a fixture together.
  */
 
-import type { FixtureProfile } from '../fixtures/profile.js';
+import type { FixtureProfile, SceneType } from '../fixtures/profile.js';
 
 /** A change that cannot be applied. The message is for the operator. */
 export class PatchError extends Error {}
@@ -40,17 +43,22 @@ export interface FixtureController {
   act(name: string, origin?: string): void;
 
   /**
-   * What a scene keeps of this fixture, as plain data that `recall` takes back. What is
-   * at rest is left out, so a fixture that is dark gives an empty object.
+   * What a scene of this type keeps of this fixture, as plain data that `recall` takes
+   * back. What is at rest is left out, so a fixture without a property of this type set
+   * gives an empty object.
    */
-  snapshot(): Record<string, unknown>;
-  /** Throws a `PatchError` when `recall` would refuse this part. Changes nothing. */
-  check(part: unknown): void;
+  snapshot(type: SceneType): Record<string, unknown>;
   /**
-   * Sets the fixture to its part of a scene. A scene is a complete look: what the part
-   * does not name goes to rest, and without a part the fixture goes dark.
+   * Throws a `PatchError` when `recall` would refuse this part, which includes a part that
+   * names a property of another type. Changes nothing.
    */
-  recall(part: unknown, origin?: string): void;
+  check(type: SceneType, part: unknown): void;
+  /**
+   * Sets the properties of this type to their part of a scene. A scene is complete within
+   * its type: what the part does not name goes to rest, and without a part the properties
+   * of the type go to rest (for lights that is dark). The properties of other types stay.
+   */
+  recall(type: SceneType, part: unknown, origin?: string): void;
   /** The blackout of the console. While on, the fixture is dark and keeps its state. */
   setBlackout(blackout: boolean): void;
   /**

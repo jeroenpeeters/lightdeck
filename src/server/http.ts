@@ -5,6 +5,8 @@
  *   GET  /deck                        the deck: the groups of the show with their scenes
  *   GET  /listen                      the listen page: the microphone of the laptop, which
  *                                     the browser only gives to localhost
+ *   GET  /simulator                   the simulator: the fixtures drawn in 3D from the bytes
+ *                                     being sent, with or without a bridge
  *   GET  /fixtures/<id>               the page of a fixture: the file
  *                                     `fixtures/<kind>.html` from `publicDir`
  *   GET  /...                         the other static files from `publicDir`
@@ -31,16 +33,19 @@
  *   POST /api/fixtures/<id>/update    partial state change of one fixture
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
  *   POST /api/playback                `group` with `scene`, the id of the scene to set the
- *                                     fixtures of the group to, or with `off`: true to
- *                                     darken them
+ *                                     fixtures of the group to (only the properties of the
+ *                                     type of the scene), or with `off`: true to darken
+ *                                     them, which is the lights and nothing else
  *   POST /api/groups                  `label` and `fixtures`, the ids of its fixtures:
  *                                     makes a group, and answers with its `id`
  *   POST /api/groups/<group>/rename   `label`
  *   POST /api/groups/<group>/delete   takes the group away, and its scenes with it
- *   POST /api/groups/<group>/scenes   `label`: stores the fixtures of the group as they
- *                                     are as a new scene, and answers with its `id`
- *   POST /api/groups/<group>/scenes/<scene>/store    stores the fixtures of the group as
- *                                                    they are in this scene
+ *   POST /api/groups/<group>/scenes   `label` and `type` (lights, colour or motion):
+ *                                     stores those properties of the fixtures of the group
+ *                                     as they are as a new scene, and answers with its `id`
+ *   POST /api/groups/<group>/scenes/<scene>/store    stores the properties of its type of
+ *                                                    the fixtures of the group as they are
+ *                                                    in this scene
  *   POST /api/groups/<group>/scenes/<scene>/rename   `label`
  *   POST /api/groups/<group>/scenes/<scene>/delete
  *
@@ -81,12 +86,13 @@ const GROUP_POST = /^\/api\/groups\/([a-z0-9-]+)\/(rename|delete|scenes)$/;
 const SCENE_POST = /^\/api\/groups\/([a-z0-9-]+)\/scenes\/([a-z0-9-]+)\/(store|rename|delete)$/;
 const DECK = '/deck';
 const LISTEN = '/listen';
+const SIMULATOR = '/simulator';
 
 export interface HttpOptions {
   rig: Rig;
   publicDir: string;
-  /** Shown in the UI so the operator knows which bridge this server talks to. */
-  bridgeUrl: string;
+  /** Shown in the UI so the operator knows which bridge this server talks to; null without one. */
+  bridgeUrl: string | null;
 }
 
 interface StaticFile {
@@ -251,7 +257,10 @@ export function createHttpServer(options: HttpOptions): Server {
     res.writeHead(200, {
       'content-type': file.type,
       'content-length': file.body.length,
-      'cache-control': path.startsWith('/fonts/') ? 'public, max-age=604800' : 'no-cache',
+      'cache-control':
+        path.startsWith('/fonts/') || path.startsWith('/lib/')
+          ? 'public, max-age=604800'
+          : 'no-cache',
     });
     res.end(req.method === 'HEAD' ? undefined : file.body);
     return true;
@@ -370,7 +379,7 @@ export function createHttpServer(options: HttpOptions): Server {
       const id = group[1] ?? '';
       const body = await readJson(req);
       if (group[2] === 'scenes') {
-        sendJson(res, 200, { ok: true, id: rig.playback.store(id, body.label) });
+        sendJson(res, 200, { ok: true, id: rig.playback.store(id, body.type, body.label) });
         return;
       }
       if (group[2] === 'rename') rig.playback.renameGroup(id, body.label);
@@ -409,6 +418,7 @@ export function createHttpServer(options: HttpOptions): Server {
       }
       if (path === DECK && sendFile(req, res, '/deck.html')) return;
       if (path === LISTEN && sendFile(req, res, '/listen.html')) return;
+      if (path === SIMULATOR && sendFile(req, res, '/simulator.html')) return;
       const page = FIXTURE_PAGE.exec(path);
       const shown = page ? rig.find(page[1] ?? '') : undefined;
       if (shown && sendFile(req, res, `/fixtures/${shown.kind}.html`)) return;

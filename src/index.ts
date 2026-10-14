@@ -3,7 +3,8 @@
  * the LR512 bridge fed.
  *
  * Settings come from the command line or the environment:
- *   --bridge         LR512_BRIDGE_URL   ws://<phone-ip>:9010, required
+ *   --bridge         LR512_BRIDGE_URL   ws://<phone-ip>:9010. Without it nothing is sent to an
+ *                                       LR512 and the simulator at /simulator is the output
  *   --universe       SPIDER_UNIVERSE    bridge universe index of the spider, 0-based
  *                                       (default 0, the first port)
  *   --address        SPIDER_ADDRESS     DMX start address of the spider (default 1)
@@ -69,13 +70,8 @@ const { values: args } = parseArgs({
   },
 });
 
+/** The bridge to the LR512, or none: then only the simulator and the pages see the lights. */
 const bridgeUrl = args.bridge ?? process.env.LR512_BRIDGE_URL;
-if (!bridgeUrl) {
-  fail(
-    'Where is the bridge? Set LR512_BRIDGE_URL or pass --bridge, for example:\n' +
-      '  pnpm dev --bridge ws://192.168.68.101:9010',
-  );
-}
 const universe = wholeNumber(args.universe ?? process.env.SPIDER_UNIVERSE ?? '0', 'universe');
 const address = wholeNumber(args.address ?? process.env.SPIDER_ADDRESS ?? '1', 'address');
 const laserAddressText = args['laser-address'] ?? process.env.LASER_ADDRESS ?? '44';
@@ -113,25 +109,36 @@ if (laserAddress !== undefined) {
 const log = (message: string) => console.log(`${new Date().toISOString()}  ${message}`);
 
 let rig: Rig | undefined;
-const bridge = new Lr512BridgeClient({
-  url: bridgeUrl,
-  maxFps,
-  log: (message) => log(`bridge: ${message}`),
-  onConnection: (connected) => rig?.setBridgeConnected(connected),
-  onStatus: (status) => {
-    log(
-      `bridge: LR512 ${status.device}, ${status.universes} universes, channels per universe [${status.channels.join(', ')}]`,
-    );
-    for (const index of new Set(fixtures.map((fixture) => fixture.universe))) {
-      if (status.device === 'open' && status.channels[index] === 0) {
+/** What the bridge client offers the rest, for when there is no bridge. */
+const noBridge = {
+  connected: false,
+  setUniverse() {},
+  setMaxFps() {},
+  flush() {},
+  start() {},
+  stop() {},
+};
+const bridge = bridgeUrl
+  ? new Lr512BridgeClient({
+      url: bridgeUrl,
+      maxFps,
+      log: (message) => log(`bridge: ${message}`),
+      onConnection: (connected) => rig?.setBridgeConnected(connected),
+      onStatus: (status) => {
         log(
-          `warning: universe index ${index} has 0 channels on this LR512, nothing sent to it reaches a fixture`,
+          `bridge: LR512 ${status.device}, ${status.universes} universes, channels per universe [${status.channels.join(', ')}]`,
         );
-      }
-    }
-    rig?.setDeviceStatus(status);
-  },
-});
+        for (const index of new Set(fixtures.map((fixture) => fixture.universe))) {
+          if (status.device === 'open' && status.channels[index] === 0) {
+            log(
+              `warning: universe index ${index} has 0 channels on this LR512, nothing sent to it reaches a fixture`,
+            );
+          }
+        }
+        rig?.setDeviceStatus(status);
+      },
+    })
+  : noBridge;
 
 try {
   rig = new Rig({
@@ -150,14 +157,14 @@ try {
 
 const server = createHttpServer({
   rig,
-  bridgeUrl,
+  bridgeUrl: bridgeUrl ?? null,
   publicDir: fileURLToPath(new URL('./server/public/', import.meta.url)),
 });
 
 server.on('error', (error) => fail(`cannot listen on ${host}:${port}: ${error.message}`));
 server.listen(port, host, () => {
   log(`control pages on http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
-  log(`bridge ${bridgeUrl}`);
+  log(bridgeUrl ? `bridge ${bridgeUrl}` : 'no bridge: the simulator at /simulator is the output');
   for (const fixture of fixtures) {
     log(
       `${fixture.label} at address ${fixture.address}, universe index ${fixture.universe}, page /fixtures/${fixture.id}`,
