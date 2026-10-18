@@ -34,6 +34,7 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { isMap } from 'yaml';
 import { formatColour } from '../engine/colour.js';
 import { SPEEDS } from '../engine/effects.js';
 import {
@@ -109,6 +110,8 @@ export interface ShowSummary {
   file: string | null;
   /** What is wrong with the file, or null. While it is wrong the show stays as it was. */
   problem: string | null;
+  /** What the show limits of a fixture, by the id of the fixture: the form its controller reads. */
+  limits: Record<string, unknown>;
   palettes: PaletteSummary[];
   groups: GroupSummary[];
 }
@@ -195,6 +198,11 @@ export class Playback {
       ...(options.path === undefined ? {} : { path: options.path }),
       fixtures: this.fixtures.map(({ id, label }) => ({ id, label })),
       check: (id, type, part) => this.fixture(id).controller.check(type, part),
+      readLimits: (id, limits) => {
+        const { controller } = this.fixture(id);
+        if (!controller.readLimits) throw new PatchError('this fixture cannot be limited');
+        return controller.readLimits(limits);
+      },
     });
     this.follow();
     this.told = JSON.stringify(this.getState());
@@ -222,6 +230,7 @@ export class Playback {
     return {
       file: this.file.path ?? null,
       problem: this.file.getProblem(),
+      limits: { ...show.limits },
       palettes: show.palettes.map(({ id, label, colours, mode, change, speed }) => ({
         id,
         label,
@@ -449,6 +458,30 @@ export class Playback {
       const { id, label } = this.needLook(found, look);
       if (!document.deleteIn(['groups', found.id, 'looks', id])) {
         throw new PatchError(`the look "${label}" could not be taken out of the show file`);
+      }
+    });
+  }
+
+  /**
+   * Limits what a fixture may do, in the form its controller reads (the spider: how far each
+   * bar may tilt), and writes it to the show file. The limits are on what goes out at once.
+   * `null`, or limits that limit nothing, takes them away.
+   */
+  setLimits(fixture: unknown, limits: unknown): void {
+    if (typeof fixture !== 'string') throw new PatchError('say which fixture, by its id');
+    const { controller } = this.fixture(fixture);
+    if (!controller.readLimits) throw new PatchError(`"${fixture}" cannot be limited`);
+    const read = controller.readLimits(limits);
+    // What limits nothing is the same as none: it is not kept in the file.
+    const none = JSON.stringify(read) === JSON.stringify(controller.readLimits(null));
+    this.file.edit((document) => {
+      if (none) {
+        document.deleteIn(['limits', fixture]);
+        // Nothing left to limit: the key goes too.
+        const left = document.getIn(['limits']);
+        if (isMap(left) && left.items.length === 0) document.deleteIn(['limits']);
+      } else {
+        setIn(document, ['limits', fixture], read);
       }
     });
   }
@@ -760,6 +793,7 @@ export class Playback {
   private follow(): void {
     const show = this.file.getShow();
     this.palettes.set(show.palettes);
+    for (const { id, controller } of this.fixtures) controller.setLimits?.(show.limits[id] ?? null);
     const { groups } = show;
     for (const id of [...this.groups.keys()]) {
       if (!groups.some((group) => group.id === id)) this.groups.delete(id);

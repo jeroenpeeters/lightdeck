@@ -114,7 +114,11 @@ describe('startingGroups', () => {
 
 describe('readShow', () => {
   it('reads nothing as the groups a show starts with', () => {
-    const starting = { palettes: startingPalettes(), groups: startingGroups(RIG.fixtures) };
+    const starting = {
+      limits: {},
+      palettes: startingPalettes(),
+      groups: startingGroups(RIG.fixtures),
+    };
     expect(readShow(null, RIG)).toEqual(starting);
     expect(readShow(undefined, RIG)).toEqual(starting);
     expect(readShow({}, RIG)).toEqual(starting);
@@ -206,8 +210,16 @@ describe('readShow', () => {
   });
 
   it('can have no groups at all', () => {
-    expect(readShow({ groups: {} }, RIG)).toEqual({ palettes: startingPalettes(), groups: [] });
-    expect(readShow({ groups: null }, RIG)).toEqual({ palettes: startingPalettes(), groups: [] });
+    expect(readShow({ groups: {} }, RIG)).toEqual({
+      limits: {},
+      palettes: startingPalettes(),
+      groups: [],
+    });
+    expect(readShow({ groups: null }, RIG)).toEqual({
+      limits: {},
+      palettes: startingPalettes(),
+      groups: [],
+    });
   });
 
   it('gives two groups a scene of the same id', () => {
@@ -250,6 +262,7 @@ describe('readShow', () => {
       fixtures: { spider: { levels: { dimmer: 1 } }, laser: {} },
     });
     expect(readShow({ scenes: null }, RIG)).toEqual({
+      limits: {},
       palettes: startingPalettes(),
       groups: startingGroups(RIG.fixtures),
     });
@@ -303,8 +316,11 @@ describe('readShow', () => {
     const wrong: [unknown, string][] = [
       [[], 'the show must start with "groups:"'],
       ['groups', 'the show must start with "groups:"'],
-      [{ sequences: {} }, 'the show cannot have "sequences", only palettes and groups'],
-      [{ groups: {}, sequences: {} }, 'the show cannot have "sequences", only palettes and groups'],
+      [{ sequences: {} }, 'the show cannot have "sequences", only limits, palettes and groups'],
+      [
+        { groups: {}, sequences: {} },
+        'the show cannot have "sequences", only limits, palettes and groups',
+      ],
       [
         { scenes: {}, groups: {} },
         'the show has "scenes" next to "groups". A scene belongs to a group: put it under the "scenes" of its group',
@@ -406,7 +422,11 @@ describe('readShow', () => {
 
   it('cannot put scenes from before there were groups anywhere without a fixture', () => {
     const nothing: KnownFixtures = { fixtures: [], check: () => {} };
-    expect(readShow({ scenes: {} }, nothing)).toEqual({ palettes: startingPalettes(), groups: [] });
+    expect(readShow({ scenes: {} }, nothing)).toEqual({
+      limits: {},
+      palettes: startingPalettes(),
+      groups: [],
+    });
     expect(() => readShow({ scenes: { warm: { type: 'lights' } } }, nothing)).toThrow(
       new ShowError('the show has scenes, and there is no fixture they can be for'),
     );
@@ -600,5 +620,40 @@ describe('readShow', () => {
         expect(() => read(looks)).toThrow(new ShowError(message));
       }
     });
+  });
+});
+
+describe('the limits of a show', () => {
+  const limited: KnownFixtures = {
+    ...RIG,
+    readLimits: (id, limits) => {
+      if (id !== 'spider') throw new PatchError('this fixture cannot be limited');
+      if (typeof limits !== 'object' || limits === null) throw new PatchError('not limits');
+      return { read: limits };
+    },
+  };
+
+  it('reads the limits of a fixture the way its controller does', () => {
+    const show = readShow({ limits: { spider: { tilt: [{ max: 0.5 }] } } }, limited);
+    expect(show.limits).toEqual({ spider: { read: { tilt: [{ max: 0.5 }] } } });
+    expect(readShow({ limits: null }, limited).limits).toEqual({});
+    expect(readShow({}, limited).limits).toEqual({});
+  });
+
+  it('says whose limits are wrong', () => {
+    expect(() => readShow({ limits: { spider: 'wide' } }, limited)).toThrow(
+      new ShowError('limits of "spider": not limits'),
+    );
+    expect(() => readShow({ limits: { laser: {} } }, limited)).toThrow(
+      new ShowError('limits of "laser": this fixture cannot be limited'),
+    );
+    expect(() => readShow({ limits: { lamp: {} } }, limited)).toThrow(
+      /limits of "lamp": there is no fixture called "lamp"/,
+    );
+    expect(() => readShow({ limits: [] }, limited)).toThrow(/"limits" must be a list/);
+  });
+
+  it('has no limits for a rig that cannot give any', () => {
+    expect(() => readShow({ limits: { spider: {} } }, RIG)).toThrow(/cannot be limited/);
   });
 });

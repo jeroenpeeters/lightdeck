@@ -245,7 +245,11 @@ export class ShowFile extends EventEmitter {
   constructor(options: ShowFileOptions) {
     super();
     this.path = options.path === undefined ? undefined : resolve(options.path);
-    this.known = { fixtures: options.fixtures, check: options.check };
+    this.known = {
+      fixtures: options.fixtures,
+      check: options.check,
+      ...(options.readLimits ? { readLimits: options.readLimits } : {}),
+    };
     this.show = readShow(null, this.known);
     this.refresh();
   }

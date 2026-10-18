@@ -195,11 +195,18 @@ describe('Rig', () => {
   });
 
   it('has the fixtures in the order they were given, each with its controller', () => {
-    expect(rig.fixtures.map((f) => [f.id, f.kind, f.controller.profile.footprint])).toEqual([
+    expect(
+      rig.fixtures.map((f) => [
+        f.id,
+        f.kind,
+        f.protocol === 'dmx' ? f.controller.profile.footprint : 0,
+      ]),
+    ).toEqual([
       ['spider', 'spider', 43],
       ['laser', 'laser', 10],
     ]);
-    expect(rig.find('laser')?.address).toBe(LASER_AT);
+    const laser = rig.find('laser');
+    expect(laser?.protocol === 'dmx' && laser.address).toBe(LASER_AT);
     expect(rig.find('strobe')).toBeUndefined();
   });
 

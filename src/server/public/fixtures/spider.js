@@ -44,6 +44,12 @@ const SWATCHES = [
 const VIEWS = ['effects', 'colour', 'movement', 'fixture'];
 const COUNT_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
 const RESET_HOLD_MS = 1000;
+/** The least percent between where a bar may start and where it must stop. */
+const SWING_GAP = 5;
+/** How long a swing limit is sent after the last move of a slider. */
+const SWING_SEND_MS = 300;
+/** How long what was set stays on the sliders after the server answered, for the show to catch up. */
+const SWING_SETTLE_MS = 1000;
 
 let shell;
 let fixture;
@@ -65,6 +71,13 @@ const selected = new Set();
 /** The views of the page, and which of them is on screen. */
 let pages;
 const rows = [];
+/** The swing limit per bar, in percent of the tilt, as the sliders have it. */
+let swing = [];
+const swingRows = [];
+let swingTimer;
+/** Until then the sliders keep what the operator set, whatever the show says. */
+let swingHeld = 0;
+let swingProblem = '';
 
 // ---- building the page ----
 
@@ -199,6 +212,7 @@ function build() {
     rows.push(row);
   }
   rows.push(levelSlider($('motion-sliders'), 'motorSpeed', 'Motor speed'));
+  buildSwing();
 
   // Built-in programs: the raw bytes, with the manual's meaning next to them.
   for (const control of fixture.controls) {
@@ -639,9 +653,90 @@ function renderEffects() {
   $('palette-hint').textContent = paletteNote(effect, palette);
 }
 
+// ---- the swing limit ----
+
+/** The limits of the show for this spider, per bar, in percent. A bar without one is free. */
+function swingOfShow() {
+  const limits = shell.show?.limits?.[fixture.id]?.tilt ?? [];
+  return bars.map((_, i) => ({
+    min: Math.round((limits[i]?.min ?? 0) * 100),
+    max: Math.round((limits[i]?.max ?? 1) * 100),
+  }));
+}
+
+/** Sends the limits a moment after the last move, so that a drag is one request, not fifty. */
+function sendSwing() {
+  clearTimeout(swingTimer);
+  swingHeld = Number.POSITIVE_INFINITY;
+  swingTimer = setTimeout(async () => {
+    const sent = JSON.stringify(swing);
+    const answer = await shell.ask(`/api/fixtures/${fixture.id}/limits`, {
+      tilt: swing.map(({ min, max }) => ({ min: min / 100, max: max / 100 })),
+    });
+    swingProblem = answer.ok || answer.lost ? '' : sentence(answer.error);
+    if (swingProblem !== '') {
+      // Refused: the show is what is true.
+      swing = swingOfShow();
+      swingHeld = 0;
+    } else if (JSON.stringify(swing) === sent) {
+      swingHeld = Date.now() + SWING_SETTLE_MS;
+    } else {
+      // Moved again while this was on its way: that move sends its own.
+      swingHeld = Number.POSITIVE_INFINITY;
+    }
+    renderSwing();
+    shell.refresh();
+  }, SWING_SEND_MS);
+}
+
+function setSwing(bar, edge, percentValue) {
+  const mine = swing[bar];
+  if (!mine) return;
+  if (edge === 'min') mine.min = Math.min(percentValue, mine.max - SWING_GAP);
+  else mine.max = Math.max(percentValue, mine.min + SWING_GAP);
+  renderSwing();
+  sendSwing();
+}
+
+function buildSwing() {
+  swing = swingOfShow();
+  bars.forEach((bar, i) => {
+    for (const edge of ['min', 'max']) {
+      const row = slider({
+        id: `swing-${edge}-${i}`,
+        label: `${bar.name} ${edge === 'min' ? 'from' : 'to'}`,
+        min: edge === 'min' ? 0 : SWING_GAP,
+        max: edge === 'min' ? 100 - SWING_GAP : 100,
+        read: () => swing[i]?.[edge] ?? (edge === 'min' ? 0 : 100),
+        write: (number) => setSwing(i, edge, number),
+      });
+      $('swing-sliders').append(row);
+      swingRows.push(row);
+    }
+  });
+  $('swing-reset').addEventListener('click', () => {
+    swing = bars.map(() => ({ min: 0, max: 100 }));
+    renderSwing();
+    sendSwing();
+  });
+}
+
+function renderSwing() {
+  for (const row of swingRows) row.refresh();
+  const limited = swing
+    .map((each, i) => ({ ...each, name: bars[i]?.name ?? '' }))
+    .filter((each) => each.min > 0 || each.max < 100);
+  $('swing-hint').textContent =
+    limited.length === 0
+      ? 'No limit: the bars may tilt over their whole range.'
+      : `${limited.map((each) => `${each.name} stays between ${each.min} and ${each.max}`).join(', ')}.`;
+  $('swing-reset').disabled = limited.length === 0;
+}
+
 /** What the spider has to say in the notice of the shell. */
 function notes() {
   const said = [];
+  if (swingProblem !== '') said.push({ text: swingProblem, urgent: true });
   if (state.resetting) said.push({ text: 'The spider is restarting.', urgent: true });
   const effect = runningEffect();
   if (effect && (state.levels.dimmer ?? 0) === 0) {
@@ -657,6 +752,7 @@ function render() {
   renderMixer();
   renderEffects();
   renderMovement();
+  renderSwing();
   for (const row of rows) row.refresh();
   $('reset').disabled = state.resetting;
   renderReadout($('readout'), dmx, fixture.controls);
@@ -676,6 +772,8 @@ async function main() {
   shell.notes(notes);
   shell.on('show', () => {
     buildPalettes();
+    if (Date.now() >= swingHeld) swing = swingOfShow();
+    renderSwing();
     render();
   });
   shell.on('fixture', (message) => {

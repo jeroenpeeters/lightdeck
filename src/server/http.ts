@@ -34,6 +34,9 @@
  *   POST /api/blackout                `blackout`: true or false, for every fixture
  *   POST /api/master                  `master`: the grand master, 0 to 1, for every fixture
  *   POST /api/fixtures/<id>/update    partial state change of one fixture
+ *   POST /api/fixtures/<id>/limits    what the show limits of the fixture, kept in the show file:
+ *                                     for the spider `tilt`, a `{ min, max }` (0 to 1) per bar,
+ *                                     which no tilt goes beyond. `{}` takes the limits away
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
  *   POST /api/playback                `group` with one of: `scene`, the id of the scene of
  *                                     lights or motion to set the fixtures of the group to
@@ -92,6 +95,7 @@ const CONTENT_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
+  '.jpg': 'image/jpeg',
   '.txt': 'text/plain; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
 };
@@ -197,19 +201,30 @@ function split(body: Record<string, unknown>): { change: unknown; origin: string
   return { change, origin: typeof client === 'string' ? client : undefined };
 }
 
-function describeFixture({ id, kind, label, universe, address, controller }: RigFixture) {
-  return {
+/**
+ * What a browser needs to draw a fixture. A fixture on DMX has its profile, its place on the
+ * universe and its bytes; one that Home Assistant drives has none of those, and its lamps are
+ * in `details`.
+ */
+function describeFixture(fixture: RigFixture) {
+  const { id, kind, label, protocol, controller } = fixture;
+  const common = {
     id,
     kind,
     label,
-    name: controller.profile.name,
-    footprint: controller.profile.footprint,
-    controls: controller.profile.controls,
-    universe,
-    address,
+    protocol,
     details: controller.describe(),
     state: controller.getState(),
-    dmx: controller.getDmx(),
+  };
+  if (fixture.protocol !== 'dmx') return common;
+  return {
+    ...common,
+    name: fixture.controller.profile.name,
+    footprint: fixture.controller.profile.footprint,
+    controls: fixture.controller.profile.controls,
+    universe: fixture.universe,
+    address: fixture.address,
+    dmx: fixture.controller.getDmx(),
   };
 }
 
@@ -250,8 +265,8 @@ export function createHttpServer(options: HttpOptions): Server {
     const text = message(event, data);
     for (const stream of streams) stream.write(text);
   };
-  rig.on('fixture', (id: string, state: unknown, dmx: number[], origin?: string) => {
-    broadcast('fixture', { id, state, dmx, origin: origin ?? null });
+  rig.on('fixture', (id: string, state: unknown, dmx: number[] | undefined, origin?: string) => {
+    broadcast('fixture', { id, state, ...(dmx ? { dmx } : {}), origin: origin ?? null });
   });
   rig.on('frame', (id: string, dmx: number[], beat: number) => {
     if (streams.size > 0) broadcast('frame', { id, dmx, beat: Math.round(beat * 100) / 100 });
@@ -284,7 +299,9 @@ export function createHttpServer(options: HttpOptions): Server {
       'cache-control':
         path.startsWith('/fonts/') || path.startsWith('/lib/')
           ? 'public, max-age=604800'
-          : 'no-cache',
+          : path.startsWith('/room/')
+            ? 'public, max-age=3600'
+            : 'no-cache',
     });
     res.end(req.method === 'HEAD' ? undefined : file.body);
     return true;
@@ -309,12 +326,12 @@ export function createHttpServer(options: HttpOptions): Server {
       res.write('retry: 1000\n\n');
       streams.add(res);
       // A browser that reconnects gets the current picture straight away.
-      for (const { id, controller } of rig.fixtures) {
+      for (const fixture of rig.fixtures) {
         res.write(
           message('fixture', {
-            id,
-            state: controller.getState(),
-            dmx: controller.getDmx(),
+            id: fixture.id,
+            state: fixture.controller.getState(),
+            ...(fixture.protocol === 'dmx' ? { dmx: fixture.controller.getDmx() } : {}),
             origin: null,
           }),
         );
@@ -479,6 +496,7 @@ export function createHttpServer(options: HttpOptions): Server {
       const action = post[2] ?? '';
       const { change, origin } = split(await readJson(req));
       if (action === 'update') fixture.controller.update(change, origin);
+      else if (action === 'limits') rig.playback.setLimits(fixture.id, change);
       else fixture.controller.act(action, origin);
       sendJson(res, 200, { ok: true });
       return;

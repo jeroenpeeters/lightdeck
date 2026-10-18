@@ -97,6 +97,7 @@ describe('Playback', () => {
     expect(rig.playback.getShow()).toEqual({
       file: path,
       problem: null,
+      limits: {},
       palettes: STARTING_PALETTES,
       groups: [
         GROUP('spider', 'Spider', ['spider']),
@@ -942,6 +943,7 @@ describe('Playback', () => {
     expect(told).toHaveBeenLastCalledWith({
       file: path,
       problem: null,
+      limits: {},
       palettes: STARTING_PALETTES,
       groups: [
         GROUP('spider', 'Spider', ['spider']),
@@ -967,6 +969,7 @@ describe('Playback', () => {
       expect(rig.playback.getShow()).toEqual({
         file: path,
         problem: null,
+        limits: {},
         palettes: STARTING_PALETTES,
         groups: [
           GROUP('spider', 'Spider', ['spider']),
@@ -2024,6 +2027,77 @@ describe('Playback', () => {
         writeFileSync(path, WITH_LOOK('      b:\n        lights: chase\n'));
         await vi.waitFor(() => expect(on().spider.look).toEqual(NO_LOOK), { timeout: 2000 });
       });
+    });
+  });
+  describe('the limits of a fixture', () => {
+    const LIMITS = { tilt: [{ min: 0.1, max: 0.6 }, { max: 0.5 }] };
+    const spiderTilt = () => [ch(output, 1), ch(output, 3)];
+
+    it('limits what the fixture sends, and keeps them in the show file', () => {
+      change('spider', { levels: { tilt1: 1, tilt2: 1 } });
+      expect(spiderTilt()).toEqual([255, 255]);
+      rig.playback.setLimits('spider', LIMITS);
+      expect(spiderTilt()).toEqual([153, 128]);
+      expect(rig.playback.getShow().limits).toEqual({
+        spider: {
+          tilt: [
+            { min: 0.1, max: 0.6 },
+            { min: 0, max: 0.5 },
+          ],
+        },
+      });
+      const written = parse(readFileSync(path, 'utf8'));
+      expect(written.limits.spider.tilt).toEqual([
+        { min: 0.1, max: 0.6 },
+        { min: 0, max: 0.5 },
+      ]);
+    });
+
+    it('is as it was after a restart', () => {
+      rig.playback.setLimits('spider', LIMITS);
+      rig.close();
+      start();
+      change('spider', { levels: { tilt1: 1 } });
+      expect(ch(output, 1)).toBe(153);
+    });
+
+    it('tells the pages, and takes the key out of the file when nothing is limited any more', () => {
+      const told = vi.fn();
+      rig.playback.setLimits('spider', LIMITS);
+      rig.on('show', told);
+      rig.playback.setLimits('spider', {});
+      expect(told).toHaveBeenCalledTimes(1);
+      expect(rig.playback.getShow().limits).toEqual({});
+      expect(parse(readFileSync(path, 'utf8')).limits).toBeUndefined();
+      change('spider', { levels: { tilt1: 1 } });
+      expect(ch(output, 1)).toBe(255);
+    });
+
+    it('follows a change of the file by hand', async () => {
+      rig.playback.setLimits('spider', LIMITS);
+      change('spider', { levels: { tilt1: 1 } });
+      writeFileSync(path, readFileSync(path, 'utf8').replace('max: 0.6', 'max: 0.3'));
+      await vi.waitFor(() => expect(ch(output, 1)).toBe(76), { timeout: 2000 });
+    });
+
+    it('refuses limits that cannot be, and a fixture that cannot be limited', () => {
+      expect(() => rig.playback.setLimits('spider', { tilt: [{ min: 0.8, max: 0.2 }] })).toThrow(
+        PatchError,
+      );
+      expect(() => rig.playback.setLimits('laser', {})).toThrow(/cannot be limited/);
+      expect(() => rig.playback.setLimits('lamp', {})).toThrow(/no fixture called "lamp"/);
+      expect(() => rig.playback.setLimits(3, {})).toThrow(/say which fixture/);
+      expect(rig.playback.getShow().limits).toEqual({});
+    });
+
+    it('does not use a file whose limits are wrong, and the show that runs stays', async () => {
+      rig.playback.setLimits('spider', LIMITS);
+      writeFileSync(path, readFileSync(path, 'utf8').replace('min: 0.1', 'min: 0.9'));
+      await vi.waitFor(() => expect(rig.playback.getShow().problem).toMatch(/Limits of "spider"/), {
+        timeout: 2000,
+      });
+      change('spider', { levels: { tilt1: 0 } });
+      expect(ch(output, 1)).toBe(25);
     });
   });
 });

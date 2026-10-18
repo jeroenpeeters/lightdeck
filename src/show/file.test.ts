@@ -116,6 +116,7 @@ describe('ShowFile', () => {
   it('starts with a group per fixture and one for all, and makes no file', () => {
     const show = open();
     expect(show.getShow()).toEqual({
+      limits: {},
       palettes: startingPalettes(),
       groups: startingGroups(FIXTURES),
     });
@@ -463,9 +464,9 @@ groups:
     for (const id of ['spider', 'laser', 'all']) {
       show.edit((document) => document.deleteIn(['groups', id]));
     }
-    expect(show.getShow()).toEqual({ palettes: startingPalettes(), groups: [] });
+    expect(show.getShow()).toEqual({ limits: {}, palettes: startingPalettes(), groups: [] });
     show.close();
-    expect(open().getShow()).toEqual({ palettes: startingPalettes(), groups: [] });
+    expect(open().getShow()).toEqual({ limits: {}, palettes: startingPalettes(), groups: [] });
   });
 
   it('tells about every change', () => {
@@ -481,6 +482,7 @@ groups:
     writeFileSync(path, broken);
     const show = open();
     expect(show.getShow()).toEqual({
+      limits: {},
       palettes: startingPalettes(),
       groups: startingGroups(FIXTURES),
     });
@@ -557,7 +559,9 @@ groups:
 
   it('does not know sequences yet', () => {
     writeFileSync(path, `${HAND_MADE}sequences: {}\n`);
-    expect(open().getProblem()).toBe('The show cannot have "sequences", only palettes and groups');
+    expect(open().getProblem()).toBe(
+      'The show cannot have "sequences", only limits, palettes and groups',
+    );
   });
 
   it('says where YAML that cannot be read goes wrong', () => {

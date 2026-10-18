@@ -1,0 +1,24 @@
+# The rig: what hangs in the room, as far as Home Assistant drives it. Copy this to rig.yaml
+# where lightdeck is started (or give --rig / RIG_FILE), and put your own entities in it.
+# Lightdeck also needs HASS_URL (or --hass), for example
+#   ws://homeassistant.local:8123/api/websocket
+# and HASS_TOKEN, a long-lived access token made on your profile page in Home Assistant, in its
+# environment. Without this file there are no lamps and nothing asks Home Assistant.
+#
+# The room is one fixture. Every lamp is one entity, a light or a switch. A zone is a list of
+# lights, like a bar of the spider: the scenery effects work on the zones. A light that is in
+# no zone is one zone of its own after the others, and without zones all lights are one. A
+# switch is in no zone, and `blackout: true` makes it go off in a blackout and with the master
+# at 0 (without it a switch is left alone by both).
+fixtures:
+  - id: room
+    kind: room
+    label: Room Lights
+    lamps:
+      - { id: bar, label: Bar, entity: light.bar }
+      - { id: shelf, label: Shelf, entity: light.shelf }
+      - { id: ceiling, label: Ceiling, entity: light.living_room }
+      - { id: fog, label: Fog machine, entity: switch.fog, blackout: true }
+    zones:
+      - { id: low, label: Low, lamps: [bar, shelf] }
+      - { id: high, label: High, lamps: [ceiling] }

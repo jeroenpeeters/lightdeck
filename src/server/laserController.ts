@@ -41,7 +41,7 @@ import {
 } from '../fixtures/profile.js';
 import { clamp01 } from '../model/fixture.js';
 import type { UniverseOutput } from '../outputs/patch.js';
-import { type FixtureController, PatchError, readObject } from './fixture.js';
+import { type DmxFixtureController, PatchError, readObject } from './fixture.js';
 import type { Tempo } from './tempo.js';
 
 export interface LaserEffectSettings {
@@ -113,7 +113,7 @@ export interface LaserOptions {
   address: number;
 }
 
-export class LaserController extends EventEmitter implements FixtureController {
+export class LaserController extends EventEmitter implements DmxFixtureController {
   readonly profile: FixtureProfile;
   readonly gate: string;
   readonly universe: number;

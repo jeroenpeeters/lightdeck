@@ -57,8 +57,9 @@
 //   shell.setRate(rate)                    set the master speed, for every effect
 //   shell.tap()                            a tap on the beat, as the Tap key of the desk makes it
 //   shell.setBlackout(on)                  switch the blackout, for every fixture
-//   shell.links                            the state of the link lamps: { bridge, device }, each
-//                                          { state: 'ok' | 'down' | 'unknown', text }
+//   shell.links                            the state of the link lamps: { bridge, device, hass }, each
+//                                          { state: 'ok' | 'down' | 'unknown', text }. `hass` is
+//                                          there only when a fixture is driven by Home Assistant
 //   shell.on('status', () => ...)          the bridge or the LR512 came or went
 //
 // And for a page that shows the master:
@@ -92,6 +93,9 @@ const FRAME = `
       </li>
       <li class="link" id="link-device" data-state="unknown">
         <span class="lamp" aria-hidden="true"></span><span class="link-text">LR512</span>
+      </li>
+      <li class="link" id="link-hass" data-state="unknown" hidden>
+        <span class="lamp" aria-hidden="true"></span><span class="link-text">Home Assistant</span>
       </li>
     </ul>
     <button type="button" class="blackout" id="blackout" aria-pressed="false">Blackout</button>
@@ -235,7 +239,9 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     if ($('fixture-name')) $('fixture-name').textContent = fixture.label;
     if ($('where')) {
       $('where').textContent =
-        `Port ${fixture.universe + 1}, address ${fixture.address}, ${fixture.footprint} channels`;
+        fixture.protocol === 'hass'
+          ? `Home Assistant, ${fixture.details.lamps.length} lamps and switches`
+          : `Port ${fixture.universe + 1}, address ${fixture.address}, ${fixture.footprint} channels`;
     }
   }
 
@@ -586,7 +592,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
 
   // ---- drawing ----
 
-  /** The state of the two links and the words for them, for the lamps of the bar and of a bare page. */
+  /** The state of the links and the words for them, for the lamps of the bar and of a bare page. */
   function linkStates() {
     // Started without a bridge: nothing is wrong, the simulator is the output.
     const bridge = {
@@ -602,19 +608,37 @@ export async function start({ page = 'fixture', bare = false } = {}) {
       state: !known ? 'unknown' : status.device === 'open' ? 'ok' : 'down',
       text: !known ? 'LR512' : status.device === 'open' ? 'LR512 connected' : 'LR512 not found',
     };
-    return { bridge, device };
+    // Home Assistant has a lamp only when a fixture is driven by it.
+    if (status.hass === undefined) return { bridge, device };
+    const hass = {
+      state: status.hass === 'connected' ? 'ok' : 'down',
+      text:
+        status.hass === 'connected'
+          ? 'Home Assistant'
+          : status.hass === 'refused'
+            ? 'Token refused'
+            : 'Home Assistant down',
+    };
+    return { bridge, device, hass };
   }
 
   function renderLinks() {
-    const { bridge, device } = linkStates();
+    const { bridge, device, hass } = linkStates();
     $('link-bridge').dataset.state = bridge.state;
     $('link-bridge').querySelector('.link-text').textContent = bridge.text;
     $('link-device').dataset.state = device.state;
     $('link-device').querySelector('.link-text').textContent = device.text;
+    $('link-hass').hidden = hass === undefined;
+    if (hass) {
+      $('link-hass').dataset.state = hass.state;
+      $('link-hass').querySelector('.link-text').textContent = hass.text;
+    }
   }
 
   /** Why nothing reaches this fixture where it is patched, or nothing when it does. */
   function patchNote(each) {
+    // Only a fixture on DMX is patched to a port of the LR512.
+    if (each.protocol === 'hass') return '';
     const name = `the ${each.label.toLowerCase()}`;
     const port = each.universe + 1;
     if (status.device !== 'open') return '';
@@ -708,6 +732,9 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   function renderNotice() {
     const notes = pageNotes();
     const patch = watched.map(patchNote).find((note) => note !== '');
+    // The room page says nothing about the phone, and the spider page nothing about Home Assistant.
+    const usesBridge = watched.some((each) => each.protocol !== 'hass');
+    const usesHass = watched.some((each) => each.protocol === 'hass');
     let text = '';
     // Alarm: something is wrong. Anything else only explains why the lights are dark.
     let level = 'alarm';
@@ -717,11 +744,17 @@ export async function start({ page = 'fixture', bare = false } = {}) {
         held.size > 0
           ? 'This page cannot reach lightdeck. It keeps trying; your last change is sent as soon as it is back.'
           : 'This page cannot reach lightdeck. It keeps trying.';
-    } else if (initial.bridgeUrl && !status.bridge) {
+    } else if (usesBridge && initial.bridgeUrl && !status.bridge) {
       text = `The bridge app does not answer at ${initial.bridgeUrl}. Open Lightdeck LR512 Bridge on the phone and keep it on screen.`;
-    } else if (status.device === 'lost') {
+    } else if (usesBridge && status.device === 'lost') {
       text =
         'The bridge cannot find the LR512 and keeps searching. Check that the LR512 has power and is on the Wi-Fi.';
+    } else if (usesHass && status.hass === 'refused') {
+      text =
+        'Home Assistant does not accept the token. Check HASS_TOKEN where lightdeck is started, and restart it.';
+    } else if (usesHass && status.hass === 'down') {
+      text =
+        'Lightdeck cannot reach Home Assistant, so the lamps keep what they have. It keeps trying; what you set is sent when it is back.';
     } else if (audioNote()) {
       text = audioNote();
     } else if (patch) {

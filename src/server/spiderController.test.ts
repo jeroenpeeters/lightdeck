@@ -112,6 +112,73 @@ describe('SpiderController', () => {
     expect(ch(output, 39)).toBeGreaterThan(0);
   });
 
+  describe('the limits of the tilt', () => {
+    const limits = { tilt: [{ min: 0.2, max: 0.6 }, { max: 0.5 }] };
+
+    it('keeps a bar within its limits, whoever sets the tilt', () => {
+      controller.setLimits(limits);
+      controller.update({ levels: { tilt1: 1, tilt2: 1 } });
+      expect([ch(output, 1), ch(output, 3)]).toEqual([153, 128]); // 0.6 and 0.5
+      controller.update({ levels: { tilt1: 0, tilt2: 0 } });
+      expect([ch(output, 1), ch(output, 3)]).toEqual([51, 0]); // 0.2, and bar 2 is free below
+      controller.update({ levels: { tilt1: 0.4 } });
+      expect(ch(output, 1)).toBe(102);
+    });
+
+    it('leaves the state alone: what was asked is kept, and what goes out is limited', () => {
+      controller.update({ levels: { tilt1: 1 } });
+      controller.setLimits(limits);
+      expect(controller.getState().levels.tilt1).toBe(1);
+      expect(controller.snapshot('motion')).toEqual({ levels: { tilt1: 1 } });
+      expect(ch(output, 1)).toBe(153);
+      // Taking the limits away gives back what was asked.
+      controller.setLimits(null);
+      expect(ch(output, 1)).toBe(255);
+    });
+
+    it('tells the listeners when the limits change what is sent, and not when they do not', () => {
+      const seen: unknown[] = [];
+      controller.on('state', (state) => seen.push(state));
+      controller.setLimits(limits);
+      controller.setLimits({ tilt: [{ min: 0.2, max: 0.6 }, { max: 0.5 }] });
+      expect(seen).toHaveLength(1);
+    });
+
+    it('reads limits as a min and a max per bar, and fills in what is left out', () => {
+      expect(controller.readLimits(limits)).toEqual({
+        tilt: [
+          { min: 0.2, max: 0.6 },
+          { min: 0, max: 0.5 },
+        ],
+      });
+      expect(controller.readLimits({})).toEqual({
+        tilt: [
+          { min: 0, max: 1 },
+          { min: 0, max: 1 },
+        ],
+      });
+      expect(controller.readLimits(null)).toEqual(controller.readLimits({}));
+    });
+
+    it('refuses what cannot be a limit, and changes nothing', () => {
+      const bad: unknown[] = [
+        'tilt',
+        { tilt: 'wide' },
+        { tilt: [{}, {}, {}] },
+        { tilt: [{ min: 0.5, max: 0.5 }] },
+        { tilt: [{ min: 0.7, max: 0.2 }] },
+        { tilt: [{ min: -0.1 }] },
+        { tilt: [{ max: 1.5 }] },
+        { tilt: [{ min: 'low' }] },
+        { tilt: [{ lowest: 0.1 }] },
+        { pan: [] },
+      ];
+      for (const given of bad) expect(() => controller.setLimits(given)).toThrow(PatchError);
+      controller.update({ levels: { tilt1: 1 } });
+      expect(ch(output, 1)).toBe(255);
+    });
+  });
+
   it('tells the listeners when the blackout changes what is sent, and only then', () => {
     const seen: unknown[] = [];
     controller.on('state', (state) => seen.push(state));
@@ -677,6 +744,26 @@ describe('SpiderController effects', () => {
     const before = output.frames.length;
     advance(500);
     expect(output.frames.length).toBe(before);
+  });
+
+  it('keeps the tilts of a motion effect within the limits', () => {
+    controller.setLimits({
+      tilt: [
+        { min: 0.4, max: 0.6 },
+        { min: 0.4, max: 0.6 },
+      ],
+    });
+    controller.update({ motion: { id: 'tiltwave' } });
+    const seen: number[] = [];
+    for (let i = 0; i < 80; i++) {
+      advance(100);
+      seen.push(ch(output, 1) ?? 0, ch(output, 3) ?? 0);
+    }
+    expect(Math.min(...seen)).toBeGreaterThanOrEqual(102);
+    expect(Math.max(...seen)).toBeLessThanOrEqual(153);
+    // The wave does reach the limits: it is cut off there, not stopped.
+    expect(Math.max(...seen)).toBe(153);
+    expect(Math.min(...seen)).toBe(102);
   });
 
   it('goes back to the tilts of the operator when the motion effect stops', () => {

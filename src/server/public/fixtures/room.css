@@ -1,0 +1,235 @@
+/*
+ * What belongs to the page of the room: the lamps in their zones, the colour of a lamp by hand,
+ * and the scenery (the palette, the effect and the fade). The keys, the faders and the panels are
+ * the shared ones in styles.css.
+ */
+
+/* ---- layout ---- */
+
+@media (min-width: 60rem) {
+  .console {
+    grid-template-columns: minmax(0, 1fr) 24rem;
+    grid-template-areas:
+      "head head"
+      "lamps scenery";
+    align-items: start;
+  }
+  .console > .fixture-head {
+    grid-area: head;
+  }
+  .console > .lamps {
+    grid-area: lamps;
+  }
+  .console > .scenery {
+    position: sticky;
+    top: 4.5rem;
+    grid-area: scenery;
+  }
+}
+
+.lamps-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.whole-room {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ---- zones and lamps ---- */
+
+.zone {
+  margin-top: 1.25rem;
+}
+.zone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--line);
+}
+.zone-head h3 {
+  font-size: var(--large);
+}
+.zone-keys {
+  display: flex;
+  gap: 0.5rem;
+}
+.lamp-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * A lamp is a row: its swatch, its fader with the name and the level, and the key that opens
+ * its colour. The line under it is for what Home Assistant says, and keeps its height when it
+ * is empty so that nothing below it moves.
+ */
+.lamp-row {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr) auto;
+  gap: 0.15rem 0.9rem;
+  align-items: center;
+  padding: 0.7rem 0 0.35rem;
+  border-bottom: 1px solid var(--key);
+}
+.lamp-swatch {
+  --chip: transparent;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--chip);
+}
+.lamp-row[data-on="true"] .lamp-swatch {
+  border-color: var(--paper);
+}
+.lamp-note {
+  grid-column: 2 / -1;
+  min-height: 1.25em;
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 400;
+}
+.lamp-note[data-level="alarm"] {
+  color: var(--stop);
+}
+.lamp-row[data-state="alarm"] .lamp-swatch {
+  border-color: var(--stop);
+  border-style: dashed;
+}
+.colour-key {
+  min-width: 6rem;
+}
+.colour-editor {
+  grid-column: 1 / -1;
+  padding: 0.5rem 0 0.75rem;
+}
+.colour-editor .key {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+.colour-editor .hint {
+  margin-top: 0.5rem;
+}
+
+.switch-name {
+  font-size: var(--base);
+}
+.switch-mark {
+  display: block;
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* On and Off are the same width, so the key does not change size when it is pressed. */
+.switch-key {
+  min-width: 6rem;
+}
+
+/* ---- scenery ---- */
+
+.scenery > .hint,
+.scenery > .choice,
+.scenery > .effect-list,
+.scenery > .sliders {
+  margin-top: 0.75rem;
+}
+.scenery > .effect-list {
+  margin-top: 1.25rem;
+}
+#effect-list .effect {
+  display: flex;
+  align-items: center;
+}
+#palette-speed .pick,
+#palette-speed #pace-own {
+  min-width: 3.5rem;
+  padding: 0 0.6rem;
+}
+
+/* ---- palettes ---- */
+
+.palette-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 0.5rem;
+}
+.palette-list legend {
+  grid-column: 1 / -1;
+}
+.palette-key {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0.4rem;
+  min-height: 4rem;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.palette-key[aria-pressed="true"] {
+  border-color: var(--signal);
+  box-shadow: inset 0 0 0 1px var(--signal);
+  font-weight: 600;
+}
+.palette-chips {
+  display: flex;
+  gap: 0.15rem;
+  min-height: 1.1rem;
+}
+.palette-chip {
+  --chip: #000;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 1.25rem;
+  height: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--chip);
+}
+/* An entry that is off is a dark slot: drawn empty, so it is not taken for black paint. */
+.palette-chip[data-off="true"] {
+  border-style: dashed;
+  border-color: var(--dim);
+  background: transparent;
+}
+.palette-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.palette-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-mark {
+  flex: none;
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.palette-key[aria-pressed="true"] .palette-mark {
+  color: var(--signal);
+}
+.stop[aria-pressed="true"] {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.room-dimmer {
+  margin-top: 0.75rem;
+}

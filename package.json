@@ -11,8 +11,8 @@
   },
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "node --env-file-if-exists=.env dist/index.js",
     "build": "tsc -p tsconfig.build.json && rm -rf dist/server/public && cp -r src/server/public dist/server/public",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
@@ -22,6 +22,7 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "spider": "tsx src/cli/spider.ts",
     "laser": "tsx src/cli/laser.ts",
+    "lamp": "tsx --env-file-if-exists=.env src/cli/lamp.ts",
     "beat-eval": "tsx src/cli/beat-eval.ts",
     "perf": "tsx tools/perf/perf.ts"
   },

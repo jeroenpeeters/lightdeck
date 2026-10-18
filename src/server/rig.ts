@@ -7,7 +7,12 @@
  * the blackout, the grand master, the playback of the show and the state of the link to
  * the LR512.
  *
- * Events: `fixture` (id, state, dmx, origin), `frame` (id, dmx, beat),
+ * A fixture speaks DMX, and then it claims channels of a universe from the patch, or it speaks
+ * to Home Assistant (the room, with its lamps), and then it gets the output for Home Assistant.
+ * What the rig holds for every fixture does not depend on which.
+ *
+ * Events: `fixture` (id, state, dmx, origin; `dmx` is undefined for a fixture that is not
+ * on DMX), `frame` (id, dmx, beat),
  * `tempo` (state, beat, origin), `blackout` (blackout, origin), `master` (level, origin),
  * `status` (status), `show` (summary), `playback` (state), `audio` (what is heard),
  * `output` (how often and how far ahead of the beat the output is made).
@@ -19,30 +24,50 @@ import { BrowserMicSource } from '../inputs/audio/browserMic.js';
 import { type AudioState, Follower } from '../inputs/audio/follower.js';
 import { FeedRecorder } from '../inputs/audio/recorder.js';
 import type { AudioSettings } from '../inputs/audio/settings.js';
+import type { HassOutput, HassStatus } from '../outputs/hass/types.js';
 import type { BridgeStatus } from '../outputs/lr512/bridgeClient.js';
 import { Patch, type UniverseOutput } from '../outputs/patch.js';
 import { DEFAULT_MAX_FPS, Engine, isAnimated, readMaxFps } from './engine.js';
-import { type FixtureController, PatchError, readObject } from './fixture.js';
+import {
+  type DmxFixtureController,
+  type FixtureController,
+  PatchError,
+  readObject,
+} from './fixture.js';
 import { FIXTURE_KINDS, type FixtureKind } from './kinds.js';
 import { Playback, type PlaybackState, type ShowSummary } from './playback.js';
+import type { LampDefinition, ZoneDefinition } from './roomController.js';
 import { readLead, Tempo, type TempoSource, type TempoState } from './tempo.js';
 
-export interface FixtureDefinition {
+/** What every fixture is called, whatever it speaks. */
+interface FixtureNaming {
   /** Names the fixture in addresses of pages and of the API: `spider`, `spider-2`. */
   id: string;
   /** Which kind of fixture it is, a key of the kinds. */
   kind: string;
   /** What the operator calls it. */
   label: string;
+}
+
+/** A fixture on a DMX universe. */
+export interface DmxFixtureDefinition extends FixtureNaming {
   /** 0-based universe index on the bridge. */
   universe: number;
   /** 1-based DMX start address. */
   address: number;
 }
 
-export interface RigFixture extends FixtureDefinition {
-  controller: FixtureController;
+/** A fixture that Home Assistant drives: the lamps and switches of the room. */
+export interface HassFixtureDefinition extends FixtureNaming {
+  lamps: LampDefinition[];
+  zones?: ZoneDefinition[];
 }
+
+export type FixtureDefinition = DmxFixtureDefinition | HassFixtureDefinition;
+
+export type RigFixture =
+  | (DmxFixtureDefinition & { protocol: 'dmx'; controller: DmxFixtureController })
+  | (HassFixtureDefinition & { protocol: 'hass'; controller: FixtureController });
 
 export interface LinkStatus {
   /** The server has a connection to the bridge app. */
@@ -52,6 +77,11 @@ export interface LinkStatus {
   universes: number;
   /** Licensed channels per universe as reported by the bridge; empty when unknown. */
   channels: number[];
+  /**
+   * The link to Home Assistant. Left out while no fixture is driven by it: then there is
+   * nothing to be linked to.
+   */
+  hass?: HassStatus;
 }
 
 /** How the output is made: how often, and how far ahead of the beat. */
@@ -64,6 +94,8 @@ export interface OutputSettings {
 
 export interface RigOptions {
   output: UniverseOutput;
+  /** Where the commands for Home Assistant go. Needed when a fixture is driven by it. */
+  hass?: HassOutput;
   /** The most frames per second. Default 25, which is what the original Light Rider app sends. */
   maxFps?: number;
   /** Milliseconds by which the output is made ahead of the beat. Default 0. */
@@ -103,7 +135,7 @@ export class Rig extends EventEmitter {
   private blackout = false;
   /** The grand master. It starts at full every time, and the show file does not keep it. */
   private master = 1;
-  private link: LinkStatus = { bridge: false, device: 'unknown', universes: 0, channels: [] };
+  private link: LinkStatus;
   private readonly recorder: FeedRecorder | undefined;
 
   /** Throws when a fixture is unknown, named twice, or does not fit where it is put. */
@@ -118,9 +150,10 @@ export class Rig extends EventEmitter {
     const patch = new Patch(options.output);
 
     const fixtures: RigFixture[] = [];
+    const entities = new Set<string>();
     try {
       for (const definition of options.fixtures) {
-        const { id, label, universe, address } = definition;
+        const { id, label } = definition;
         if (!ID.test(id)) {
           throw new Error(`"${id}" cannot name a fixture: use small letters, digits and dashes`);
         }
@@ -131,21 +164,56 @@ export class Rig extends EventEmitter {
             `"${id}" is a ${definition.kind}, which lightdeck does not know. It knows: ${Object.keys(kinds).join(', ')}`,
           );
         }
-        const output = patch.claim(label, universe, address, kind.profile.footprint);
-        const controller = kind.create({
-          output,
-          tempo: this.tempo,
-          palettes: this.palettes,
-          universe,
-          address,
-        });
-        fixtures.push({ ...definition, controller });
+        if (kind.protocol === 'dmx') {
+          const { universe, address } = definition as DmxFixtureDefinition;
+          if (!Number.isInteger(universe) || !Number.isInteger(address)) {
+            throw new Error(`"${id}" is on DMX and needs a universe and an address`);
+          }
+          const output = patch.claim(label, universe, address, kind.profile.footprint);
+          const controller = kind.create({
+            output,
+            tempo: this.tempo,
+            palettes: this.palettes,
+            universe,
+            address,
+          });
+          fixtures.push({ ...(definition as DmxFixtureDefinition), protocol: 'dmx', controller });
+        } else {
+          const { lamps, zones } = definition as HassFixtureDefinition;
+          if (!Array.isArray(lamps)) throw new Error(`"${id}" needs a list of lamps`);
+          if (!options.hass) {
+            throw new Error(
+              `"${id}" is driven by Home Assistant, and lightdeck was not given a connection to it`,
+            );
+          }
+          for (const lamp of lamps) {
+            if (entities.has(lamp.entity)) {
+              throw new Error(`${lamp.entity} is a lamp of two fixtures, and may be of one only`);
+            }
+            entities.add(lamp.entity);
+          }
+          const controller = kind.create({
+            hass: options.hass,
+            tempo: this.tempo,
+            palettes: this.palettes,
+            lamps,
+            zones: zones ?? [],
+          });
+          fixtures.push({ ...(definition as HassFixtureDefinition), protocol: 'hass', controller });
+        }
       }
     } catch (error) {
       for (const made of fixtures) made.controller.close();
       throw error;
     }
     this.fixtures = fixtures;
+    this.link = {
+      bridge: false,
+      device: 'unknown',
+      universes: 0,
+      channels: [],
+      ...(fixtures.some((fixture) => fixture.protocol === 'hass') ? { hass: 'down' as const } : {}),
+    };
 
     this.engine = new Engine({
       tempo: this.tempo,
@@ -178,13 +246,22 @@ export class Rig extends EventEmitter {
       this.recorder.attach(this.mic);
     }
 
-    for (const { id, controller } of fixtures) {
+    for (const fixture of fixtures) {
+      const { id, controller } = fixture;
       controller.on('state', (state: unknown, origin?: string) => {
-        this.emit('fixture', id, state, controller.getDmx(), origin);
+        this.emit(
+          'fixture',
+          id,
+          state,
+          fixture.protocol === 'dmx' ? fixture.controller.getDmx() : undefined,
+          origin,
+        );
       });
-      controller.on('frame', (dmx: number[], beat: number) => {
-        this.emit('frame', id, dmx, beat);
-      });
+      if (fixture.protocol === 'dmx') {
+        fixture.controller.on('frame', (dmx: number[], beat: number) => {
+          this.emit('frame', id, dmx, beat);
+        });
+      }
     }
     this.tempo.on('tempo', (state: TempoState, origin?: string) => {
       this.emit('tempo', state, this.tempo.getBeat(), origin);
@@ -259,7 +336,14 @@ export class Rig extends EventEmitter {
   setBridgeConnected(connected: boolean): void {
     this.link = connected
       ? { ...this.link, bridge: true }
-      : { bridge: false, device: 'unknown', universes: 0, channels: [] };
+      : { ...this.link, bridge: false, device: 'unknown', universes: 0, channels: [] };
+    this.emit('status', this.getStatus());
+  }
+
+  /** What the link to Home Assistant is. Without a fixture that it drives it is not shown. */
+  setHassStatus(status: HassStatus): void {
+    if (this.link.hass === undefined || this.link.hass === status) return;
+    this.link = { ...this.link, hass: status };
     this.emit('status', this.getStatus());
   }
 

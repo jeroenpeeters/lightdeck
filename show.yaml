@@ -258,3 +258,8 @@ groups:
     label: All
     fixtures: [ spider, laser ]
     scenes: {}
+limits:
+  spider:
+    tilt:
+      - { min: 0, max: 0.35 } #top bar
+      - {min: 0, max: 0.85}

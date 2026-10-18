@@ -37,7 +37,7 @@ import {
 } from '../fixtures/profile.js';
 import { clamp01 } from '../model/fixture.js';
 import type { UniverseOutput } from '../outputs/patch.js';
-import { type FixtureController, PatchError, readObject } from './fixture.js';
+import { type DmxFixtureController, PatchError, readObject } from './fixture.js';
 import type { Tempo } from './tempo.js';
 
 /** How the fixture's cells and motors are arranged. Cell indices are 0-based. */
@@ -71,6 +71,17 @@ export interface ColourSettings {
   palette: string | null;
   /** How fast the palette cycles, one of `SPEEDS`, or null: then the pace of the palette itself. */
   speed: number | null;
+}
+
+/** How far a bar may tilt, as a tilt value from 0 to 1. The bar stays within `min` and `max`. */
+export interface TiltLimit {
+  min: number;
+  max: number;
+}
+
+/** What the show says the spider may do: the limits of the tilt, per bar in the order of the layout. */
+export interface SpiderLimits {
+  tilt: TiltLimit[];
 }
 
 export interface SpiderState {
@@ -149,7 +160,7 @@ function readSpeed(value: unknown, what: string): number {
   return value;
 }
 
-export class SpiderController extends EventEmitter implements FixtureController {
+export class SpiderController extends EventEmitter implements DmxFixtureController {
   readonly profile: FixtureProfile;
   readonly layout: CellLayout;
   readonly universe: number;
@@ -168,6 +179,8 @@ export class SpiderController extends EventEmitter implements FixtureController 
   private readonly lightClock = new EffectClock();
   private readonly motionClock = new EffectClock();
   private readonly paletteClock = new EffectClock();
+  /** The limits of the show. They are put on what goes out, and are no part of the state. */
+  private limits: SpiderLimits;
   /** True once the controller was closed: the engine then stops asking it for frames. */
   private disposed = false;
 
@@ -184,6 +197,7 @@ export class SpiderController extends EventEmitter implements FixtureController 
     this.output = options.output;
     this.tempo = options.tempo;
     this.palettes = options.palettes ?? new PaletteBook();
+    this.limits = this.readLimits(null);
     this.universe = options.universe;
     this.address = options.address;
     this.resetHoldMs = options.resetHoldMs ?? 3500;
@@ -235,6 +249,42 @@ export class SpiderController extends EventEmitter implements FixtureController 
         setsMotorSpeed: setsMotorSpeed === true,
       })),
     };
+  }
+
+  /**
+   * The limits as the show file has them: `{ tilt: [{ min, max }, ...] }`, a limit per bar in
+   * the order of the layout, from 0 to 1 and with `min` below `max`. A bar or a key that is
+   * left out is not limited. `null` is no limits at all. Throws a `PatchError`.
+   */
+  readLimits(value: unknown): SpiderLimits {
+    const bars = this.layout.bars.length;
+    const free = (): TiltLimit => ({ min: 0, max: 1 });
+    const limits: SpiderLimits = { tilt: Array.from({ length: bars }, free) };
+    if (value === null || value === undefined) return limits;
+    const given = readObject(value, 'the limits of the spider', ['tilt']);
+    if (given.tilt === undefined) return limits;
+    if (!Array.isArray(given.tilt) || given.tilt.length > bars) {
+      throw new PatchError(`"tilt" must list a limit for each of the ${bars} bars at most`);
+    }
+    given.tilt.forEach((each: unknown, bar: number) => {
+      const where = `the tilt limit of bar ${bar + 1}`;
+      const { min = 0, max = 1 } = readObject(each, where, ['min', 'max']);
+      if (typeof min !== 'number' || typeof max !== 'number' || !(min >= 0 && max <= 1)) {
+        throw new PatchError(`${where} must be a min and a max between 0 and 1`);
+      }
+      if (!(min < max)) throw new PatchError(`${where} must have a min below its max`);
+      limits.tilt[bar] = { min, max };
+    });
+    return limits;
+  }
+
+  /** Puts the limits of the show on what goes out. Without any the bars are free. */
+  setLimits(value: unknown): void {
+    const limits = this.readLimits(value);
+    if (JSON.stringify(limits) === JSON.stringify(this.limits)) return;
+    this.limits = limits;
+    this.emit('wants');
+    this.push();
   }
 
   /** The fixture's bytes as they are being sent, channel 1 first. */
@@ -582,6 +632,13 @@ export class SpiderController extends EventEmitter implements FixtureController 
       });
       if (frame.motorSpeed !== undefined) levels[MOTOR_SPEED_CONTROL] = clamp01(frame.motorSpeed);
     }
+    // Whatever sets a tilt, by hand, in a scene or by a motion effect, the bar stays within its limits.
+    this.layout.tilt.forEach((name, bar) => {
+      const limit = this.limits.tilt[bar];
+      if (limit && name in levels) {
+        levels[name] = Math.min(limit.max, Math.max(limit.min, levels[name] ?? 0));
+      }
+    });
     for (const name of this.dimmers) levels[name] = (levels[name] ?? 0) * this.master;
     if (this.blackout) {
       for (const name of BLACKOUT_CONTROLS) if (name in levels) levels[name] = 0;

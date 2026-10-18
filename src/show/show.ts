@@ -24,6 +24,11 @@
  *       mode: cycle                     # static | cycle
  *       change: fade                    # step | fade
  *       speed: 0.25
+ *   limits:                             # what a fixture may not do, whatever sets it
+ *     spider:
+ *       tilt:                           # per bar, in the order of the bars
+ *         - { min: 0, max: 0.87 }
+ *         - { min: 0, max: 0.87 }
  *   groups:
  *     spider:
  *       label: Spider
@@ -115,6 +120,11 @@ export interface Group {
 }
 
 export interface Show {
+  /**
+   * What the show limits of a fixture, by the id of the fixture, in the form its controller
+   * gave back from `readLimits`. A fixture that is not here is not limited.
+   */
+  limits: Record<string, unknown>;
   /** In the order of the file. */
   palettes: Palette[];
   /** In the order of the file. */
@@ -138,6 +148,12 @@ export interface KnownFixtures {
   /** In the order of the rig. */
   fixtures: readonly ShowFixture[];
   check: CheckPart;
+  /**
+   * Reads the limits that the file has for a fixture and gives them back as the controller
+   * takes them, or throws a `PatchError` when the fixture cannot have them. Without it no
+   * fixture can have limits.
+   */
+  readLimits?: (fixture: string, limits: unknown) => unknown;
 }
 
 export const MAX_LABEL = 40;
@@ -314,6 +330,26 @@ function readScenes(listed: unknown, group: Group, known: KnownFixtures, place: 
   return scenes;
 }
 
+/** The limits of the fixtures, as their controllers read them. */
+function readLimits(listed: unknown, known: KnownFixtures): Record<string, unknown> {
+  if (listed === null || listed === undefined) return {};
+  if (!isObject(listed)) throw new ShowError('"limits" must be a list of limits by fixture');
+  const limits: Record<string, unknown> = {};
+  for (const [id, value] of entries(listed)) {
+    const where = `limits of "${id}"`;
+    try {
+      if (!known.fixtures.some((each) => each.id === id)) {
+        throw new PatchError(noFixture(id, known.fixtures));
+      }
+      if (!known.readLimits) throw new PatchError('this fixture cannot be limited');
+      limits[id] = known.readLimits(id, value);
+    } catch (error) {
+      throw new ShowError(`${where}: ${message(error)}`);
+    }
+  }
+  return limits;
+}
+
 function readPalettes(listed: unknown): Palette[] {
   if (listed === null) return [];
   if (!isObject(listed)) throw new ShowError('"palettes" must be a list of palettes by their id');
@@ -445,15 +481,16 @@ function readGroups(listed: unknown, known: KnownFixtures, palettes: readonly Pa
  */
 export function readShow(data: unknown, known: KnownFixtures): Show {
   if (data === null || data === undefined) {
-    return { palettes: startingPalettes(), groups: startingGroups(known.fixtures) };
+    return { limits: {}, palettes: startingPalettes(), groups: startingGroups(known.fixtures) };
   }
   if (!isObject(data)) throw new ShowError('the show must start with "groups:"');
   const unknown = Object.keys(data).find(
-    (key) => key !== 'groups' && key !== 'scenes' && key !== 'palettes',
+    (key) => !['groups', 'scenes', 'palettes', 'limits'].includes(key),
   );
   if (unknown !== undefined) {
-    throw new ShowError(`the show cannot have "${unknown}", only palettes and groups`);
+    throw new ShowError(`the show cannot have "${unknown}", only limits, palettes and groups`);
   }
+  const limits = readLimits(data.limits, known);
   // A show without the key has the palettes a show starts with. Writing it to the file is what
   // the first change from the deck does.
   const palettes = data.palettes === undefined ? startingPalettes() : readPalettes(data.palettes);
@@ -463,7 +500,7 @@ export function readShow(data: unknown, known: KnownFixtures): Show {
         'the show has "scenes" next to "groups". A scene belongs to a group: put it under the "scenes" of its group',
       );
     }
-    return { palettes, groups: readGroups(data.groups, known, palettes) };
+    return { limits, palettes, groups: readGroups(data.groups, known, palettes) };
   }
 
   // From before there were groups: the scenes are for every fixture.
@@ -474,5 +511,5 @@ export function readShow(data: unknown, known: KnownFixtures): Show {
   } else if (isObject(data.scenes) && entries(data.scenes).length > 0) {
     throw new ShowError('the show has scenes, and there is no fixture they can be for');
   }
-  return { palettes, groups };
+  return { limits, palettes, groups };
 }

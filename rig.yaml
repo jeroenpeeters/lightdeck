@@ -1,0 +1,24 @@
+# The lamps of the room, driven through Home Assistant. See rig.example.yaml for what the keys mean.
+fixtures:
+  - id: room
+    kind: room
+    label: Room Lights
+    lamps:
+      - { id: r1s1, label: Rail 1.1, entity: light.rail1_spot1 }
+      - { id: r1s2, label: Rail 1.2, entity: light.rail1_spot2 }
+      - { id: r1s3, label: Rail 1.3, entity: light.rail1_spot3 }
+      - { id: r1s4, label: Rail 1.4, entity: light.rail1_spot4 }
+      - { id: r1s5, label: Rail 1.5, entity: light.rail1_spot5 }
+      - { id: r2s1, label: Rail 2.1, entity: light.rail2_spot1 }
+      - { id: r2s2, label: Rail 2.2, entity: light.rail2_spot2 }
+      - { id: r2s3, label: Rail 2.3, entity: light.rail2_spot3 }
+      - { id: r2s4, label: Rail 2.4, entity: light.rail2_spot4 }
+      - { id: r2d1, label: Rail 2 downlight, entity: light.rail2_lamp_downlight_1 }
+      - { id: r3s1, label: Rail 3.1, entity: light.rail3_spot1 }
+      - { id: r3s2, label: Rail 3.2, entity: light.rail3_spot2 }
+      - { id: r3s3, label: Rail 3.3, entity: light.rail3_spot3 }
+      - { id: r3s4, label: Rail 3.4, entity: light.rail3_spot4 }
+    zones:
+      - { id: rail1, label: Rail 1, lamps: [r1s1, r1s2, r1s3, r1s4, r1s5] }
+      - { id: rail2, label: Rail 2, lamps: [r2s1, r2s2, r2s3, r2s4, r2d1] }
+      - { id: rail3, label: Rail 3, lamps: [r3s1, r3s2, r3s3, r3s4] }

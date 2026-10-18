@@ -88,6 +88,17 @@
             <input type="checkbox" id="link-bars" checked />
             <span>Move both bars together</span>
           </label>
+
+          <fieldset class="swing" id="swing">
+            <legend>Swing limit</legend>
+            <p class="hint">
+              No bar tilts beyond its limit, whatever sets it: the sliders above, a scene or a
+              movement. A movement that wants more is cut off there. It is kept in the show file.
+            </p>
+            <div class="sliders" id="swing-sliders"></div>
+            <p class="hint" id="swing-hint"></p>
+            <button type="button" class="key" id="swing-reset">Full swing</button>
+          </fieldset>
         </div>
 
         <div class="view view-fixture" role="tabpanel" id="view-fixture" aria-labelledby="tab-fixture" hidden>

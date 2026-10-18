@@ -67,6 +67,38 @@ describe('HTTP server', () => {
   // biome-ignore lint/suspicious/noExplicitAny: shapes are asserted field by field
   const state = async () => (await (await fetch(`${base}/api/state`)).json()) as any;
 
+  it('limits the tilt of a spider, and tells the show about it', async () => {
+    await post('/api/fixtures/spider/update', { levels: { tilt1: 1 } });
+    const done = await post('/api/fixtures/spider/limits', {
+      tilt: [{ min: 0, max: 0.5 }],
+      client: 'tablet',
+    });
+    expect(done.status).toBe(200);
+    expect((await state()).show.limits).toEqual({
+      spider: {
+        tilt: [
+          { min: 0, max: 0.5 },
+          { min: 0, max: 1 },
+        ],
+      },
+    });
+    expect(ch(output, 1)).toBe(128);
+    // The other spider is not limited.
+    await post('/api/fixtures/spider-2/update', { levels: { tilt1: 1 } });
+    expect(ch(output, 101)).toBe(255);
+    expect((await post('/api/fixtures/spider/limits', {})).status).toBe(200);
+    expect((await state()).show.limits).toEqual({});
+  });
+
+  it('answers a limit that cannot be, and a fixture that has none', async () => {
+    const wide = await post('/api/fixtures/spider/limits', { tilt: [{ min: 0.9, max: 0.1 }] });
+    expect(wide.status).toBe(400);
+    expect(await error(wide)).toMatch(/min below its max/);
+    const laser = await post('/api/fixtures/laser/limits', {});
+    expect(laser.status).toBe(400);
+    expect(await error(laser)).toMatch(/cannot be limited/);
+  });
+
   it('goes from the front door to the deck', async () => {
     const response = await fetch(`${base}/`, { redirect: 'manual' });
     expect(response.status).toBe(302);
@@ -628,6 +660,7 @@ describe('HTTP server', () => {
     expect(body.show).toEqual({
       file: null,
       problem: null,
+      limits: {},
       palettes: STARTING_PALETTES,
       groups: STARTING,
     });
@@ -965,7 +998,7 @@ describe('HTTP server', () => {
       `event: playback\ndata: {"groups":{"spider":${nothing},"spider-2":${nothing},"laser":${nothing},"all":${nothing}}}`,
     );
     expect(text).toContain(
-      `event: show\ndata: ${JSON.stringify({ file: null, problem: null, palettes: STARTING_PALETTES, groups: STARTING })}`,
+      `event: show\ndata: ${JSON.stringify({ file: null, problem: null, limits: {}, palettes: STARTING_PALETTES, groups: STARTING })}`,
     );
 
     await post('/api/groups/laser/scenes', { label: 'Warm', type: 'lights' });

@@ -20,6 +20,14 @@
 // is drawn in its own frame: the front is +Z, the lenses face +Y when a bar is upright, and
 // the back, with the LCD display and the cables, is -Z.
 //
+// The room (room.js, roomGeometry.js) is a shell with a panorama photo of the living room on
+// it, which the key Room puts in the scene, so that the fixtures can be hung where they will
+// hang. It is drawn apart from the fixtures and changes nothing about them.
+//
+// The smoke machine (smoke.js, smokeSim.js) is a small box that the key Smoke machine puts in
+// the scene. It is moved and turned like a fixture, and its settings (output, density, throw,
+// spread, nozzle angle, rise and hang time) are in a panel. Its smoke is lit by the lenses.
+//
 // The fixtures can be moved and turned by hand, with the gizmo of three.js, and mounted with
 // the lights down, up, forward or back. Where they stand is kept per fixture in this browser
 // (localStorage), not on the server.
@@ -28,6 +36,9 @@ import * as THREE from 'three';
 import { createCalibration } from '/calibrate.js';
 import { OrbitControls } from '/lib/three/OrbitControls.js';
 import { TransformControls } from '/lib/three/TransformControls.js';
+import { createRoom } from '/room.js';
+import { createSmoke } from '/smoke.js';
+import { cleanSmoke, SMOKE_RANGES } from '/smokeSim.js';
 import {
   cleanCurve,
   curveAt,
@@ -40,6 +51,17 @@ import {
 
 const STORE = 'lightdeck.simulator.v1';
 const DEFAULT_HAZE = 60;
+const DEFAULT_ROOM_LIGHT = 60;
+const DEFAULT_CEILING = 2.6;
+/** Looking into the room from above and behind the dining end, over the ceiling that is not drawn from there. */
+const ROOM_VIEW = { position: [-2.5, 7.5, 9.5], target: [0.3, 0.9, -0.5] };
+const FIELD_OF_VIEW = 50;
+const PHOTO_FIELD_OF_VIEW = 75;
+/** How high the smoke goes on the empty stage, which has no ceiling. */
+const EMPTY_STAGE_CEILING = 4;
+/** How much light the smoke gets from the room itself; the lenses come on top. */
+const SMOKE_AMBIENT = 0.06;
+const SMOKE_AMBIENT_DARK = 0.02;
 /** A bar always turns at least this fast, so that a mistaken calibration does not freeze it. */
 const MIN_DEGREES_PER_SECOND = 1;
 /** Metres. The fixture's own frame has the origin in the middle of the underside. */
@@ -82,7 +104,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0d10);
-const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 80);
+const camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, 1, 0.05, 80);
 const DEFAULT_VIEW = { position: [2.2, 2.7, 3.4], target: [0, 1.7, 0] };
 
 const orbit = new OrbitControls(camera, canvas);
@@ -98,11 +120,17 @@ function setView(view) {
 }
 setView(store.view ?? DEFAULT_VIEW);
 orbit.addEventListener('end', () => {
+  // Looking round from the spot of the photo is not a view to come back to.
+  if (photoView) return;
   store.view = { position: camera.position.toArray(), target: orbit.target.toArray() };
   saveStore();
 });
 
-scene.add(new THREE.HemisphereLight(0xaab4c6, 0x3a3f48, 3.5));
+const AMBIENT = 3.5;
+/** With the room dark the room is lit by the fixtures and by next to nothing else. */
+const AMBIENT_DARK = 1.3;
+const ambient = new THREE.HemisphereLight(0xaab4c6, 0x3a3f48, AMBIENT);
+scene.add(ambient);
 
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(16, 16),
@@ -113,6 +141,99 @@ scene.add(floor);
 const grid = new THREE.GridHelper(16, 16, 0x3b434e, 0x262c34);
 grid.position.y = 0.003;
 scene.add(grid);
+
+// ---- the room ----
+
+const room = createRoom({
+  scene,
+  renderer,
+  onLoaded(error) {
+    if (error) {
+      $('note').textContent = error.message;
+      $('note').hidden = false;
+    }
+  },
+});
+let photoView = null;
+
+const smoke = createSmoke({ scene, renderer, camera });
+const machine = smoke.machine;
+/** What can be chosen, moved and turned: the spiders, and the smoke machine when it is there. */
+const things = () => (smoke.present ? [...sims, machine] : sims);
+
+function applyDark() {
+  room.setDark(roomDark);
+  // The empty stage keeps its own light: only the room is dimmed.
+  ambient.intensity = roomDark && room.visible ? AMBIENT_DARK : AMBIENT;
+}
+
+function showRoomSettings() {
+  const on = room.visible;
+  $('room-toggle').setAttribute('aria-pressed', String(on));
+  $('room-dark').disabled = !on;
+  $('room-dark').setAttribute('aria-pressed', String(roomDark));
+  $('room-eye').disabled = !on;
+  $('room-eye').setAttribute('aria-pressed', String(photoView !== null));
+  $('room-light').disabled = !on;
+  $('room-ceiling').disabled = !on;
+  $('room-light').value = String(roomLight);
+  $('room-light-value').textContent = `${roomLight}%`;
+  $('room-ceiling').value = String(ceiling);
+}
+
+/** The simulator's own floor and grid are for an empty stage: the room has a floor of its own. */
+function setRoom(on) {
+  room.show(on);
+  applyDark();
+  floor.visible = !on;
+  grid.visible = !on;
+  if (!on) setPhotoView(false);
+  store.room = on;
+  // The first time, look into the room instead of at the place where the stage was.
+  if (on && !store.roomSeen) setView(ROOM_VIEW);
+  if (on) store.roomSeen = true;
+  saveStore();
+  showRoomSettings();
+}
+
+/**
+ * Stands the camera where the photo was taken and lets the operator look round from there,
+ * which is the check that the room is the photo: from that spot it looks the same.
+ */
+function setPhotoView(on) {
+  if (on === (photoView !== null)) return;
+  if (on) {
+    photoView = {
+      position: camera.position.toArray(),
+      target: orbit.target.toArray(),
+      limits: [orbit.minDistance, orbit.maxDistance, orbit.minPolarAngle, orbit.maxPolarAngle],
+      rotateSpeed: orbit.rotateSpeed,
+    };
+    const eye = room.eye();
+    orbit.enableZoom = false;
+    orbit.enablePan = false;
+    orbit.rotateSpeed = -0.5;
+    orbit.minDistance = 0.01;
+    orbit.maxDistance = 0.01;
+    orbit.minPolarAngle = 0.05 * Math.PI;
+    orbit.maxPolarAngle = 0.95 * Math.PI;
+    camera.fov = PHOTO_FIELD_OF_VIEW;
+    camera.position.copy(eye).add(new THREE.Vector3(0, 0, 0.01));
+    orbit.target.copy(eye);
+  } else {
+    const saved = photoView;
+    photoView = null;
+    orbit.enableZoom = true;
+    orbit.enablePan = true;
+    orbit.rotateSpeed = saved.rotateSpeed;
+    [orbit.minDistance, orbit.maxDistance, orbit.minPolarAngle, orbit.maxPolarAngle] = saved.limits;
+    camera.fov = FIELD_OF_VIEW;
+    setView({ position: saved.position, target: saved.target });
+  }
+  camera.updateProjectionMatrix();
+  orbit.update();
+  showRoomSettings();
+}
 
 // ---- a spider ----
 
@@ -444,7 +565,18 @@ function place(sim, pose) {
   sim.group.position.fromArray(pose.p);
   sim.group.quaternion.fromArray(pose.q);
 }
+/** On the floor a little way from the spiders, the nozzle pointing at them. */
+const MACHINE_POSE = {
+  p: [0.6, 0, 1.4],
+  q: new THREE.Quaternion().setFromAxisAngle(UP, Math.PI).toArray(),
+};
 function keepPose(sim) {
+  if (sim.kind === 'smoke') {
+    store.smoke ??= {};
+    store.smoke.pose = { p: sim.group.position.toArray(), q: sim.group.quaternion.toArray() };
+    saveStore();
+    return;
+  }
   store.fixtures[sim.id] = { p: sim.group.position.toArray(), q: sim.group.quaternion.toArray() };
   saveStore();
 }
@@ -454,6 +586,9 @@ function keepPose(sim) {
 const sims = [];
 const dmxOf = new Map();
 let haze = Number.isFinite(store.haze) ? store.haze : DEFAULT_HAZE;
+let roomDark = store.roomDark === true;
+let roomLight = Number.isFinite(store.roomLight) ? store.roomLight : DEFAULT_ROOM_LIGHT;
+let ceiling = Number.isFinite(store.ceiling) ? store.ceiling : DEFAULT_CEILING;
 let selected = null;
 
 async function fetchState() {
@@ -533,25 +668,54 @@ let dragged = false;
 
 function select(sim) {
   selected = sim;
-  for (const each of sims) each.outline.visible = each === sim;
+  for (const each of things()) each.outline.visible = each === sim;
   if (sim) transform.attach(sim.group);
   else transform.detach();
   for (const key of document.querySelectorAll('#fixtures .key')) {
     key.setAttribute('aria-pressed', String(key.dataset.id === sim?.id));
   }
   showMount();
-  calibration.show(sim);
+  calibration.show(sim?.kind === 'smoke' ? null : sim);
+}
+
+/** Where the chosen fixture hangs, in metres from the spot where the photo was taken. */
+function showPosition() {
+  for (const [id, axis] of [
+    ['pos-x', 'x'],
+    ['pos-y', 'y'],
+    ['pos-z', 'z'],
+  ]) {
+    const field = $(id);
+    field.disabled = selected === null;
+    if (selected && document.activeElement !== field) {
+      field.value = selected.group.position[axis].toFixed(2);
+    }
+  }
+}
+for (const [id, axis] of [
+  ['pos-x', 'x'],
+  ['pos-y', 'y'],
+  ['pos-z', 'z'],
+]) {
+  $(id).addEventListener('change', () => {
+    const value = Number($(id).value);
+    if (!selected || !Number.isFinite(value)) return showPosition();
+    selected.group.position[axis] = value;
+    keepPose(selected);
+    showPosition();
+  });
 }
 
 /** Marks the mount that the chosen fixture is in, if it is in one. */
 function showMount() {
+  showPosition();
   const yaw = selected ? yawOf(selected.group.quaternion) : 0;
   for (const key of document.querySelectorAll('#mounts .key')) {
     const same =
       selected !== null &&
       selected.group.quaternion.angleTo(mountQuaternion(yaw, Number(key.dataset.degrees))) <
         SAME_MOUNT;
-    key.disabled = selected === null;
+    key.disabled = selected === null || selected.kind === 'smoke';
     key.setAttribute('aria-pressed', String(same));
   }
 }
@@ -596,12 +760,39 @@ $('snap').addEventListener('click', () => {
 $('reset-fixture').addEventListener('click', () => {
   if (!selected) return;
   const index = sims.indexOf(selected);
-  place(selected, defaultPose(index, sims.length));
+  place(selected, selected.kind === 'smoke' ? MACHINE_POSE : defaultPose(index, sims.length));
   keepPose(selected);
   showMount();
 });
+$('room-toggle').addEventListener('click', () => setRoom(!room.visible));
+$('room-eye').addEventListener('click', () => setPhotoView(photoView === null));
+$('room-dark').addEventListener('click', () => {
+  roomDark = !roomDark;
+  store.roomDark = roomDark;
+  saveStore();
+  applyDark();
+  showRoomSettings();
+});
+$('room-light').addEventListener('input', () => {
+  roomLight = Number($('room-light').value);
+  store.roomLight = roomLight;
+  saveStore();
+  room.setBrightness(roomLight / 100);
+  showRoomSettings();
+});
+$('room-ceiling').addEventListener('change', () => {
+  const value = Number($('room-ceiling').value);
+  if (Number.isFinite(value) && value >= 2 && value <= 4) {
+    ceiling = value;
+    store.ceiling = value;
+    saveStore();
+    room.setCeiling(value);
+  }
+  showRoomSettings();
+});
 $('reset-view').addEventListener('click', () => {
-  setView(DEFAULT_VIEW);
+  setPhotoView(false);
+  setView(room.visible ? ROOM_VIEW : DEFAULT_VIEW);
   delete store.view;
   saveStore();
 });
@@ -631,8 +822,8 @@ canvas.addEventListener('pointerup', (event) => {
     ),
     camera,
   );
-  const hit = raycaster.intersectObjects(sims.flatMap((sim) => sim.pickable))[0];
-  select(sims.find((sim) => sim.id === hit?.object.userData.fixtureId) ?? null);
+  const hit = raycaster.intersectObjects(things().flatMap((thing) => thing.pickable))[0];
+  select(things().find((thing) => thing.id === hit?.object.userData.fixtureId) ?? null);
 });
 
 // ---- calibrating the movement ----
@@ -688,6 +879,107 @@ $('haze').addEventListener('input', () => {
   saveStore();
   showSettings();
 });
+
+// ---- the smoke machine ----
+
+smoke.set(cleanSmoke(store.smoke?.settings));
+
+function machineKey() {
+  const key = document.createElement('button');
+  key.type = 'button';
+  key.className = 'key';
+  key.dataset.id = machine.id;
+  key.textContent = machine.label;
+  key.setAttribute('aria-pressed', String(selected === machine));
+  key.addEventListener('click', () => select(machine));
+  return key;
+}
+
+function showSmoke() {
+  $('smoke-toggle').setAttribute('aria-pressed', String(smoke.present));
+  $('smoke').hidden = !smoke.present;
+  $('smoke-on').setAttribute('aria-pressed', String(smoke.emitting));
+  const settings = smoke.settings;
+  for (const [name, range] of Object.entries(SMOKE_RANGES)) {
+    const field = $(`smoke-${name}`);
+    if (document.activeElement !== field) field.value = String(settings[name]);
+    $(`smoke-${name}-value`).textContent = `${settings[name]}${range.unit}`;
+  }
+}
+
+/** Puts the smoke machine in the scene, where it was last put, or takes it out. */
+function setMachine(on) {
+  if (on === smoke.present) return;
+  smoke.show(on);
+  if (on) {
+    place(machine, store.smoke?.pose ?? MACHINE_POSE);
+    $('fixtures').append(machineKey());
+  } else {
+    for (const key of document.querySelectorAll('#fixtures .key')) {
+      if (key.dataset.id === machine.id) key.remove();
+    }
+    if (selected === machine) select(sims[0] ?? null);
+  }
+  store.smoke ??= {};
+  store.smoke.present = on;
+  saveStore();
+  showSmoke();
+}
+
+for (const [name, range] of Object.entries(SMOKE_RANGES)) {
+  const label = document.createElement('label');
+  label.htmlFor = `smoke-${name}`;
+  label.append(`${range.label} `);
+  const value = document.createElement('output');
+  value.id = `smoke-${name}-value`;
+  label.append(value);
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.id = `smoke-${name}`;
+  input.min = String(range.min);
+  input.max = String(range.max);
+  input.step = String(range.step);
+  input.addEventListener('input', () => {
+    smoke.set({ [name]: Number(input.value) });
+    store.smoke ??= {};
+    store.smoke.settings = smoke.settings;
+    saveStore();
+    showSmoke();
+  });
+  $('smoke-settings').append(label, input);
+}
+$('smoke-toggle').addEventListener('click', () => setMachine(!smoke.present));
+$('smoke-on').addEventListener('click', () => {
+  smoke.setEmitting(!smoke.emitting);
+  showSmoke();
+});
+$('smoke-puff').addEventListener('click', () => smoke.puff());
+$('smoke-clear').addEventListener('click', () => smoke.clear());
+
+/** Where the smoke cannot go: the floor, and the ceiling and the walls when the room is there. */
+function smokeBounds() {
+  return {
+    floor: 0.02,
+    ceiling: room.visible ? ceiling : EMPTY_STAGE_CEILING,
+    contains: room.visible ? (x, z) => room.contains(x, z) : null,
+  };
+}
+
+/** The fixtures' lenses that shine, which light the smoke. */
+function shiningLenses() {
+  const lenses = [];
+  for (const sim of sims) {
+    for (const bar of sim.bars) {
+      for (const lens of bar.lenses) {
+        const colour = lens.spot.color;
+        if (Math.max(colour.r, colour.g, colour.b) > 0.002) {
+          lenses.push({ object: lens.lens, colour });
+        }
+      }
+    }
+  }
+  return lenses;
+}
 
 // ---- drawing ----
 
@@ -768,6 +1060,13 @@ function frame(now) {
     note.textContent = text;
     note.hidden = text === '';
   }
+  if (smoke.present) {
+    smoke.update(dt, {
+      lenses: shiningLenses(),
+      bounds: smokeBounds(),
+      ambient: room.visible && roomDark ? SMOKE_AMBIENT_DARK : SMOKE_AMBIENT,
+    });
+  }
   orbit.update();
   renderer.render(scene, camera);
 }
@@ -777,6 +1076,29 @@ function frame(now) {
 async function start() {
   resize();
   showSettings();
+  room.setBrightness(roomLight / 100);
+  room.setCeiling(ceiling);
+  // The URL hash can ask for the room, `#room`, for the view from the photo's spot,
+  // `#room,photo`, for the room dark, `#room,dark`, and for a camera anywhere, `#view=x:y:z:tx:ty:tz` (the camera and what it
+  // looks at, in metres), so that a view can be bookmarked or opened for a check.
+  const asked = location.hash.slice(1).split(',');
+  if (asked.includes('dark')) {
+    roomDark = true;
+    applyDark();
+  }
+  if (store.room || asked.includes('room')) setRoom(true);
+  else showRoomSettings();
+  if (asked.includes('photo') && room.visible) setPhotoView(true);
+  // `#smoke` puts the smoke machine in, `#smoke,on` also starts it and `warm=10` lets ten
+  // seconds of smoke go by at once, for a check.
+  const at = asked
+    .find((part) => part.startsWith('view='))
+    ?.slice(5)
+    .split(':')
+    .map(Number);
+  if (at?.length === 6 && at.every(Number.isFinite)) {
+    setView({ position: at.slice(0, 3), target: at.slice(3) });
+  }
   let state;
   try {
     state = await fetchState();
@@ -803,6 +1125,11 @@ async function start() {
     key.addEventListener('click', () => select(sim));
     $('fixtures').append(key);
   });
+  if (store.smoke?.present || asked.includes('smoke')) setMachine(true);
+  if (asked.includes('on') && smoke.present) smoke.setEmitting(true);
+  const warm = Number(asked.find((part) => part.startsWith('warm='))?.slice(5));
+  if (Number.isFinite(warm) && smoke.present) smoke.advance(warm, smokeBounds());
+  showSmoke();
   if (sims.length === 0) {
     $('note').textContent = 'There is no spider in this rig to draw.';
     $('note').hidden = false;

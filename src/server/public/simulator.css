@@ -105,6 +105,34 @@ body {
   accent-color: var(--signal);
 }
 
+/* Number fields in the toolbar: the room's ceiling and where the fixture hangs. */
+.settings input[type="number"],
+.position input {
+  width: 5.5rem;
+  min-height: var(--touch);
+  padding: 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  text-align: right;
+}
+.settings input:disabled,
+.position input:disabled {
+  opacity: 0.45;
+}
+.position {
+  display: grid;
+  grid-template-columns: repeat(3, 5.5rem);
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+.position label {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+}
+
 /* The link lamps and the note sit at the bottom, over the picture, and move nothing. */
 .links {
   position: fixed;
@@ -152,6 +180,43 @@ body {
 }
 .note[hidden] {
   display: none;
+}
+
+/* ---- the smoke machine's panel, laid over the picture at the left ---- */
+
+.smoke {
+  position: fixed;
+  left: clamp(0.5rem, 1.5vw, 1rem);
+  bottom: 4.5rem;
+  width: min(36rem, calc(100vw - 1.5rem));
+  max-height: calc(100dvh - 10rem);
+  overflow-y: auto;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+}
+.smoke[hidden] {
+  display: none;
+}
+.smoke h2 {
+  margin: 0;
+  font-size: var(--small);
+}
+.smoke .settings {
+  padding: 0;
+  grid-template-columns: 10rem minmax(4rem, 1fr) 10rem minmax(4rem, 1fr);
+}
+@media (max-width: 760px) {
+  .smoke .settings {
+    grid-template-columns: 10rem minmax(4rem, 1fr);
+  }
+}
+/* The value changes length while it is dragged: its room is reserved. */
+.smoke .settings output {
+  min-width: 8ch;
 }
 
 /* ---- the calibrate panel, laid over the picture at the right ---- */

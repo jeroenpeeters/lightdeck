@@ -21,12 +21,8 @@ import type { FixtureProfile, SceneType } from '../fixtures/profile.js';
 /** A change that cannot be applied. The message is for the operator. */
 export class PatchError extends Error {}
 
+/** What every fixture has, whatever protocol it speaks. */
 export interface FixtureController {
-  readonly profile: FixtureProfile;
-  /** 0-based universe index on the bridge. */
-  readonly universe: number;
-  /** 1-based DMX start address of the fixture. */
-  readonly address: number;
   /**
    * True when the fixture is coloured by the palettes of the show. Setting a palette on a
    * group sets it on the fixtures that take palettes and leaves the others as they are.
@@ -35,8 +31,6 @@ export interface FixtureController {
 
   /** What the fixture is set to, as plain data for the page. */
   getState(): unknown;
-  /** The fixture's bytes as they are being sent, with blackout and master in them. */
-  getDmx(): number[];
   /** What the page of this kind of fixture needs to know besides the profile. */
   describe(): Record<string, unknown>;
 
@@ -66,6 +60,15 @@ export interface FixtureController {
    * of the type go to rest (for lights that is dark). The properties of other types stay.
    */
   recall(type: SceneType, part: unknown, origin?: string): void;
+  /**
+   * Fixtures that can be limited in what they do (the spider: how far a bar may tilt) read
+   * what the show file says about them with `readLimits`, which throws a `PatchError` for
+   * something that cannot be and gives it back in the form `setLimits` takes. `setLimits`
+   * applies them to what goes out, and without limits (`null`) the fixture is as free as
+   * it was. Limits belong to the show and to no scene. A fixture that has none leaves both out.
+   */
+  readLimits?(limits: unknown): unknown;
+  setLimits?(limits: unknown): void;
   /** The blackout of the console. While on, the fixture is dark and keeps its state. */
   setBlackout(blackout: boolean): void;
   /**
@@ -75,14 +78,28 @@ export interface FixtureController {
    */
   setMaster(level: number): void;
   /**
-   * Called when lightdeck stops. The bridge holds the last frame, so a fixture that must
-   * not stay on without anybody at the controls goes dark here, and stays dark whatever
-   * is set or recalled after it: a request that was under way is still handled.
+   * Called when lightdeck stops. A fixture that must not stay on without anybody at the
+   * controls goes dark here, and stays dark whatever is set or recalled after it: a request
+   * that was under way is still handled. (A DMX bridge holds the last frame it got.)
    */
   darken(): void;
   close(): void;
 
   /** After every change. */
+  on(event: 'state', listener: (state: unknown, origin?: string) => void): unknown;
+}
+
+/** A fixture on a DMX universe. */
+export interface DmxFixtureController extends FixtureController {
+  readonly profile: FixtureProfile;
+  /** 0-based universe index on the bridge. */
+  readonly universe: number;
+  /** 1-based DMX start address of the fixture. */
+  readonly address: number;
+
+  /** The fixture's bytes as they are being sent, with blackout and master in them. */
+  getDmx(): number[];
+
   on(event: 'state', listener: (state: unknown, origin?: string) => void): unknown;
   /** While the fixture animates: what is being sent, and the beat it is on. */
   on(event: 'frame', listener: (dmx: number[], beat: number) => void): unknown;

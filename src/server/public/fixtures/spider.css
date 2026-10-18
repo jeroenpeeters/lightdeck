@@ -304,6 +304,22 @@
   margin-top: 1rem;
 }
 
+/* The swing limit: two sliders per bar, as wide as the tilt sliders. */
+.swing {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  margin-top: 1.5rem;
+}
+.swing .hint {
+  margin: 0;
+}
+.swing .sliders {
+  width: 100%;
+  max-width: 36rem;
+  margin-top: 0;
+}
+
 /* ---- fixture view ---- */
 
 .view-fixture .sliders {

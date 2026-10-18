@@ -23,15 +23,25 @@
  *                                       `audio`, which follows the music the listen page hears
  *   --audio-record  AUDIO_RECORD_DIR   a directory to write the sound that the listen page
  *                                       hears to, as WAV files (default: not written)
+ *   --hass           HASS_URL           ws://<home-assistant>:8123/api/websocket, http://<home-assistant>:8123 will do. Needed when the
+ *                                       rig file has fixtures
+ *                    HASS_TOKEN         a long-lived access token of Home Assistant. Environment
+ *                                       only: a flag shows in the list of processes
+ *   --rig            RIG_FILE           the rig file, with the lamps of the room (default rig.yaml,
+ *                                       where lightdeck is started). Without the file there are
+ *                                       no lamps and nothing is asked of Home Assistant
  *   --port           PORT               port of the web page (default 8080)
  *   --host           HOST               address to listen on (default 0.0.0.0)
  */
 
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { HassClient } from './outputs/hass/client.js';
+import { hassWebSocketUrl } from './outputs/hass/url.js';
 import { Lr512BridgeClient } from './outputs/lr512/bridgeClient.js';
 import { createHttpServer } from './server/http.js';
 import { type FixtureDefinition, Rig } from './server/rig.js';
+import { readRigFile } from './server/rigFile.js';
 
 /** How long the last frame gets to leave for the bridge when lightdeck stops. */
 const LAST_FRAME_MS = 300;
@@ -65,6 +75,8 @@ const { values: args } = parseArgs({
     'lead-ms': { type: 'string' },
     tempo: { type: 'string' },
     'audio-record': { type: 'string' },
+    hass: { type: 'string' },
+    rig: { type: 'string' },
     port: { type: 'string' },
     host: { type: 'string' },
   },
@@ -89,6 +101,15 @@ if (tempoSourceText !== 'manual' && tempoSourceText !== 'audio') {
   fail(`--tempo must be manual or audio, got "${tempoSourceText}"`);
 }
 const audioRecordDir = args['audio-record'] ?? process.env.AUDIO_RECORD_DIR;
+const hassUrlText = args.hass ?? process.env.HASS_URL;
+let hassUrl: string | undefined;
+try {
+  hassUrl = hassUrlText ? hassWebSocketUrl(hassUrlText) : undefined;
+} catch (error) {
+  fail((error as Error).message);
+}
+const hassToken = process.env.HASS_TOKEN;
+const rigFile = args.rig ?? process.env.RIG_FILE ?? 'rig.yaml';
 const port = wholeNumber(args.port ?? process.env.PORT ?? '8080', 'port');
 const host = args.host ?? process.env.HOST ?? '0.0.0.0';
 
@@ -104,6 +125,21 @@ if (laserAddress !== undefined) {
     universe: laserUniverse,
     address: laserAddress,
   });
+}
+
+// The lamps of the room, from the rig file. No file, no lamps, and nothing asks Home Assistant.
+try {
+  fixtures.push(...readRigFile(rigFile));
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+const lampEntities = fixtures.flatMap((fixture) =>
+  'lamps' in fixture ? fixture.lamps.map((lamp) => lamp.entity) : [],
+);
+if (lampEntities.length > 0) {
+  if (!hassUrl)
+    fail(`${rigFile} has lamps, so lightdeck needs --hass (or HASS_URL) to reach Home Assistant`);
+  if (!hassToken) fail(`${rigFile} has lamps, so lightdeck needs HASS_TOKEN in its environment`);
 }
 
 const log = (message: string) => console.log(`${new Date().toISOString()}  ${message}`);
@@ -128,7 +164,10 @@ const bridge = bridgeUrl
         log(
           `bridge: LR512 ${status.device}, ${status.universes} universes, channels per universe [${status.channels.join(', ')}]`,
         );
-        for (const index of new Set(fixtures.map((fixture) => fixture.universe))) {
+        const universes = fixtures.flatMap((fixture) =>
+          'universe' in fixture ? [fixture.universe] : [],
+        );
+        for (const index of new Set(universes)) {
           if (status.device === 'open' && status.channels[index] === 0) {
             log(
               `warning: universe index ${index} has 0 channels on this LR512, nothing sent to it reaches a fixture`,
@@ -140,9 +179,22 @@ const bridge = bridgeUrl
     })
   : noBridge;
 
+/** The link to Home Assistant, or none when no lamp needs it. It never keeps lightdeck waiting. */
+const hass =
+  lampEntities.length > 0 && hassUrl && hassToken
+    ? new HassClient({
+        url: hassUrl,
+        token: hassToken,
+        entities: lampEntities,
+        log: (message) => log(`home assistant: ${message}`),
+        onStatus: (status) => rig?.setHassStatus(status),
+      })
+    : undefined;
+
 try {
   rig = new Rig({
     output: bridge,
+    ...(hass ? { hass } : {}),
     fixtures,
     show: showFile,
     maxFps,
@@ -167,9 +219,12 @@ server.listen(port, host, () => {
   log(bridgeUrl ? `bridge ${bridgeUrl}` : 'no bridge: the simulator at /simulator is the output');
   for (const fixture of fixtures) {
     log(
-      `${fixture.label} at address ${fixture.address}, universe index ${fixture.universe}, page /fixtures/${fixture.id}`,
+      'lamps' in fixture
+        ? `${fixture.label}: ${fixture.lamps.length} lamps and switches, page /fixtures/${fixture.id}`
+        : `${fixture.label} at address ${fixture.address}, universe index ${fixture.universe}, page /fixtures/${fixture.id}`,
     );
   }
+  if (hass) log(`home assistant ${hassUrl}`);
   if (laserAddress === undefined) log('no laser: started with laser address "none"');
   const show = rig?.playback.getShow();
   if (show) {
@@ -178,6 +233,7 @@ server.listen(port, host, () => {
   }
   if (show?.problem) log(`warning: the show file is not used, it has a mistake. ${show.problem}`);
   bridge.start();
+  hass?.start();
 });
 
 let stopping = false;
@@ -189,6 +245,7 @@ const shutdown = () => {
   rig?.darken();
   bridge.flush();
   rig?.close();
+  hass?.stop();
   // Open event streams keep the server alive; do not wait for them. A request that is
   // under way is cut off too: what it asks would come after the last frame.
   server.close();
