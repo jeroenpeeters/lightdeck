@@ -266,7 +266,9 @@ sequences:
 | 4 | Sequences, one at a time | A loop runs by itself for an hour and stays on the bar, and a laser scene chosen by hand stays on under it |
 | 5 | Switching on the beat: a pressed scene starts on the next bar | A change never lands in the middle of a bar, unless asked |
 | 6 | Holds | Strobe burst while pressed, the scene is back on release |
-| 7 | Two sequences at once, crossfade of levels, phases as banks, Zigbee lamps in scenes | |
+| 7 | Two sequences at once, crossfade of levels, phases as banks | |
+
+The Zigbee lamps are in scenes, groups and looks since 2026-10-18: one fixture, "Room Lights", see `docs/hass-fixtures-plan.md`.
 
 Steps 1 to 4 come before the dress rehearsal, 5 to 7 after.
 

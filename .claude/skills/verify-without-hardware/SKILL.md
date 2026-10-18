@@ -14,7 +14,7 @@ check as far as a machine can, and say exactly where that stops.
 | Level | How | What it proves | What it does not |
 |---|---|---|---|
 | Tests | `pnpm check` | The logic: bytes for values, an effect per beat, refusals, the show file | That the pieces work together, or that a page can be used |
-| Stand-in | lightdeck against `scripts/standin-bridge.mjs` | The whole path up to the bytes of the universe, and the pages in a browser | That the bytes mean on the fixture what the manual says |
+| Stand-in | lightdeck against `scripts/standin-bridge.mjs` (and `scripts/standin-hass.mjs` for the lamps) | The whole path up to the bytes of the universe, and the pages in a browser | That the bytes mean on the fixture what the manual says |
 | Hardware | Jeroen, with the fixtures | Everything else: the look, the speed, the motors, the laser, the tablet | |
 
 Do the first two for every change to what is sent or shown. Never report the third from
@@ -82,6 +82,29 @@ stand-in does not cap or skip anything itself: it shows what the client sends.
 **An LR512 has one usable universe.** The stand-in reports `[512, 0]` like the real one
 and says so when a frame goes to a universe without channels. If you see that line, the
 real device would have refused every frame.
+
+## The stand-in Home Assistant
+
+`scripts/standin-hass.mjs` in this skill speaks the part of the WebSocket API of Home Assistant
+that lightdeck uses (login with a token it checks, `get_states`, `call_service`, pings), prints
+every service call and with `--dump` writes them to a file. `--rate 4` makes it answer only 4
+calls per second, like the Zigbee mesh of the room did in the soak of 2026-10-18 (answers 26 s
+late on average with the first throttle), so a change to the throttle can be tried against a
+mesh that is too slow. `--down-after <s>` drops every connection once, to see lightdeck go
+down and come back.
+
+```bash
+node $SKILL/scripts/standin-hass.mjs --port 8123 --rate 4 --light light.a --light light.b &
+HASS_URL=http://127.0.0.1:8123 HASS_TOKEN=tok pnpm tsx src/index.ts --rig <scratch>/rig.yaml \
+  --port 8099 --show <scratch>/show.yaml &
+HASS_URL=http://127.0.0.1:8123 HASS_TOKEN=tok pnpm lamp light.a light.b --soak 1
+```
+
+Set `HASS_URL` and `HASS_TOKEN` in the command, so that the `.env` of the user, with the real
+token, is not used, and never run a soak, a scene or a command against the real Home Assistant
+unless Jeroen asks: it changes the lights of his house. Reading (`pnpm lamp --list`) is fine.
+It proves the path up to the service calls and how the throttle keeps to a slow mesh, not what
+a lamp does with them.
 
 ## Looking at a page
 

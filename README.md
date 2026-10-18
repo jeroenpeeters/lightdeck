@@ -2,7 +2,8 @@
 
 A self-built lighting console for small parties. It drives DMX fixtures through a
 Nicolaudie Light Rider LR512 interface, from a web page on a tablet, without Daslight or
-the Light Rider app. Lamps and switches in Home Assistant are planned.
+the Light Rider app. The lamps and switches of the room, in Home Assistant, are driven from
+the same console as slow scenery under the DMX fixtures.
 
 > **Early work in progress.** Lightdeck is built for one home event with one set of
 > hardware. It works on that hardware and has been tested nowhere else. Settings, the API
@@ -17,8 +18,10 @@ the Light Rider app. Lamps and switches in Home Assistant are planned.
 | Beat-synced effects, tap tempo, blackout | Work: twenty-two light effects and six motion effects for the spider, five effects for the laser |
 | Palettes: the colours of the show, apart from the effects | Built, not yet tested on the real fixtures |
 | Scenes and looks: store what the fixtures do, recall it | Built, not yet tested on the real fixtures |
-| Sequences, grand master, crossfades, holds | Not built, see [docs/show-design.md](docs/show-design.md) |
-| Home Assistant lamps and switches | Not built, see [docs/hass-fixtures-plan.md](docs/hass-fixtures-plan.md) |
+| Grand master, swing limits of the spider | Built, not yet tested on the real fixtures |
+| Simulator: the spiders in 3D from the bytes that are sent, a living room, a smoke machine | Works in a desktop browser, never compared with the real spider |
+| Home Assistant lamps and switches: one fixture, "Room Lights", with zones, scenery effects and a dimmer | Built. Tried against the real Home Assistant for the login, the lamps and a soak of the first throttle, and against a stand-in; not yet soaked again, and not on a tablet. See [docs/hass-fixtures-plan.md](docs/hass-fixtures-plan.md) |
+| Sequences, crossfades, holds | Not built, see [docs/show-design.md](docs/show-design.md) |
 | Art-Net, sACN | Not built |
 | Running in a container | A `Dockerfile` is there, but this is not a supported way to run it yet |
 
@@ -27,6 +30,9 @@ Fixtures it knows:
 - **Spider**: a moving head with 8 RGBW LEDs on two motorised bars, in its 43-channel
   mode.
 - **Alien 500 mW RGB laser**, 10 channels.
+- **Room Lights**: the lamps (lights) and switches that Home Assistant drives, as one fixture
+  with zones, like the two bars of the spider. They follow the palettes, the grand master and
+  the blackout, and have a dimmer of their own.
 
 Other fixtures need a profile of their own, see [Adding a fixture](#adding-a-fixture).
 
@@ -34,7 +40,8 @@ Other fixtures need a profile of their own, see [Adding a fixture](#adding-a-fix
 
 ```
 tablet ──HTTP──▶ Lightdeck ──WebSocket──▶ Android bridge ──Wi-Fi──▶ LR512 ──DMX──▶ fixtures
-                 (Node)                   (phone)
+                 (Node)   │               (phone)
+                          └──WebSocket──▶ Home Assistant ──Zigbee──▶ lamps
 ```
 
 The LR512 speaks a closed protocol: live DMX is authenticated and encrypted, and the code
@@ -44,13 +51,22 @@ and serves a WebSocket; lightdeck sends whole DMX universes to that socket. What
 found out about the protocol is in
 [docs/lr512-protocol-findings.md](docs/lr512-protocol-findings.md).
 
+The lamps go the other way round. Lightdeck talks to the WebSocket API of Home Assistant
+(`call_service` on `light.` and `switch.` entities) and Home Assistant talks Zigbee. A Zigbee
+mesh takes a few commands per second and not forty frames, so the lamps are the slow layer: a
+lamp gets a new command only when its last one was answered, no more than 4 are on the way, and
+the newest one wins. Lightdeck starts without Home Assistant, and the DMX side never waits for
+it.
+
 ## What you need
 
-- A Light Rider **LR512**, on your Wi-Fi.
+- A Light Rider **LR512**, on your Wi-Fi (leave it out to try lightdeck with the simulator).
 - An **Android phone** on the same Wi-Fi. Emulators and Waydroid sit behind NAT and do
   not find the LR512.
 - The **Light Rider APK**, which you have to get yourself. It is Nicolaudie's software
   and is not part of this repository.
+- For the lamps: **Home Assistant** with the lights and switches in it, and a long-lived
+  access token (your profile page in Home Assistant).
 - A computer with **Node 22** and **pnpm**. Lightdeck is developed on Linux.
 - To build the bridge: JDK 17 or newer, the Android SDK build-tools, `adb` and
   `baksmali`.
@@ -89,7 +105,29 @@ No phone or LR512 at hand? Leave `--bridge` out and open `http://localhost:8080/
 draws the spiders in 3D from the bytes lightdeck sends. Move and rotate them with the mouse
 or a finger. With a bridge it shows the same as the real fixtures get.
 
-### 3. Open the console
+### 3. Add the lamps (optional)
+
+Copy `rig.example.yaml` to `rig.yaml` where lightdeck starts and put your own entities in it:
+the lamps, and zones of lights, like the bars of the spider. Then give lightdeck the address and
+the token, in the environment or in a `.env` file next to `rig.yaml` (it is in `.gitignore`;
+`pnpm dev`, `pnpm start` and `pnpm lamp` read it):
+
+```
+HASS_URL=http://<home-assistant>:8123
+HASS_TOKEN=<long-lived access token>
+```
+
+Try one lamp before you rely on them, and check what Home Assistant says about it:
+
+```bash
+pnpm lamp light.<name> --list                       # state and colour modes
+pnpm lamp light.<name> dimmer=50 red=100 fade=2
+pnpm lamp light.a light.b light.c --soak 3          # fade them through colours for 3 minutes, then report
+```
+
+Without `rig.yaml` there are no lamps and nothing asks Home Assistant.
+
+### 4. Open the console
 
 Go to `http://<computer-ip>:8080` on the tablet. The console has:
 
@@ -101,7 +139,11 @@ Go to `http://<computer-ip>:8080` on the tablet. The console has:
 - **Tablet** (`/tablet`): a page with few, big controls for a tablet at the side of the dance
   floor: tap the tempo, the master and its speed, the looks of the spider, a panel with its
   lights, colour and motion, the blackout, and the state of the bridge and the LR512.
-- **A page per fixture**, to set it by hand and to start an effect.
+- **A page per fixture**, to set it by hand and to start an effect. The page of the room has a
+  fader and a colour per lamp, the zones, the switches, the dimmer of the room, the palettes
+  and the scenery effects.
+- **Listen** (`/listen`): open it on the computer with the microphone, and the tempo can follow
+  the music. **Simulator** (`/simulator`): the 3D view.
 - On every page: the tempo with tap and nudge, the speed of the effects, the blackout,
   and lamps that show whether the bridge and the LR512 are connected.
 
@@ -111,17 +153,24 @@ As a flag, or as an environment variable.
 
 | Flag | Environment | Default | What |
 |---|---|---|---|
-| `--bridge` | `LR512_BRIDGE_URL` | none, required | Where the bridge is: `ws://<phone-ip>:9010` |
+| `--bridge` | `LR512_BRIDGE_URL` | none | Where the bridge is: `ws://<phone-ip>:9010`. Without it nothing goes to an LR512 and the simulator is the output |
 | `--universe` | `SPIDER_UNIVERSE` | `0` | Universe of the spider, counted from 0. An LR512 has one usable universe, which is 0 |
 | `--address` | `SPIDER_ADDRESS` | `1` | DMX start address of the spider |
 | `--laser-address` | `LASER_ADDRESS` | `44` | DMX start address of the laser, or `none` to run without it |
 | `--laser-universe` | `LASER_UNIVERSE` | the spider's | Universe of the laser |
 | `--show` | `SHOW_FILE` | `show.yaml` | The show file |
+| `--hass` | `HASS_URL` | none | Home Assistant: `http://<host>:8123` (or `ws://<host>:8123/api/websocket`). Needed when `rig.yaml` has lamps |
+| | `HASS_TOKEN` | none | A long-lived access token for Home Assistant. Environment or `.env` only, never a flag |
+| `--rig` | `RIG_FILE` | `rig.yaml` | The rig file, with the lamps of the room. No file, no lamps |
+| `--max-fps` | `MAX_FPS` | `25` | The most DMX frames per second to send, 1 to 60 |
+| `--lead-ms` | `LEAD_MS` | `0` | How far ahead of the beat the output is made |
+| `--tempo` | `TEMPO_SOURCE` | `manual` | Who sets the tempo at the start: `manual` or `audio` |
+| `--audio-record` | `AUDIO_RECORD_DIR` | off | Write the sound of the listen page to WAV files there, to tune the listening |
 | `--port` | `PORT` | `8080` | Port of the console |
 | `--host` | `HOST` | `0.0.0.0` | Address to listen on |
 
-Which fixtures there are is set in `src/index.ts`. For now that is one spider and one
-laser.
+Which DMX fixtures there are is set in `src/index.ts`. For now that is one spider and one
+laser. The lamps are in `rig.yaml`.
 
 ## From the command line
 
@@ -133,6 +182,7 @@ pnpm spider --list                                        # the channels by name
 pnpm laser <phone-ip> mode=manual program=pattern:12
 pnpm laser --list
 node tools/lr512-send.mjs <phone-ip> 0 set 6=255 7=255    # raw channels
+pnpm lamp light.bar dimmer=50 red=100 fade=2              # a Home Assistant light, see step 3
 ```
 
 Each of these sends one fixture and zeros for the rest of the universe, so other
@@ -140,7 +190,7 @@ fixtures on it go dark.
 
 ## The show file
 
-Palettes, scenes and looks are kept in one YAML file, which the deck writes and which you
+Palettes, scenes, looks and the swing limits of the spider are kept in one YAML file, which the deck writes and which you
 can edit by hand. Lightdeck watches the file. A file with a mistake never replaces the show
 that is running: the deck says what is wrong and keeps the show as it was.
 
@@ -184,6 +234,33 @@ that is running. A look sets a scene of lights, a palette and a scene of motion 
 A fixture that a scene does not name has those properties at rest, and off is the lights.
 The laser does not use the palettes: it has up to three colours of its own.
 
+A `limits:` entry per fixture (the spider's tilt, a `{ min, max }` per bar) keeps a bar from
+going beyond that, whatever sets it. The room lamps are in groups, scenes and looks like any
+fixture, and the scenery effects (`still`, `rotate`, `shuffle`, `zones`) move the colours of
+the palette over them about once a minute.
+
+## The rig file
+
+`rig.yaml` lists what Home Assistant drives. It is read once at the start and no file means no
+lamps. See `rig.example.yaml`.
+
+```yaml
+fixtures:
+  - id: room
+    kind: room
+    label: Room Lights
+    lamps:
+      - { id: bar, label: Bar, entity: light.bar }
+      - { id: fog, label: Fog machine, entity: switch.fog, blackout: true }
+    zones:
+      - { id: low, label: Low, lamps: [bar] }
+```
+
+A light that is in no zone is one zone of its own, a switch is in no zone, and a switch goes off
+in a blackout (and with the master at 0) only when it says `blackout: true`. A lamp that a
+scene of lights does not name goes off. Lightdeck does not touch a lamp when it starts or when
+it stops: the lamps stay as they are until something sets them.
+
 ## Safety
 
 - **Lasers can damage eyes.** Lightdeck keeps the laser closed during a blackout and
@@ -191,7 +268,10 @@ The laser does not use the palettes: it has up to three colours of its own.
   bridge keeps sending the last frame it got. Software is not a safety device. Mount
   the laser so that it cannot reach eyes, and have a way to cut its power.
 - **Flashing light.** Effects flash at most 10 times per second. The strobe of a fixture,
-  set by hand, is not limited.
+  set by hand, is not limited. The lamps of the room change about once a minute, never faster
+  than the Zigbee mesh takes them.
+- **The Home Assistant token** opens your house. Keep it in the environment or in `.env`, which
+  is not committed, and not in a flag, a file in git or a chat.
 - **There is no login.** Anyone who can reach the port can control the lights. Run it on
   a network you trust and do not expose it to the internet.
 
@@ -202,7 +282,7 @@ pnpm check         # typecheck, lint and tests: run this before committing
 pnpm test:watch
 pnpm lint:fix      # Biome formats and fixes
 pnpm build         # to dist/
-pnpm start         # runs dist/, needs --bridge or LR512_BRIDGE_URL
+pnpm start         # runs dist/, with --bridge or LR512_BRIDGE_URL for an LR512
 ```
 
 TypeScript on Node 22, ESM, no framework. The pages are plain HTML, CSS and JavaScript
@@ -213,7 +293,7 @@ without a build step. Tests are next to the code as `*.test.ts`.
 | `src/model/` | The normalized fixture model: attributes from 0 to 1 |
 | `src/fixtures/` | DMX fixture profiles, and the encoding into bytes |
 | `src/engine/` | The effects, as pure functions of the beat |
-| `src/outputs/` | The patch, and the client for the bridge |
+| `src/outputs/` | The patch, the client for the bridge and the client for Home Assistant (`hass/`) |
 | `src/server/` | The rig, a controller per fixture, the playback, the HTTP API |
 | `src/server/public/` | The pages of the console |
 | `src/show/` | The show file |
@@ -226,7 +306,9 @@ that were made and the assumptions that are not verified yet.
 
 ### Adding a fixture
 
-A new kind of fixture is four things: a profile in `src/fixtures/` with its channels from
+For a lamp or a switch in Home Assistant, add it to `rig.yaml`: no code is needed.
+
+A new kind of DMX fixture is four things: a profile in `src/fixtures/` with its channels from
 the manual, a controller in `src/server/` that fits `FixtureController`, an entry in
 `src/server/kinds.ts`, and a page in `src/server/public/fixtures/`. One more fixture of a
 kind that exists is one more definition in `src/index.ts`.
