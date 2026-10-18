@@ -28,7 +28,10 @@
  * lamps. A switch is left alone by both, unless it is set to follow them. The `dimmer` of the room
  * (Jeroen, 2026-10-18) is a second master for the lights of the room alone: it is state, because
  * it is set on the page of the room, but it is part of no scene, so a scene does not move it.
- * Switches have no brightness and are left alone by it.
+ * Switches have no brightness and are left alone by it. The same goes for a dimmer per zone
+ * (`zones`, Jeroen, 2026-10-18, for a switch per rail on the tablet): 0 or 1 in practice, in no
+ * scene, so no look, scene or effect switches a zone back on that was switched off. The effects
+ * keep running under it.
  */
 
 import { EventEmitter } from 'node:events';
@@ -105,6 +108,11 @@ export interface RoomState {
   fade: number;
   /** The brightness of all lights of the room together, 0..1. Left out of scenes. At rest 1. */
   dimmer: number;
+  /**
+   * By the id of a zone, how much of its brightness it has, 0..1. A zone at 0 is switched off, and
+   * no scene, look or effect changes that. Left out of scenes. Every zone is at 1 at rest.
+   */
+  zones: Record<string, number>;
   effect: RoomEffectSettings;
   colour: RoomColourSettings;
   /**
@@ -123,12 +131,16 @@ export interface StatePatch {
   colours?: unknown;
   fade?: unknown;
   dimmer?: unknown;
+  zones?: unknown;
   effect?: unknown;
   colour?: unknown;
 }
 
 /** What of the state a change can set. */
-type Look = Pick<RoomState, 'levels' | 'colours' | 'fade' | 'dimmer' | 'effect' | 'colour'>;
+type Look = Pick<
+  RoomState,
+  'levels' | 'colours' | 'fade' | 'dimmer' | 'zones' | 'effect' | 'colour'
+>;
 
 /** The fade of a scene when it does not say, in seconds. */
 export const DEFAULT_FADE = 2;
@@ -242,6 +254,7 @@ export class RoomController extends EventEmitter implements FixtureController {
       ),
       fade: this.state.fade,
       dimmer: this.state.dimmer,
+      zones: { ...this.state.zones },
       effect: { ...this.state.effect },
       colour: { ...this.state.colour },
       shown: Object.fromEntries(
@@ -472,6 +485,7 @@ export class RoomController extends EventEmitter implements FixtureController {
       colours,
       fade: DEFAULT_FADE,
       dimmer: 1,
+      zones: Object.fromEntries(this.zones.map((zone) => [zone.id, 1])),
       effect: restEffect(),
       colour: restColour(),
     };
@@ -487,6 +501,7 @@ export class RoomController extends EventEmitter implements FixtureController {
       'colours',
       'fade',
       'dimmer',
+      'zones',
       'effect',
       'colour',
     ]) as StatePatch;
@@ -501,6 +516,9 @@ export class RoomController extends EventEmitter implements FixtureController {
       }
       if (patch.dimmer !== undefined) {
         throw new PatchError(`the "dimmer" of the room is part of no scene`);
+      }
+      if (patch.zones !== undefined) {
+        throw new PatchError(`the "zones" switches are part of no scene`);
       }
     }
 
@@ -553,11 +571,26 @@ export class RoomController extends EventEmitter implements FixtureController {
       }
       dimmer = clamp01(patch.dimmer);
     }
+    const zones = { ...base.zones };
+    if (patch.zones !== undefined) {
+      for (const [id, value] of Object.entries(readObject(patch.zones, 'zones'))) {
+        if (!this.zones.some((zone) => zone.id === id)) {
+          throw new PatchError(
+            `there is no zone called "${id}", the zones are ${this.zones.map((zone) => zone.id).join(', ')}`,
+          );
+        }
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+          throw new PatchError(`the zone "${id}" must be a number between 0 and 1`);
+        }
+        zones[id] = clamp01(value);
+      }
+    }
     return {
       levels,
       colours,
       fade,
       dimmer,
+      zones,
       effect: this.readEffect(base.effect, patch.effect),
       colour: this.readColour(base.colour, patch.colour),
     };
@@ -705,7 +738,8 @@ export class RoomController extends EventEmitter implements FixtureController {
     }
     const colour = cells[lamp.cell] ?? WHITE;
     const peak = Math.max(colour.red, colour.green, colour.blue, colour.white);
-    const brightness = this.blackout ? 0 : peak * level * this.state.dimmer * this.master;
+    const zone = lamp.zone === null ? 1 : (this.state.zones[lamp.zone] ?? 1);
+    const brightness = this.blackout ? 0 : peak * level * this.state.dimmer * zone * this.master;
     const direction: Rgbw =
       peak > 0
         ? {

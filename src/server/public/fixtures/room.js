@@ -77,6 +77,13 @@ function setLevels(patch) {
   render();
 }
 
+/** Switches a zone on or off. No scene, look or effect changes it, so it stays as it was put. */
+function setZone(id, on) {
+  state.zones = { ...state.zones, [id]: on ? 1 : 0 };
+  shell.send({ zones: { [id]: on ? 1 : 0 } });
+  render();
+}
+
 function setColourOf(id, key, number) {
   state.colours[id] = { ...state.colours[id], [key]: number / 100 };
   shell.send({ colours: { [id]: { [key]: number / 100 } } });
@@ -161,6 +168,16 @@ function buildZone(label, members, id) {
   head.append(element('h3', '', label));
   const keys = element('div', 'zone-keys');
   const switchesOnly = members.every((lamp) => lamp.kind === 'switch');
+  if (!switchesOnly) {
+    // The switch of the zone: dimmer 0 or 1 for the lights in it, apart from every scene and look.
+    const onOff = button('pick zone-switch', 'Switch', () =>
+      setZone(id, (state.zones?.[id] ?? 1) <= 0),
+    );
+    onOff.title = 'Switch this zone on or off. A scene, a look or an effect does not change it.';
+    onOff.setAttribute('aria-label', `${label} switch`);
+    section.zoneSwitch = onOff;
+    keys.append(onOff);
+  }
   keys.append(
     button('pick', switchesOnly ? 'All on' : 'On', () => setAll(members, 1)),
     button('pick', 'Off', () => setAll(members, 0)),
@@ -350,7 +367,18 @@ function noteOf(lamp) {
   };
 }
 
+function renderZones() {
+  for (const section of document.querySelectorAll('.zone')) {
+    const switchKey = section.zoneSwitch;
+    if (!switchKey) continue;
+    const on = (state.zones?.[section.dataset.zone] ?? 1) > 0;
+    switchKey.setAttribute('aria-pressed', String(on));
+    section.dataset.off = String(!on);
+  }
+}
+
 function renderLamps() {
+  renderZones();
   for (const lamp of lamps) {
     const made = parts.get(lamp.id);
     const level = state.levels[lamp.id] ?? 0;

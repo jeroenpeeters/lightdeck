@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- The icon of the tablet app: three levels, as on a lighting console. Graphite and the one amber
+       of the console. Everything lies inside the middle 60 percent, so that the same picture is
+       the maskable icon. The PNGs next to it are made from this file with
+         inkscape icon.svg -w 512 -h 512 -o icon-512.png
+       (and 192, and 180 for apple-touch-icon.png). -->
+  <title>Lightdeck</title>
+  <rect width="512" height="512" fill="#0f1114"/>
+  <g fill="#ffb400">
+    <rect x="148" y="236" width="56" height="120" rx="12"/>
+    <rect x="228" y="156" width="56" height="200" rx="12"/>
+    <rect x="308" y="196" width="56" height="160" rx="12"/>
+  </g>
+</svg>

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f1114" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>Install · Lightdeck</title>
+    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/install.css" />
+  </head>
+  <body>
+    <main class="install">
+      <header class="install-head">
+        <a class="install-back" href="/tablet">Tablet</a>
+        <h1>Install as an app</h1>
+      </header>
+      <p class="hint">
+        What this browser says about this page. Chrome only installs a page as an app, with no bar of
+        the browser, when every line here is good. The Install key comes when Chrome offers it.
+      </p>
+      <button type="button" class="install-key" id="install-key" hidden>Install Lightdeck</button>
+      <ul class="checks" id="checks"></ul>
+    </main>
+    <script type="module" src="/install.js"></script>
+  </body>
+</html>

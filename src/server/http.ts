@@ -99,6 +99,8 @@ const CONTENT_TYPES: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.woff2': 'font/woff2',
   '.jpg': 'image/jpeg',
   '.txt': 'text/plain; charset=utf-8',
@@ -119,6 +121,7 @@ const DECK = '/deck';
 const LISTEN = '/listen';
 const PALETTES = '/palettes';
 const TABLET = '/tablet';
+const INSTALL = '/install';
 const SIMULATOR = '/simulator';
 
 export interface HttpOptions {
@@ -536,6 +539,7 @@ export function createHttpServer(options: HttpOptions): Server {
       if (path === LISTEN && sendFile(req, res, '/listen.html')) return;
       if (path === PALETTES && sendFile(req, res, '/palettes.html')) return;
       if (path === TABLET && sendFile(req, res, '/tablet.html')) return;
+      if (path === INSTALL && sendFile(req, res, '/install.html')) return;
       if (path === SIMULATOR && sendFile(req, res, '/simulator.html')) return;
       const page = FIXTURE_PAGE.exec(path);
       const shown = page ? rig.find(page[1] ?? '') : undefined;

@@ -3,15 +3,33 @@
 //
 // It has no bar: the shell is started bare, and the page draws what it needs of it.
 //
-//   top row   the way to the main view (the deck), the two link lamps, the blackout
+//   top row   the way to the main view (the deck), a key for full screen, the link lamps (the bridge,
+//             the LR512 and Home Assistant), the blackout
 //   tempo     the bpm, the four beat lamps and a big Tap key. There is no slider: the tempo is
 //             tapped. A tap counts when the finger lands. In Auto the shell takes a tap as
 //             "this is beat one" only.
 //   masters   the master (percent) and the keys of the master speed, as on the deck
+//   sequences the sequences of the show, only their names: a press starts one (and stops the one
+//             that runs), a press on the one that runs stops it, and it is lit while it runs.
+//             Hidden when the show has none. They are on top of the looks
 //   looks     the looks of the spider group, a key each. A press sets the look
-//   panel     "Lights, colour and motion", closed when the page loads: the lanes of the same
-//             group, as on the deck: the scenes of lights with Off, the palettes, the scenes
-//             of motion
+//   room      the lamps of the room (the group of the Home Assistant fixture, `room`): its looks
+//             as keys, the dimmer of the room as a fader, an Off key, and a switch per rail (zone of
+//             the rig, when there are two or more): lit while the rail is on, a press switches it.
+//             A switch is a dimmer of 0 or 1 for the lights of that rail and belongs to no scene,
+//             so no look, scene or effect changes it. Hidden when the rig has no such lamps. What
+//             the dimmer is comes from the state of the room fixture, which the shell keeps for
+//             every fixture (`shell.stateOf`)
+//   panel     "Spider: lights, colour and motion" (named after the group it is about), closed when
+//             the page loads: the lanes of the same group as the spider looks, as on the deck: the
+//             scenes of lights with Off, the palettes, the scenes of motion
+//
+// In every layout the order is the sequences, the spider looks and under them the room lamps. In
+// landscape the tempo and the masters are a column on the left and those three one on the right.
+//
+// It is an installable app (the manifest and the icons, `manifest.webmanifest` and `icons/`, and
+// `sw.js` that keeps the page so that it opens when lightdeck cannot be reached): on the home
+// screen of the tablet it opens full screen. See the end of this file for the service worker.
 //
 // The page draws what the server says and asks for what the operator wants. A press is asked
 // once; when it does not reach lightdeck the page says so and the operator presses again.
@@ -39,6 +57,10 @@ let showSpeed = () => {};
 /** By the id of a lane, what was built for it: its grid, its line for "none" and its keys. */
 const lanes = {};
 const looks = { grid: $('t-looks'), none: $('t-looks-none'), keys: new Map() };
+const sequences = { grid: $('t-seq-grid'), none: $('t-seq-none'), keys: new Map() };
+/** By the id of a zone, its switch. */
+const rails = new Map();
+const roomLooks = { grid: $('t-room-looks'), none: $('t-room-looks-none'), keys: new Map() };
 
 const palettes = () => shell.show.palettes ?? [];
 const paletteOf = (id) => palettes().find((palette) => palette.id === id);
@@ -53,6 +75,25 @@ function spiderGroup() {
     groups.find((group) => group.fixtures.some((id) => kindOf(id) === 'spider'))
   );
 }
+
+/**
+ * The group of the lamps of the room: the one called room, or else the first group whose fixtures
+ * are all driven by Home Assistant. Nothing when the rig has no such lamps.
+ */
+function roomGroup() {
+  const { groups } = shell.show;
+  const driven = (id) => shell.fixtures.find((fixture) => fixture.id === id)?.protocol === 'hass';
+  return (
+    groups.find((group) => group.id === 'room' && group.fixtures.every(driven)) ??
+    groups.find((group) => group.fixtures.length > 0 && group.fixtures.every(driven))
+  );
+}
+
+/** The fixture of the lamps: the one of the room group that Home Assistant drives. */
+const roomFixture = () => {
+  const group = roomGroup();
+  return group ? shell.fixtures.find((fixture) => fixture.id === group.fixtures[0]) : undefined;
+};
 
 /**
  * What is on in a lane of a group. In the lane of the colour that is a palette of the show.
@@ -237,13 +278,88 @@ function lookItems(group) {
   }));
 }
 
+/** A key for each sequence of the show, with its name and nothing else. It is lit while it runs. */
+function renderSequences() {
+  const list = shell.show.sequences ?? [];
+  $('t-seq').hidden = list.length === 0;
+  const running = shell.sequence?.running ?? null;
+  syncKeys(
+    sequences,
+    list.map((sequence) => ({
+      id: sequence.id,
+      make: () =>
+        makeKey('scene seq', () =>
+          ask(
+            '/api/sequence',
+            shell.sequence?.running === sequence.id ? { stop: true } : { start: sequence.id },
+          ),
+        ),
+      draw: (key) =>
+        drawKey(key, {
+          state: running === sequence.id ? 'set' : 'idle',
+          label: sequence.label,
+          sets: '',
+        }),
+    })),
+  );
+}
+
 let offGroup = null;
+/** The group the Off key of the room is for. */
+let roomOffGroup = null;
+
+/** A switch for each rail of the room, as keys that are lit while the rail is on. */
+function renderRails() {
+  const fixture = roomFixture();
+  const zones = fixture?.details?.zones ?? [];
+  const holder = $('t-rails');
+  // One zone is the whole room, and the Off key is for that.
+  holder.hidden = zones.length < 2;
+  if (holder.hidden) return;
+  const current = shell.stateOf(fixture.id)?.zones ?? {};
+  for (const zone of zones) {
+    let key = rails.get(zone.id);
+    if (!key) {
+      key = element('button', 't-rail', zone.label);
+      key.type = 'button';
+      key.addEventListener('click', () => {
+        const on = (shell.stateOf(fixture.id)?.zones?.[zone.id] ?? 1) > 0;
+        ask(`/api/fixtures/${fixture.id}/update`, { zones: { [zone.id]: on ? 0 : 1 } });
+      });
+      rails.set(zone.id, key);
+      holder.append(key);
+    }
+    key.textContent = zone.label;
+    key.setAttribute('aria-pressed', String((current[zone.id] ?? 1) > 0));
+  }
+  for (const [id, key] of rails) {
+    if (zones.some((zone) => zone.id === id)) continue;
+    key.remove();
+    rails.delete(id);
+  }
+}
+
+function renderRoom() {
+  const group = roomGroup();
+  $('t-room').hidden = !group;
+  roomOffGroup = group?.id ?? null;
+  if (!group) {
+    syncKeys(roomLooks, []);
+    return;
+  }
+  renderRails();
+  roomLooks.none.textContent = 'No looks for the room yet. Store them on the deck, in Program.';
+  syncKeys(roomLooks, lookItems(group));
+  $('t-room-off').setAttribute('aria-label', `${group.label} lights off`);
+  roomDimmer?.refresh();
+}
 
 function renderKeys() {
   const group = spiderGroup();
   offGroup = group?.id ?? null;
   $('t-off').disabled = !group;
   if (!group) {
+    renderRoom();
     looks.none.textContent = 'There is no group for the spider in the show. Make one on the deck.';
     syncKeys(looks, []);
     looks.none.hidden = false;
@@ -253,6 +369,9 @@ function renderKeys() {
     }
     return;
   }
+  renderRoom();
+  // The panel at the bottom is about the spider group, and says so.
+  $('t-more-title').textContent = `${group.label}: lights, colour and motion`;
   looks.none.textContent = 'No looks yet. Store them on the deck, in Program.';
   syncKeys(looks, lookItems(group));
   syncKeys(lanes.lights, sceneItems(group, 'lights'));
@@ -277,13 +396,19 @@ function renderChange() {
 }
 
 function renderLinks() {
-  const { bridge, device } = shell.links;
+  const { bridge, device, hass } = shell.links;
   for (const [id, link] of [
     ['t-link-bridge', bridge],
     ['t-link-device', device],
   ]) {
     $(id).dataset.state = link.state;
     $(id).querySelector('.link-text').textContent = link.text;
+  }
+  // Home Assistant has a lamp only when a fixture is driven by it.
+  $('t-link-hass').hidden = hass === undefined;
+  if (hass) {
+    $('t-link-hass').dataset.state = hass.state;
+    $('t-link-hass').querySelector('.link-text').textContent = hass.text;
   }
 }
 
@@ -333,6 +458,52 @@ function buildMaster() {
   showSpeed = speedKeys($('t-speed'), shell.rates, shell.setRate);
 }
 
+/** The dimmer of the room: what the fader shows while a finger is on it, and how it is sent. */
+let roomDimmer;
+let dimmerHeld = null;
+let dimmerHold;
+let dimmerSent = 0;
+let dimmerLate;
+const DIMMER_GAP_MS = 120;
+
+function sendDimmer(percent) {
+  const fixture = roomFixture();
+  if (!fixture) return;
+  const send = () => {
+    dimmerSent = performance.now();
+    ask(`/api/fixtures/${fixture.id}/update`, { dimmer: percent / 100 });
+  };
+  // At most one request in a gap, and the last position always goes.
+  clearTimeout(dimmerLate);
+  const wait = DIMMER_GAP_MS - (performance.now() - dimmerSent);
+  if (wait <= 0) send();
+  else dimmerLate = setTimeout(send, wait);
+}
+
+function buildRoom() {
+  roomDimmer = slider({
+    id: 't-room-dimmer-level',
+    label: 'Room dimmer',
+    read: () =>
+      dimmerHeld ?? Math.round(100 * (shell.stateOf(roomFixture()?.id ?? '')?.dimmer ?? 1)),
+    write: (number) => {
+      // The stream tells of an older position after a newer one is sent: the fader stays where
+      // the finger put it until the finger has been away for a moment.
+      dimmerHeld = number;
+      clearTimeout(dimmerHold);
+      dimmerHold = setTimeout(() => {
+        dimmerHeld = null;
+        roomDimmer.refresh();
+      }, 700);
+      sendDimmer(number);
+    },
+  });
+  $('t-room-dimmer').append(roomDimmer);
+  $('t-room-off').addEventListener('click', () => {
+    if (roomOffGroup) ask('/api/playback', { group: roomOffGroup, off: true });
+  });
+}
+
 function buildLanes() {
   for (const { id } of LANES) {
     lanes[id] = { grid: $(`t-grid-${id}`), none: $(`t-none-${id}`), keys: new Map() };
@@ -349,6 +520,30 @@ function buildPanel() {
   $('t-off').addEventListener('click', () => {
     if (offGroup) ask('/api/playback', { group: offGroup, off: true });
   });
+}
+
+/**
+ * Full screen without the bar of the browser. A browser only installs a page as an app on https or
+ * on localhost, so over `http://192.168...` the home screen only gets a shortcut that keeps the bar.
+ * Full screen is allowed on any address, but only on a press: so the page has a key for it. It is
+ * not there where the browser has none, and not when the page already is an app.
+ */
+function buildFullscreen() {
+  const key = $('t-full');
+  const root = document.documentElement;
+  const app =
+    window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches ||
+    // The tablet app of lightdeck (android-tablet/) is already full screen: it says so in its agent.
+    navigator.userAgent.includes('LightdeckTablet');
+  if (!root.requestFullscreen || app) return;
+  key.hidden = false;
+  const show = () => key.setAttribute('aria-pressed', String(document.fullscreenElement !== null));
+  key.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else root.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+  });
+  document.addEventListener('fullscreenchange', show);
+  show();
 }
 
 function buildTempo() {
@@ -372,22 +567,43 @@ async function main() {
   buildMaster();
   buildLanes();
   buildPanel();
+  buildRoom();
   buildTempo();
+  buildFullscreen();
 
   shell.on('show', () => {
     // What was refused was about the show as it was. A press that was lost still is.
     failure = '';
     renderKeys();
+    renderSequences();
     renderNotice();
   });
   shell.on('playback', renderKeys);
+  shell.on('sequence', renderSequences);
+  // The dimmer of the room is set from another screen too.
+  shell.on('fixtures', () => {
+    roomDimmer?.refresh();
+    renderRails();
+  });
   shell.on('change', renderChange);
   shell.on('status', renderLinks);
   renderChange();
   renderLinks();
   renderKeys();
+  renderSequences();
   renderNotice();
   requestAnimationFrame(drawBeat);
 }
 
 main();
+
+// The app can be installed (manifest.webmanifest). The service worker (sw.js) keeps the page itself,
+// so that it opens when lightdeck cannot be reached. A browser only has one on https and on
+// localhost, and without one everything else works as before.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // No service worker: the page works without it.
+    });
+  });
+}

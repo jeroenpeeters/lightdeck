@@ -60,6 +60,10 @@
   display: flex;
   gap: 0.5rem;
 }
+/* A zone that is switched off shows its lamps dimmed, whatever their levels say. */
+.zone[data-off="true"] .lamp-list {
+  opacity: 0.45;
+}
 .lamp-list {
   margin: 0;
   padding: 0;

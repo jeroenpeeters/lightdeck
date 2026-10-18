@@ -22,17 +22,27 @@ a {
 
 /* ---- the layout ---- */
 
-/* Portrait: the tempo and the masters side by side, then the looks, then the panel. */
+/*
+ * Portrait: the tempo and the masters side by side, then the sequences, the looks of the spider and
+ * the lamps of the room, then the panel. The two columns are only boxes in landscape, and here they
+ * are not there: their panels are placed by the grid itself.
+ */
 .tablet {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-areas:
     "top top"
     "tempo master"
+    "seq seq"
     "looks looks"
+    "room room"
     "more more";
   gap: var(--gap);
   margin-top: max(0.75rem, env(safe-area-inset-top));
+}
+.t-left,
+.t-right {
+  display: contents;
 }
 /*
  * Room for a notice at the end of the page, where it then lies under the last key. Only while
@@ -50,8 +60,14 @@ a {
 .t-master {
   grid-area: master;
 }
+.t-seq {
+  grid-area: seq;
+}
 .t-looks {
   grid-area: looks;
+}
+.t-room {
+  grid-area: room;
 }
 .t-more {
   grid-area: more;
@@ -63,23 +79,44 @@ a {
       "top"
       "tempo"
       "master"
+      "seq"
       "looks"
+      "room"
       "more";
   }
 }
-/* Landscape: the tempo and the masters on the left, the looks on the right, the panel below. */
+/*
+ * Landscape: the tempo and the masters in a column on the left, and in a column on the right the
+ * sequences, the looks of the spider and the lamps of the room under them, then the panel below.
+ */
 @media (orientation: landscape) and (min-width: 56rem) {
   .tablet {
     grid-template-columns: minmax(21rem, 26rem) minmax(0, 1fr);
     grid-template-areas:
       "top top"
-      "tempo looks"
-      "master looks"
+      "left right"
       "more more";
     align-items: start;
   }
-  .t-looks {
-    align-self: stretch;
+  .t-left,
+  .t-right {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    min-width: 0;
+  }
+  .t-left {
+    grid-area: left;
+  }
+  .t-right {
+    grid-area: right;
+  }
+  .t-tempo,
+  .t-master,
+  .t-seq,
+  .t-looks,
+  .t-room {
+    grid-area: auto;
   }
 }
 
@@ -109,6 +146,15 @@ a {
 }
 .t-main:active {
   background: var(--key-down);
+}
+.t-keys {
+  display: flex;
+  gap: 0.75rem;
+}
+/* The key is lit while the page is full screen. It keeps its size and its word. */
+.t-full[aria-pressed="true"] {
+  border-color: var(--signal);
+  color: var(--signal);
 }
 .t-links {
   justify-content: center;
@@ -278,6 +324,88 @@ a {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
   gap: 0.5rem;
+}
+
+/* ---- the sequences ---- */
+
+.t-seq > h2 {
+  margin-bottom: 0.75rem;
+}
+.t-seq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.5rem;
+}
+/* Only a name: a lower key than a look, the name in the middle of it, both ways. */
+.scene.seq {
+  height: 4.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  text-align: center;
+}
+.scene.seq .scene-sets {
+  display: none;
+}
+.scene.seq .scene-name {
+  font-size: var(--large);
+}
+
+/* ---- the room lights ---- */
+
+.t-room-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+.t-room-head > h2 {
+  margin: 0;
+}
+/* A key of its own size: Off does not take the size of what it says. */
+.t-room-off {
+  min-width: 8rem;
+  min-height: 3.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--paper);
+  font-size: var(--large);
+  font-weight: 600;
+}
+.t-room-off:active {
+  background: var(--key-down);
+}
+.t-room-dimmer {
+  margin-bottom: 1rem;
+}
+/* A switch per rail: lit while the rail is on. Every one the same size, so none moves. */
+.t-rails {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.t-rail {
+  min-height: 3.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--paper);
+  font-size: var(--large);
+  font-weight: 600;
+}
+.t-rail:active {
+  background: var(--key-down);
+}
+.t-rail[aria-pressed="true"] {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--ink);
 }
 
 /* ---- the keys of a look or a scene, as on the deck ---- */

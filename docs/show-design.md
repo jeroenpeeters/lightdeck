@@ -182,7 +182,8 @@ choices where it left room:
 - **A step sets looks as a press does** (`Playback.playLook` with the origin `sequence`), so all of
   it is all or nothing per look. A look that fails is reported on the deck and skipped, and the
   other groups of the step are still set.
-- **Not built:** a deck editor for sequences, a sequence in the tablet page, starting on the next
+- **On the tablet page** a key per sequence (name only, lit while it runs, a press starts or stops it).
+- **Not built:** a deck editor for sequences, starting on the next
   bar, two at once, crossfades, holds (steps 5 to 7).
 
 ## Open

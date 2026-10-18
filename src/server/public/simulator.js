@@ -28,6 +28,13 @@
 // the scene. It is moved and turned like a fixture, and its settings (output, density, throw,
 // spread, nozzle angle, rise and hang time) are in a panel. Its smoke is lit by the lenses.
 //
+// The lamps of the room (roomLamps.js) are one fixture for lightdeck and hang in the room one by one.
+// A zone of the rig is a rail: a straight bar that is moved and turned as a whole, with the lamps of
+// that zone on it. A lamp is moved along its rail and nowhere else, so the lamps of one rail stay in
+// line, and between two rails they are free. A light that is in no zone has a rail of its own. They
+// are drawn from the state of the room and the grand master and the blackout (what lightdeck asks
+// of them), and light the smoke like a lens. Where they hang is kept in this browser.
+//
 // The fixtures can be moved and turned by hand, with the gizmo of three.js, and mounted with
 // the lights down, up, forward or back. Where they stand is kept per fixture in this browser
 // (localStorage), not on the server.
@@ -37,6 +44,14 @@ import { createCalibration } from '/calibrate.js';
 import { OrbitControls } from '/lib/three/OrbitControls.js';
 import { TransformControls } from '/lib/three/TransformControls.js';
 import { createRoom } from '/room.js';
+import {
+  clampAlong,
+  cleanPlacement,
+  defaultPlacement,
+  lampLook,
+  railSpan,
+  railsOf,
+} from '/roomLamps.js';
 import { createSmoke } from '/smoke.js';
 import { cleanSmoke, SMOKE_RANGES } from '/smokeSim.js';
 import {
@@ -72,6 +87,11 @@ const SPOT_INTENSITY = 110;
 const HUNG_AT = 2.4;
 const SPACING = 1.6;
 const SNAP_METRES = 0.05;
+/** A rail of lamps: its bar, and a lamp that hangs under it. */
+const RAIL = { thick: 0.045 };
+const LAMP_BODY = { radius: 0.05, height: 0.13 };
+const LAMP_SPOT_INTENSITY = 60;
+const LAMP_SPOT_ANGLE = 0.5;
 const SNAP_DEGREES = 5;
 /** A press that moves more than this many pixels is a drag, not a pick. */
 const CLICK_SLOP = 5;
@@ -159,7 +179,7 @@ let photoView = null;
 const smoke = createSmoke({ scene, renderer, camera });
 const machine = smoke.machine;
 /** What can be chosen, moved and turned: the spiders, and the smoke machine when it is there. */
-const things = () => (smoke.present ? [...sims, machine] : sims);
+const things = () => [...sims, ...railSims, ...lampSims, ...(smoke.present ? [machine] : [])];
 
 function applyDark() {
   room.setDark(roomDark);
@@ -524,6 +544,102 @@ function makeSpider(fixture) {
   };
 }
 
+// ---- the rails and the lamps of the room ----
+
+/** A lamp hangs from its rail with the lens at the bottom, facing down. */
+function makeLamp(fixture, rail, railSim, lamp, along) {
+  const holder = new THREE.Group();
+  holder.position.set(along, 0, 0);
+  railSim.group.add(holder);
+  const id = `${railSim.id}/${lamp.id}`;
+
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.06), metal);
+  stem.position.y = -0.03;
+  holder.add(stem);
+  // The lens is at the bottom of the body, and the body is above it.
+  const bottom = new THREE.Group();
+  bottom.position.y = -0.06 - LAMP_BODY.height;
+  holder.add(bottom);
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(LAMP_BODY.radius, LAMP_BODY.radius * 0.8, LAMP_BODY.height, 24),
+    darkMetal,
+  );
+  body.position.y = LAMP_BODY.height / 2;
+  bottom.add(body);
+
+  const made = makeLens(bottom, 0, 0);
+  // A lens faces +Y of its parent: turn it over, so that it faces down, and wider than a lens of the spider.
+  made.lens.rotation.set(Math.PI, 0, 0);
+  made.lens.position.set(0, 0, 0);
+  made.lens.scale.setScalar(1.6);
+  made.beam.scale.set(2.2, 0.6, 2.2);
+  made.spot.angle = LAMP_SPOT_ANGLE;
+
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(0.2, 0.32, 0.2)),
+    new THREE.LineBasicMaterial({ color: 0xffb400 }),
+  );
+  outline.position.y = -0.14;
+  outline.visible = false;
+  holder.add(outline);
+  body.userData.fixtureId = id;
+  stem.userData.fixtureId = id;
+  return {
+    kind: 'lamp',
+    id,
+    label: lamp.label,
+    group: holder,
+    pickable: [body, stem],
+    outline,
+    fixtureId: fixture.id,
+    lampId: lamp.id,
+    rail: railSim,
+    lens: made,
+  };
+}
+
+/** A rail: a bar with its lamps, moved and turned as a whole. Its axis is its own X. */
+function makeRail(fixture, rail, placement) {
+  const group = new THREE.Group();
+  const id = `${fixture.id}/${rail.id}`;
+  group.name = id;
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(1, RAIL.thick, RAIL.thick), darkMetal);
+  group.add(bar);
+  const outline = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 0.12, 0.12)),
+    new THREE.LineBasicMaterial({ color: 0xffb400 }),
+  );
+  outline.visible = false;
+  group.add(outline);
+  bar.userData.fixtureId = id;
+  scene.add(group);
+
+  const sim = {
+    kind: 'rail',
+    id,
+    label: rail.label,
+    group,
+    pickable: [bar],
+    outline,
+    fixtureId: fixture.id,
+    rail,
+    lamps: [],
+  };
+  sim.lamps = rail.lamps.map((lamp) =>
+    makeLamp(fixture, rail, sim, lamp, placement.along[lamp.id] ?? 0),
+  );
+  /** The bar reaches a little past the first and the last lamp, wherever they are put. */
+  sim.updateSpan = () => {
+    const span = railSpan(sim.lamps.map((lamp) => lamp.group.position.x));
+    for (const part of [bar, outline]) {
+      part.scale.x = span.length;
+      part.position.x = span.middle;
+    }
+  };
+  sim.updateSpan();
+  return sim;
+}
+
 // ---- where the fixtures stand ----
 
 /**
@@ -570,7 +686,32 @@ const MACHINE_POSE = {
   p: [0.6, 0, 1.4],
   q: new THREE.Quaternion().setFromAxisAngle(UP, Math.PI).toArray(),
 };
+/** What this browser kept of where the lamps of a room fixture hang. */
+function lampStore(fixtureId) {
+  store.lamps ??= {};
+  store.lamps[fixtureId] ??= { rails: {}, along: {} };
+  store.lamps[fixtureId].rails ??= {};
+  store.lamps[fixtureId].along ??= {};
+  return store.lamps[fixtureId];
+}
 function keepPose(sim) {
+  if (sim.kind === 'lamp') {
+    // A lamp stays on its rail's axis: only the way along it is its own.
+    const along = clampAlong(sim.group.position.x);
+    sim.group.position.set(along, 0, 0);
+    lampStore(sim.fixtureId).along[sim.lampId] = along;
+    sim.rail.updateSpan();
+    saveStore();
+    return;
+  }
+  if (sim.kind === 'rail') {
+    lampStore(sim.fixtureId).rails[sim.rail.id] = {
+      p: sim.group.position.toArray(),
+      q: sim.group.quaternion.toArray(),
+    };
+    saveStore();
+    return;
+  }
   if (sim.kind === 'smoke') {
     store.smoke ??= {};
     store.smoke.pose = { p: sim.group.position.toArray(), q: sim.group.quaternion.toArray() };
@@ -584,7 +725,17 @@ function keepPose(sim) {
 // ---- the state, from lightdeck ----
 
 const sims = [];
+/** The rails and the lamps of the room, which are chosen, moved and drawn like the fixtures. */
+const railSims = [];
+const lampSims = [];
+/** By the id of a room fixture, its rails as `railsOf` made them. */
+const railsOfFixture = new Map();
+const defaultPlacementOf = (fixtureId) => defaultPlacement(railsOfFixture.get(fixtureId) ?? []);
 const dmxOf = new Map();
+/** By the id of a room fixture, the state lightdeck last told of it, and what the room is given. */
+const roomStates = new Map();
+let master = 1;
+let blackout = false;
 let haze = Number.isFinite(store.haze) ? store.haze : DEFAULT_HAZE;
 let roomDark = store.roomDark === true;
 let roomLight = Number.isFinite(store.roomLight) ? store.roomLight : DEFAULT_ROOM_LIGHT;
@@ -611,7 +762,12 @@ function showBridge(state, status) {
 let bridgeUrl = null;
 function adopt(state) {
   bridgeUrl = state.bridgeUrl;
-  for (const fixture of state.fixtures) dmxOf.set(fixture.id, fixture.dmx);
+  for (const fixture of state.fixtures) {
+    dmxOf.set(fixture.id, fixture.dmx);
+    if (fixture.protocol === 'hass') roomStates.set(fixture.id, fixture.state);
+  }
+  master = state.master ?? master;
+  blackout = state.blackout ?? blackout;
   showBridge(state, state.status);
 }
 
@@ -633,7 +789,17 @@ function listen() {
     }
   });
   events.addEventListener('error', () => setLamp('link-stream', 'down', 'Lightdeck lost'));
-  on('fixture', (message) => dmxOf.set(message.id, message.dmx));
+  on('fixture', (message) => {
+    dmxOf.set(message.id, message.dmx);
+    // A fixture without bytes is one of Home Assistant's: its state is what the lamps are drawn from.
+    if (message.state && !message.dmx) roomStates.set(message.id, message.state);
+  });
+  on('master', (message) => {
+    master = message.master;
+  });
+  on('blackout', (message) => {
+    blackout = message.blackout;
+  });
   on('frame', (message) => dmxOf.set(message.id, message.dmx));
   on('status', (status) => showBridge({ bridgeUrl }, status));
 }
@@ -671,15 +837,65 @@ function select(sim) {
   for (const each of things()) each.outline.visible = each === sim;
   if (sim) transform.attach(sim.group);
   else transform.detach();
+  // A lamp goes along its rail and nowhere else, and is not turned: only the axis of the rail is
+  // offered, in the rail's own directions.
+  const lamp = sim?.kind === 'lamp';
+  transform.showX = true;
+  transform.showY = !lamp;
+  transform.showZ = !lamp;
+  if (lamp) {
+    setMode('translate');
+    showSpace(true);
+  }
+  $('mode-rotate').disabled = lamp;
+  $('space').disabled = lamp;
   for (const key of document.querySelectorAll('#fixtures .key')) {
     key.setAttribute('aria-pressed', String(key.dataset.id === sim?.id));
   }
+  showLampKeys();
   showMount();
-  calibration.show(sim?.kind === 'smoke' ? null : sim);
+  // Only a spider has bars to calibrate.
+  calibration.show(sim && !sim.kind ? sim : null);
+}
+
+/** The lamps of the chosen rail, as keys, and the one that is chosen marked. */
+function showLampKeys() {
+  const rail =
+    selected?.kind === 'rail' ? selected : selected?.kind === 'lamp' ? selected.rail : null;
+  const group = $('lamps-group');
+  group.hidden = rail === null;
+  const row = $('lamp-keys');
+  if (rail === null) {
+    row.replaceChildren();
+    return;
+  }
+  if (row.dataset.rail !== rail.id) {
+    row.dataset.rail = rail.id;
+    row.replaceChildren(
+      ...rail.lamps.map((lamp) => {
+        const key = document.createElement('button');
+        key.type = 'button';
+        key.className = 'key';
+        key.dataset.id = lamp.id;
+        key.textContent = lamp.label;
+        key.addEventListener('click', () => select(lamp));
+        return key;
+      }),
+    );
+  }
+  for (const key of row.children)
+    key.setAttribute('aria-pressed', String(key.dataset.id === selected.id));
 }
 
 /** Where the chosen fixture hangs, in metres from the spot where the photo was taken. */
 function showPosition() {
+  const lamp = selected?.kind === 'lamp';
+  // For a lamp the first field is how far along its rail it hangs, and the others do not apply.
+  document.querySelector('label[for="pos-x"]').textContent = lamp ? 'Along the rail' : 'Across';
+  for (const id of ['pos-y', 'pos-z']) {
+    $(id).style.visibility = lamp ? 'hidden' : 'visible';
+    document.querySelector(`label[for="${id}"]`).style.visibility = lamp ? 'hidden' : 'visible';
+  }
   for (const [id, axis] of [
     ['pos-x', 'x'],
     ['pos-y', 'y'],
@@ -711,11 +927,13 @@ function showMount() {
   showPosition();
   const yaw = selected ? yawOf(selected.group.quaternion) : 0;
   for (const key of document.querySelectorAll('#mounts .key')) {
+    // Only a spider is mounted: a rail is hung, and a lamp hangs from it.
     const same =
       selected !== null &&
+      !selected.kind &&
       selected.group.quaternion.angleTo(mountQuaternion(yaw, Number(key.dataset.degrees))) <
         SAME_MOUNT;
-    key.disabled = selected === null || selected.kind === 'smoke';
+    key.disabled = selected === null || Boolean(selected.kind);
     key.setAttribute('aria-pressed', String(same));
   }
 }
@@ -744,12 +962,13 @@ function setMode(mode) {
 }
 $('mode-translate').addEventListener('click', () => setMode('translate'));
 $('mode-rotate').addEventListener('click', () => setMode('rotate'));
-$('space').addEventListener('click', () => {
-  const local = transform.space === 'world';
+/** Moves and turns about the axes of the fixture itself, or about those of the room. */
+function showSpace(local) {
   transform.setSpace(local ? 'local' : 'world');
   $('space').setAttribute('aria-pressed', String(local));
   $('space').textContent = local ? 'Local axes' : 'World axes';
-});
+}
+$('space').addEventListener('click', () => showSpace(transform.space === 'world'));
 $('space').textContent = 'World axes';
 $('snap').addEventListener('click', () => {
   const on = $('snap').getAttribute('aria-pressed') !== 'true';
@@ -759,6 +978,19 @@ $('snap').addEventListener('click', () => {
 });
 $('reset-fixture').addEventListener('click', () => {
   if (!selected) return;
+  if (selected.kind === 'lamp' || selected.kind === 'rail') {
+    const defaults = defaultPlacementOf(selected.fixtureId);
+    if (selected.kind === 'rail') {
+      const pose = defaults.rails[selected.rail.id];
+      selected.group.position.fromArray(pose.p);
+      selected.group.quaternion.fromArray(pose.q);
+    } else {
+      selected.group.position.set(defaults.along[selected.lampId] ?? 0, 0, 0);
+    }
+    keepPose(selected);
+    showMount();
+    return;
+  }
   const index = sims.indexOf(selected);
   place(selected, selected.kind === 'smoke' ? MACHINE_POSE : defaultPose(index, sims.length));
   keepPose(selected);
@@ -918,7 +1150,7 @@ function setMachine(on) {
     for (const key of document.querySelectorAll('#fixtures .key')) {
       if (key.dataset.id === machine.id) key.remove();
     }
-    if (selected === machine) select(sims[0] ?? null);
+    if (selected === machine) select(sims[0] ?? railSims[0] ?? null);
   }
   store.smoke ??= {};
   store.smoke.present = on;
@@ -976,6 +1208,12 @@ function shiningLenses() {
           lenses.push({ object: lens.lens, colour });
         }
       }
+    }
+  }
+  for (const sim of lampSims) {
+    const colour = sim.lens.spot.color;
+    if (Math.max(colour.r, colour.g, colour.b) > 0.002) {
+      lenses.push({ object: sim.lens.lens, colour });
     }
   }
   return lenses;
@@ -1037,6 +1275,37 @@ function drawSpider(sim, dt, seconds) {
   return look.program;
 }
 
+/** A lamp shows what lightdeck asks of it: its colour at its level, times the dimmers. */
+function drawLamp(sim) {
+  const look = lampLook(roomStates.get(sim.fixtureId), sim.lampId, {
+    master,
+    blackout,
+    zone: sim.rail.rail.loose ? null : sim.rail.rail.id,
+  });
+  const shown = look.brightness;
+  const { lens } = sim;
+  colour.setRGB(look.r * shown, look.g * shown, look.b * shown);
+  lens.lens.material.color.setRGB(
+    look.r * shown,
+    look.g * shown,
+    look.b * shown,
+    THREE.SRGBColorSpace,
+  );
+  lens.glow.material.color.setRGB(
+    look.r * shown,
+    look.g * shown,
+    look.b * shown,
+    THREE.SRGBColorSpace,
+  );
+  lens.glow.material.opacity = Math.min(1, shown * 1.2);
+  // The beam is drawn at its own full colour, and as faint as the lamp is dim.
+  colour.setRGB(look.r, look.g, look.b);
+  lens.beam.material.uniforms.uColor.value.copy(colour);
+  lens.beam.material.uniforms.uAlpha.value = shown * (haze / 100) * 0.45;
+  lens.spot.color.setRGB(look.r * shown, look.g * shown, look.b * shown, THREE.SRGBColorSpace);
+  lens.spot.intensity = LAMP_SPOT_INTENSITY;
+}
+
 function resize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -1052,6 +1321,7 @@ function frame(now) {
   last = now;
   let program = false;
   for (const sim of sims) program = drawSpider(sim, dt, now / 1000) || program;
+  for (const sim of lampSims) drawLamp(sim);
   const note = $('note');
   const text = program
     ? 'A spider runs a program of its own. The simulator only draws the lens bytes, which are not what the fixture shows then.'
@@ -1125,16 +1395,39 @@ async function start() {
     key.addEventListener('click', () => select(sim));
     $('fixtures').append(key);
   });
+  // The lamps of the room: a rail for every zone, with its lamps on it.
+  for (const fixture of state.fixtures) {
+    if (fixture.protocol !== 'hass' || !fixture.details?.lamps) continue;
+    const rails = railsOf(fixture.details);
+    railsOfFixture.set(fixture.id, rails);
+    const placement = cleanPlacement(store.lamps?.[fixture.id], rails);
+    for (const rail of rails) {
+      const sim = makeRail(fixture, rail, placement);
+      const pose = placement.rails[rail.id];
+      sim.group.position.fromArray(pose.p);
+      sim.group.quaternion.fromArray(pose.q);
+      railSims.push(sim);
+      lampSims.push(...sim.lamps);
+      const key = document.createElement('button');
+      key.type = 'button';
+      key.className = 'key';
+      key.dataset.id = sim.id;
+      key.textContent = rail.label;
+      key.setAttribute('aria-pressed', 'false');
+      key.addEventListener('click', () => select(sim));
+      $('fixtures').append(key);
+    }
+  }
   if (store.smoke?.present || asked.includes('smoke')) setMachine(true);
   if (asked.includes('on') && smoke.present) smoke.setEmitting(true);
   const warm = Number(asked.find((part) => part.startsWith('warm='))?.slice(5));
   if (Number.isFinite(warm) && smoke.present) smoke.advance(warm, smokeBounds());
   showSmoke();
-  if (sims.length === 0) {
-    $('note').textContent = 'There is no spider in this rig to draw.';
+  if (sims.length === 0 && railSims.length === 0) {
+    $('note').textContent = 'There is nothing in this rig to draw.';
     $('note').hidden = false;
   } else {
-    select(sims[0]);
+    select(sims[0] ?? railSims[0]);
   }
   setLamp('link-stream', 'unknown', 'Lightdeck');
   listen();

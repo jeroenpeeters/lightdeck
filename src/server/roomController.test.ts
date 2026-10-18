@@ -293,6 +293,97 @@ describe('RoomController', () => {
     });
   });
 
+  describe('the switch of a zone', () => {
+    beforeEach(() => {
+      room.update({ levels: { bar: 1, shelf: 1, ceiling: 1, fog: 1 } });
+      hass.commands = [];
+    });
+
+    it('has every zone on at the start', () => {
+      expect(state().zones).toEqual({ low: 1, high: 1 });
+    });
+
+    it('switches the lights of that zone off and leaves the others, and a switch', () => {
+      room.update({ zones: { low: 0 } });
+      expect(hass.to('light.bar')).toEqual([off(1)]);
+      expect(hass.to('light.shelf')).toEqual([off(1)]);
+      expect(hass.to('light.ceiling')).toEqual([]);
+      expect(hass.to('switch.fog')).toEqual([]);
+      expect(state().zones).toEqual({ low: 0, high: 1 });
+    });
+
+    it('brings them back to what is set, and sends nothing for a zone that does not change', () => {
+      room.update({ zones: { low: 0 } });
+      hass.commands = [];
+      room.update({ zones: { low: 1 } });
+      expect(hass.to('light.bar')).toEqual([on(255, [0, 0, 0, 255], 1)]);
+      expect(hass.to('light.ceiling')).toEqual([]);
+      hass.commands = [];
+      room.update({ zones: { low: 1 } });
+      expect(hass.commands).toEqual([]);
+    });
+
+    it('is not undone by a scene, a look, an effect or a palette', () => {
+      room.update({ zones: { low: 0 } });
+      hass.commands = [];
+      room.recall('lights', {
+        levels: { bar: 1, shelf: 0.5, ceiling: 1 },
+        effect: { id: 'still' },
+      });
+      room.recall('colour', { colour: { palette: 'trio' } });
+      room.recall('lights', {});
+      room.recall('lights', { levels: { bar: 1, shelf: 1 } });
+      expect(state().zones.low).toBe(0);
+      // Whatever was sent to the lamps of the zone was to switch them off, and nothing lit them.
+      for (const sent of [...hass.to('light.bar'), ...hass.to('light.shelf')]) {
+        expect(sent.service).toBe('turn_off');
+      }
+    });
+
+    it('is no part of a scene: it is not kept, and a scene that names it is refused', () => {
+      room.update({ zones: { low: 0 } });
+      expect(room.snapshot('lights')).not.toHaveProperty('zones');
+      expect(() => room.check('lights', { zones: { low: 1 } })).toThrow(/part of no scene/);
+      expect(() => room.recall('lights', { zones: { low: 1 } })).toThrow(/part of no scene/);
+    });
+
+    it('goes together with the dimmer, the master and the level, and the blackout', () => {
+      room.update({ dimmer: 0.5, zones: { high: 0 } });
+      expect(hass.to('light.bar').at(-1)).toEqual(on(128, [0, 0, 0, 255], 1));
+      expect(hass.to('light.ceiling').at(-1)).toEqual(off(1));
+      room.setBlackout(true);
+      room.setBlackout(false);
+      expect(hass.to('light.ceiling').at(-1)).toEqual(off(1));
+      room.update({ zones: { high: 1 } });
+      expect(hass.to('light.ceiling').at(-1)).toEqual(on(128, [0, 0, 0, 255], 1));
+    });
+
+    it('lets an effect go on under a zone that is off', () => {
+      room.update({ zones: { low: 0 } });
+      room.recall('colour', { colour: { palette: 'trio' } });
+      room.update({ effect: { id: 'rotate' } });
+      hass.commands = [];
+      clock = beats(PERIOD_BEATS);
+      room.render(clock);
+      expect(hass.to('light.bar')).toEqual([]);
+      room.update({ zones: { low: 1 } });
+      expect(hass.to('light.bar').at(-1)?.service).toBe('turn_on');
+    });
+
+    it('refuses a zone that is not there, and what is not a number', () => {
+      expect(() => room.update({ zones: { ghost: 0 } })).toThrow(
+        'there is no zone called "ghost", the zones are low, high',
+      );
+      expect(() => room.update({ zones: { low: 'off' } })).toThrow(/between 0 and 1/);
+      expect(() => room.update({ zones: { low: null } })).toThrow(/between 0 and 1/);
+      expect(() => room.update({ zones: [] })).toThrow(PatchError);
+      room.update({ zones: { low: 5 } });
+      expect(state().zones.low).toBe(1);
+      room.update({ zones: { low: -2 } });
+      expect(state().zones.low).toBe(0);
+    });
+  });
+
   describe('the dimmer of the room', () => {
     beforeEach(() => {
       room.update({ levels: { bar: 1, shelf: 0.5, ceiling: 1, fog: 1, heater: 1 } });

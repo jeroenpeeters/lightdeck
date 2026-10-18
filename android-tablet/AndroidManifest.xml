@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The tablet app of lightdeck: one screen with a WebView on the /tablet page, full screen. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="nl.lightdeck.tablet">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Lightdeck is on the local network over plain http: that is allowed here, for this app only. -->
+    <application
+        android:label="Lightdeck"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="fullSensor"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

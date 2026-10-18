@@ -19,7 +19,7 @@ the same console as slow scenery under the DMX fixtures.
 | Palettes: the colours of the show, apart from the effects | Built, not yet tested on the real fixtures |
 | Scenes and looks: store what the fixtures do, recall it | Built, not yet tested on the real fixtures |
 | Grand master, swing limits of the spider | Built, not yet tested on the real fixtures |
-| Simulator: the spiders in 3D from the bytes that are sent, a living room, a smoke machine | Works in a desktop browser, never compared with the real spider |
+| Simulator: the spiders and the lamps of the room in 3D (a rail per zone, every lamp moved along its rail), a living room, a smoke machine | Works in a desktop browser, never compared with the real spider |
 | Home Assistant lamps and switches: one fixture, "Room Lights", with zones, scenery effects and a dimmer | Built. Tried against the real Home Assistant for the login, the lamps and a soak of the first throttle, and against a stand-in; not yet soaked again, and not on a tablet. See [docs/hass-fixtures-plan.md](docs/hass-fixtures-plan.md) |
 | Sequences: the looks of the groups changing by themselves on the bars | Built, written in the show file by hand, started on the deck. Not yet tested on the real fixtures |
 | Crossfades, holds | Not built, see [docs/show-design.md](docs/show-design.md) |
@@ -143,11 +143,20 @@ Go to `http://<computer-ip>:8080` on the tablet. The console has:
 - **Palettes**: the colours of the show, apart from the effects. A list of up to eight
   colours (or off), static or cycling.
 - **Tablet** (`/tablet`): a page with few, big controls for a tablet at the side of the dance
-  floor: tap the tempo, the master and its speed, the looks of the spider, a panel with its
-  lights, colour and motion, the blackout, and the state of the bridge and the LR512.
+  floor: tap the tempo, the master and its speed, the looks of the spider, the sequences (a key each: press to start or stop), the lamps of the room (its looks, a dimmer, Off and a switch per rail that no look changes), a panel with the spider's
+  lights, colour and motion, the blackout, and the state of the bridge, the LR512 and Home Assistant.
 - **A page per fixture**, to set it by hand and to start an effect. The page of the room has a
   fader and a colour per lamp, the zones, the switches, the dimmer of the room, the palettes
   and the scenery effects.
+- **The tablet as an Android app.** On Android, Chrome does not install the page without https. The small app in [android-tablet/](android-tablet/README.md) is just a full-screen window on the tablet page: `./build.sh`, then `adb install -r lightdeck-tablet.apk`.
+- **Install the tablet page as an app.** `/tablet` has a manifest and icons, so that on the home
+  screen of the tablet it opens full screen, without the bar of the browser. On an iPad: Share, Add
+  to Home Screen. Android and Chrome only offer to install it on an https address or on localhost,
+  not on `http://<ip>:8080`: there the menu has only "Add to Home screen", which makes a shortcut. The
+  page does not work offline, but when lightdeck cannot be reached it still opens and says so. Without
+  https (or the Chrome flag `unsafely-treat-insecure-origin-as-secure` set to the address of the
+  computer), the tablet page has a **Fullscreen** key in the top row that hides the bar of the
+  browser while the page is open.
 - **Listen** (`/listen`): open it on the computer with the microphone, and the tempo can follow
   the music. **Simulator** (`/simulator`): the 3D view.
 - On every page: the tempo with tap and nudge, the speed of the effects, the blackout,
@@ -285,7 +294,7 @@ fixtures:
       - { id: low, label: Low, lamps: [bar] }
 ```
 
-A light that is in no zone is one zone of its own, a switch is in no zone, and a switch goes off
+The lights that are in no zone are one zone together, a switch is in no zone, and a switch goes off
 in a blackout (and with the master at 0) only when it says `blackout: true`. A lamp that a
 scene of lights does not name goes off. Lightdeck does not touch a lamp when it starts or when
 it stops: the lamps stay as they are until something sets them.

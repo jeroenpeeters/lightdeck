@@ -39,6 +39,9 @@
 //   shell.on('fixture', ({ state, dmx, own }) => ...)   the fixture changed; `state` is
 //                                          what the server says with what is pending
 //                                          over it, so a page can take it as it is
+//   shell.stateOf(id)                      the state the server last told of ANY fixture, for a page
+//                                          that shows something of a fixture that is not its own
+//   shell.on('fixtures', (id) => ...)      the state of some fixture changed (every page hears it)
 //   shell.on('frame', ({ dmx, beat }) => ...)           what is being sent, while it animates
 //   shell.audio                            what lightdeck hears and the settings of the
 //                                          listening: { source, following, heard, bpm,
@@ -185,6 +188,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   let show = initial.show;
   let playback = initial.playback;
   let sequence = initial.sequence;
+  /** By the id of a fixture, the state the server told of it last. */
+  const states = new Map(initial.fixtures.map((each) => [each.id, each.state]));
   const limits = initial.tempo;
   let tempo = readTempo(initial.tempo);
   /** What lightdeck hears through the microphone, and what it does with it. */
@@ -211,6 +216,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     show: [],
     playback: [],
     sequence: [],
+    fixtures: [],
     audio: [],
     status: [],
   };
@@ -260,6 +266,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     setBeat(fresh.tempo.beat);
     blackout = fresh.blackout;
     master = fresh.master;
+    for (const each of fresh.fixtures) states.set(each.id, each.state);
+    tell('fixtures', null);
     const real = fresh.fixtures.find((each) => each.id === id);
     if (real) tell('fixture', { state: shownState(real.state), dmx: real.dmx, own: false });
     show = fresh.show;
@@ -426,6 +434,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
       renderNotice();
     });
     on('fixture', (message) => {
+      states.set(message.id, message.state);
+      tell('fixtures', message.id);
       if (message.id !== id) return;
       onTheWay.heard(message.origin);
       tell('fixture', {
@@ -837,6 +847,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     get sequence() {
       return sequence;
     },
+    stateOf: (fixtureId) => states.get(fixtureId),
     get audio() {
       return audio;
     },

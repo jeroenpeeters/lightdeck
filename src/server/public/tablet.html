@@ -4,6 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0f1114" />
+    <!-- Installable: on the home screen it opens full screen, without the bar of the browser. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lightdeck" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <title>Tablet · Lightdeck</title>
     <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
@@ -13,7 +21,13 @@
     <!-- The shell keeps its bar and its tempo desk out of sight. The notice of the shell goes below. -->
     <main class="tablet" id="console">
       <header class="t-top">
-        <a class="t-main" href="/deck">Main view</a>
+        <div class="t-keys">
+          <a class="t-main" href="/deck">Main view</a>
+          <!-- Full screen without the bar of the browser. Hidden where the browser cannot, or when the app already is. -->
+          <button type="button" class="t-main t-full" id="t-full" aria-pressed="false" hidden>
+            Fullscreen
+          </button>
+        </div>
         <ul class="links t-links" aria-label="Connection">
           <li class="link" id="t-link-bridge" data-state="unknown">
             <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
@@ -21,12 +35,17 @@
           <li class="link" id="t-link-device" data-state="unknown">
             <span class="lamp" aria-hidden="true"></span><span class="link-text">LR512</span>
           </li>
+          <li class="link" id="t-link-hass" data-state="unknown" hidden>
+            <span class="lamp" aria-hidden="true"></span><span class="link-text">Home Assistant</span>
+          </li>
         </ul>
         <button type="button" class="blackout t-blackout" id="t-blackout" aria-pressed="false">
           Blackout
         </button>
       </header>
 
+      <!-- The left column in landscape: the tempo and the masters. -->
+      <div class="t-left">
       <section class="panel t-tempo" aria-label="Tempo">
         <div class="t-bpm-row">
           <p class="t-bpm">
@@ -49,14 +68,38 @@
           <legend>Master speed</legend>
         </fieldset>
       </section>
+      </div>
+
+      <!-- The right column in landscape: the sequences on top, then the looks of the spider, then the lamps of the room. -->
+      <div class="t-right">
+      <!-- The sequences of the show: only the names. A press starts one, and a press on the one that runs stops it. -->
+      <section class="panel t-seq" id="t-seq" aria-labelledby="t-seq-title" hidden>
+        <h2 id="t-seq-title">Sequences</h2>
+        <p class="t-none" id="t-seq-none" hidden></p>
+        <div class="t-seq-grid" id="t-seq-grid"></div>
+      </section>
 
       <section class="panel t-looks" aria-labelledby="t-looks-title">
-        <h2 id="t-looks-title">Looks</h2>
+        <h2 id="t-looks-title">Spider looks</h2>
         <p class="t-none" id="t-looks-none" hidden></p>
         <div class="t-look-grid" id="t-looks"></div>
       </section>
 
-      <section class="panel t-more" aria-label="Lights, colour and motion">
+      <!-- The lamps of the room: looks of the Room group, the dimmer of the room and its off key. -->
+      <section class="panel t-room" id="t-room" aria-labelledby="t-room-title" hidden>
+        <div class="t-room-head">
+          <h2 id="t-room-title">Room lights</h2>
+          <button type="button" class="t-room-off" id="t-room-off">Off</button>
+        </div>
+        <div class="t-room-dimmer" id="t-room-dimmer"></div>
+        <!-- A switch per rail (zone): on or off, whatever the looks and the effects do. -->
+        <fieldset class="t-rails" id="t-rails" aria-label="Rails" hidden></fieldset>
+        <p class="t-none" id="t-room-looks-none" hidden></p>
+        <div class="t-look-grid" id="t-room-looks"></div>
+      </section>
+      </div>
+
+      <section class="panel t-more" aria-labelledby="t-more-title">
         <button
           type="button"
           class="t-more-head"
@@ -64,7 +107,7 @@
           aria-expanded="false"
           aria-controls="t-more-body"
         >
-          <span>Lights, colour and motion</span>
+          <span id="t-more-title">Spider: lights, colour and motion</span>
           <span class="t-chevron" aria-hidden="true"></span>
         </button>
         <div class="t-more-body" id="t-more-body" hidden>
