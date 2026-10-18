@@ -25,11 +25,14 @@
 //                                          the groups with their scenes
 //   shell.playback                         per group which scene is on, and whether its
 //                                          fixtures were changed by hand since
+//   shell.sequence                         which sequence runs and where: { running, step, steps,
+//                                          barsLeft, paused, problem }
 //   shell.ask(url, body)                   ask the server for something once; gives
 //                                          { ok, error } and what the server answered,
 //                                          with `lost` when the server was not reached
 //   shell.on('show', (show) => ...)        the groups or their scenes changed
 //   shell.on('playback', (playback) => ...)             another scene, off, or changed by hand
+//   shell.on('sequence', (sequence) => ...)             a sequence started, stopped or stepped on
 //   shell.send(patch)                      change the fixture
 //   shell.pending()                        what of that the server has not told of yet
 //   shell.act('reset')                     let the fixture do something by name
@@ -181,6 +184,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   const watched = fixture ? [fixture] : initial.fixtures;
   let show = initial.show;
   let playback = initial.playback;
+  let sequence = initial.sequence;
   const limits = initial.tempo;
   let tempo = readTempo(initial.tempo);
   /** What lightdeck hears through the microphone, and what it does with it. */
@@ -206,6 +210,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     change: [],
     show: [],
     playback: [],
+    sequence: [],
     audio: [],
     status: [],
   };
@@ -259,8 +264,10 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     if (real) tell('fixture', { state: shownState(real.state), dmx: real.dmx, own: false });
     show = fresh.show;
     playback = fresh.playback;
+    sequence = fresh.sequence;
     tell('show', show);
     tell('playback', playback);
+    tell('sequence', sequence);
     render();
     tell('audio', audio);
     tell('change');
@@ -471,6 +478,10 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     on('playback', (message) => {
       playback = message;
       tell('playback', playback);
+    });
+    on('sequence', (message) => {
+      sequence = message;
+      tell('sequence', sequence);
     });
   }
 
@@ -822,6 +833,9 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     },
     get playback() {
       return playback;
+    },
+    get sequence() {
+      return sequence;
     },
     get audio() {
       return audio;

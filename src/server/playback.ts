@@ -94,6 +94,13 @@ export interface PaletteSummary {
   speed: number;
 }
 
+export interface SequenceSummary {
+  id: string;
+  label: string;
+  /** In the order they run: how many bars, and the look (or `off`) set in each group it names. */
+  steps: { bars: number; looks: Record<string, string> }[];
+}
+
 export interface GroupSummary {
   id: string;
   label: string;
@@ -114,6 +121,7 @@ export interface ShowSummary {
   limits: Record<string, unknown>;
   palettes: PaletteSummary[];
   groups: GroupSummary[];
+  sequences: SequenceSummary[];
 }
 
 /** What is on in a lane of a group. */
@@ -259,6 +267,11 @@ export class Playback {
             : null,
           motion: look.motion ?? null,
         })),
+      })),
+      sequences: show.sequences.map(({ id, label, steps }) => ({
+        id,
+        label,
+        steps: steps.map(({ bars, looks }) => ({ bars, looks: { ...looks } })),
       })),
     };
   }
@@ -456,6 +469,14 @@ export class Playback {
     this.file.edit((document, show) => {
       const found = this.needGroup(group, show);
       const { id, label } = this.needLook(found, look);
+      const user = show.sequences.find((sequence) =>
+        sequence.steps.some((step) => step.looks[found.id] === id),
+      );
+      if (user) {
+        throw new PatchError(
+          `the look "${label}" is used by the sequence "${user.label}". Change or delete the sequence first`,
+        );
+      }
       if (!document.deleteIn(['groups', found.id, 'looks', id])) {
         throw new PatchError(`the look "${label}" could not be taken out of the show file`);
       }
@@ -567,6 +588,14 @@ export class Playback {
   removeGroup(group: unknown): void {
     this.file.edit((document, show) => {
       const { id, label } = this.needGroup(group, show);
+      const user = show.sequences.find((sequence) =>
+        sequence.steps.some((step) => id in step.looks),
+      );
+      if (user) {
+        throw new PatchError(
+          `the group "${label}" is used by the sequence "${user.label}". Change or delete the sequence first`,
+        );
+      }
       if (!document.deleteIn(['groups', id])) {
         throw new PatchError(`the group "${label}" could not be taken out of the show file`);
       }

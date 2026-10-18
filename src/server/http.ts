@@ -15,7 +15,8 @@
  *   GET  /...                         the other static files from `publicDir`
  *   GET  /api/state                   everything a browser needs to draw itself
  *   GET  /api/events                  server-sent events: `fixture`, `tempo`, `blackout`,
- *                                     `master`, `status`, `show`, `playback`, `audio` (what
+ *                                     `master`, `status`, `show`, `playback`, `sequence` (which
+ *                                     sequence runs, and where), `audio` (what
  *                                     is heard, see `Follower`), `output` (the settings of
  *                                     the output) and, while a
  *                                     fixture animates, `frame` with the bytes being sent
@@ -38,6 +39,9 @@
  *                                     for the spider `tilt`, a `{ min, max }` (0 to 1) per bar,
  *                                     which no tilt goes beyond. `{}` takes the limits away
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
+ *   POST /api/sequence                `start`, the id of a sequence of the show, which sets its first
+ *                                     step at once and goes on on the bars (it stops the one that
+ *                                     runs), or `stop: true`. The fixtures stay as they are
  *   POST /api/playback                `group` with one of: `scene`, the id of the scene of
  *                                     lights or motion to set the fixtures of the group to
  *                                     (only the properties of the type of the scene);
@@ -87,6 +91,7 @@ import type { AudioState } from '../inputs/audio/follower.js';
 import { PatchError, readObject } from './fixture.js';
 import type { PlaybackState, ShowSummary } from './playback.js';
 import type { LinkStatus, OutputSettings, Rig, RigFixture } from './rig.js';
+import type { SequenceState } from './sequencer.js';
 import { MAX_BPM, MIN_BPM, RATES, type TempoState } from './tempo.js';
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -250,6 +255,7 @@ function describe({ rig, bridgeUrl }: HttpOptions) {
     output: rig.getOutput(),
     show: rig.playback.getShow(),
     playback: rig.playback.getState(),
+    sequence: rig.sequencer.getState(),
     bridgeUrl,
   };
 }
@@ -283,6 +289,7 @@ export function createHttpServer(options: HttpOptions): Server {
   rig.on('status', (status: LinkStatus) => broadcast('status', status));
   rig.on('show', (show: ShowSummary) => broadcast('show', show));
   rig.on('playback', (state: PlaybackState) => broadcast('playback', state));
+  rig.on('sequence', (state: SequenceState) => broadcast('sequence', state));
   rig.on('audio', (state: AudioState) => broadcast('audio', state));
   rig.on('output', (settings: OutputSettings) => broadcast('output', settings));
 
@@ -342,6 +349,7 @@ export function createHttpServer(options: HttpOptions): Server {
       res.write(message('status', rig.getStatus()));
       res.write(message('show', rig.playback.getShow()));
       res.write(message('playback', rig.playback.getState()));
+      res.write(message('sequence', rig.sequencer.getState()));
       res.write(message('audio', rig.audio.getState()));
       res.write(message('output', rig.getOutput()));
       req.on('close', () => streams.delete(res));
@@ -391,6 +399,22 @@ export function createHttpServer(options: HttpOptions): Server {
     if (req.method === 'POST' && path === '/api/master') {
       const body = await readJson(req);
       rig.setMaster(body.master, split(body).origin);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/sequence') {
+      const { change } = split(await readJson(req));
+      const { start, stop } = readObject(change, 'the sequence', ['start', 'stop']);
+      if ((start === undefined) === (stop === undefined)) {
+        throw new PatchError('say which sequence to start, or stop: true');
+      }
+      if (start !== undefined) {
+        rig.sequencer.start(start);
+      } else {
+        if (stop !== true) throw new PatchError('"stop" can only be true');
+        rig.sequencer.stop();
+      }
       sendJson(res, 200, { ok: true });
       return;
     }

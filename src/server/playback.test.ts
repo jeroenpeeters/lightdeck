@@ -98,6 +98,7 @@ describe('Playback', () => {
       file: path,
       problem: null,
       limits: {},
+      sequences: [],
       palettes: STARTING_PALETTES,
       groups: [
         GROUP('spider', 'Spider', ['spider']),
@@ -944,6 +945,7 @@ describe('Playback', () => {
       file: path,
       problem: null,
       limits: {},
+      sequences: [],
       palettes: STARTING_PALETTES,
       groups: [
         GROUP('spider', 'Spider', ['spider']),
@@ -970,6 +972,7 @@ describe('Playback', () => {
         file: path,
         problem: null,
         limits: {},
+        sequences: [],
         palettes: STARTING_PALETTES,
         groups: [
           GROUP('spider', 'Spider', ['spider']),
@@ -1197,7 +1200,7 @@ describe('Playback', () => {
     });
 
     it('keeps what is on when the file gets a mistake', async () => {
-      writeFileSync(path, `${HAND_MADE}sequences: {}\n`);
+      writeFileSync(path, `${HAND_MADE}tempo: 130\n`);
       await vi.waitFor(() => expect(rig.playback.getShow().problem).not.toBeNull(), {
         timeout: 2000,
       });

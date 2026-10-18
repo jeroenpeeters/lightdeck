@@ -352,6 +352,22 @@ groups:
     label: All
     fixtures: [ spider, laser ]
     scenes: {}
+sequences:
+  # About ten minutes at 126 bpm: the spider changes look every 32 bars (a minute), the room every
+  # 64, so the lamps hold still while the spider goes through its looks. Then it starts over.
+  night:
+    label: The night
+    steps:
+      - { bars: 32, looks: { spider: glow, room: welcome } }
+      - { bars: 32, looks: { spider: floor-glow } }
+      - { bars: 32, looks: { spider: doors-open, room: pumpkin-patch } }
+      - { bars: 32, looks: { spider: creeping-in } }
+      - { bars: 32, looks: { spider: candles-low, room: brew } }
+      - { bars: 32, looks: { spider: haunted } }
+      - { bars: 32, looks: { spider: crossfire, room: dusk-rails } }
+      - { bars: 32, looks: { spider: lightning } }
+      - { bars: 32, looks: { spider: storm, room: blood-moon } }
+      - { bars: 32, looks: { spider: the-void } }
 limits:
   spider:
     tilt:

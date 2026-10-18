@@ -37,6 +37,7 @@ import {
 import { FIXTURE_KINDS, type FixtureKind } from './kinds.js';
 import { Playback, type PlaybackState, type ShowSummary } from './playback.js';
 import type { LampDefinition, ZoneDefinition } from './roomController.js';
+import { Sequencer, type SequenceState } from './sequencer.js';
 import { readLead, Tempo, type TempoSource, type TempoState } from './tempo.js';
 
 /** What every fixture is called, whatever it speaks. */
@@ -129,6 +130,8 @@ export class Rig extends EventEmitter {
   readonly audio: Follower;
   readonly fixtures: readonly RigFixture[];
   readonly playback: Playback;
+  /** Runs a sequence of the show: the looks of the groups changing on the bars. */
+  readonly sequencer: Sequencer;
   /** The palettes of the show, where the fixtures look them up. The playback keeps them. */
   readonly palettes = new PaletteBook();
 
@@ -274,6 +277,12 @@ export class Rig extends EventEmitter {
     });
     this.playback.on('show', (show: ShowSummary) => this.emit('show', show));
     this.playback.on('playback', (state: PlaybackState) => this.emit('playback', state));
+    this.sequencer = new Sequencer({
+      tempo: this.tempo,
+      playback: this.playback,
+      ...(options.log ? { log: (message: string) => options.log?.(message) } : {}),
+    });
+    this.sequencer.on('sequence', (state: SequenceState) => this.emit('sequence', state));
   }
 
   find(id: string): RigFixture | undefined {
@@ -364,6 +373,7 @@ export class Rig extends EventEmitter {
 
   close(): void {
     this.engine.close();
+    this.sequencer.close();
     this.playback.close();
     for (const { controller } of this.fixtures) controller.close();
     this.recorder?.detach();

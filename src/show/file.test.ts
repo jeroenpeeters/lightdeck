@@ -117,6 +117,7 @@ describe('ShowFile', () => {
     const show = open();
     expect(show.getShow()).toEqual({
       limits: {},
+      sequences: [],
       palettes: startingPalettes(),
       groups: startingGroups(FIXTURES),
     });
@@ -464,9 +465,19 @@ groups:
     for (const id of ['spider', 'laser', 'all']) {
       show.edit((document) => document.deleteIn(['groups', id]));
     }
-    expect(show.getShow()).toEqual({ limits: {}, palettes: startingPalettes(), groups: [] });
+    expect(show.getShow()).toEqual({
+      limits: {},
+      palettes: startingPalettes(),
+      groups: [],
+      sequences: [],
+    });
     show.close();
-    expect(open().getShow()).toEqual({ limits: {}, palettes: startingPalettes(), groups: [] });
+    expect(open().getShow()).toEqual({
+      limits: {},
+      palettes: startingPalettes(),
+      groups: [],
+      sequences: [],
+    });
   });
 
   it('tells about every change', () => {
@@ -483,6 +494,7 @@ groups:
     const show = open();
     expect(show.getShow()).toEqual({
       limits: {},
+      sequences: [],
       palettes: startingPalettes(),
       groups: startingGroups(FIXTURES),
     });
@@ -557,11 +569,34 @@ groups:
     expect(readFileSync(path, 'utf8')).toBe(untyped);
   });
 
-  it('does not know sequences yet', () => {
-    writeFileSync(path, `${HAND_MADE}sequences: {}\n`);
-    expect(open().getProblem()).toBe(
-      'The show cannot have "sequences", only limits, palettes and groups',
+  it('reads the sequences of the file, and keeps them when the deck writes', () => {
+    const sequences = `sequences:
+  # Runs the night.
+  night:
+    label: The night
+    steps:
+      - bars: 8
+        looks: { spider: off }
+`;
+    writeFileSync(path, `${HAND_MADE}${sequences}`);
+    const show = open();
+    expect(show.getProblem()).toBeNull();
+    expect(show.getShow().sequences).toEqual([
+      { id: 'night', label: 'The night', steps: [{ bars: 8, looks: { spider: 'off' } }] },
+    ]);
+    show.edit(addScene('spider', 'one'));
+    const written = readFileSync(path, 'utf8');
+    expect(written).toContain('# Runs the night.');
+    expect(written).toContain('looks: { spider: off }');
+    expect(open().getShow().sequences).toHaveLength(1);
+  });
+
+  it('refuses a sequence that names a look that is not there, and keeps the show it had', () => {
+    writeFileSync(
+      path,
+      `${HAND_MADE}sequences:\n  night:\n    steps:\n      - { bars: 8, looks: { spider: nope } }\n`,
     );
+    expect(open().getProblem()).toMatch(/no look called "nope" in the group "spider"/);
   });
 
   it('says where YAML that cannot be read goes wrong', () => {

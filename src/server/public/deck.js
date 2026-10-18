@@ -20,6 +20,14 @@
 // look that is on shows it as well, and it shows as changed when a lane it set is not what it
 // set any more.
 //
+// Sequences (when the show has any, written in the show file by hand): a sequence changes the
+// looks of the groups by itself, a step after the other, on the bars of the tempo, so that the
+// spider can go through its looks while the room keeps its own. A press on its key starts it
+// (and stops the one that runs); a press on it again stops it and leaves the fixtures as they
+// are. A press by hand on a look or a scene stands until the next step that changes that group.
+// Its steps are drawn as a row of chips, the one that is on marked, and a line below says where
+// it is. That line is always there, so that nothing moves when a sequence starts or stops.
+//
 // The deck has two modes, and the address remembers which (#program):
 //
 //   Show      what the page opens in. A press sets what its key names on the fixtures of its
@@ -81,6 +89,8 @@ const page = {
   master: $('grand-master'),
   speed: $('master-speed'),
   groups: $('groups'),
+  sequencePanel: $('sequences'),
+  sequences: $('sequence-list'),
   newGroup: $('new-group'),
   makeGroup: $('make-group'),
   groupName: $('group-name'),
@@ -103,6 +113,8 @@ let failure = '';
 let lost = false;
 /** By the id of a group, the row that was built for it. */
 const rows = new Map();
+/** By the id of a sequence, the row that was built for it. */
+const sequenceRows = new Map();
 /** The fader of the master. */
 let fader;
 /** Shows which master speed is chosen. */
@@ -210,6 +222,10 @@ function pressPalette(group, id) {
   if (!programming) ask('/api/playback', { group, palette: id });
 }
 
+function pressSequence(id) {
+  const { running } = shell.sequence ?? {};
+  ask('/api/sequence', running === id ? { stop: true } : { start: id });
+}
 function pressOff(group) {
   if (!programming) ask('/api/playback', { group, off: true });
 }
@@ -479,6 +495,85 @@ function buildTicks() {
   }
 }
 
+// ---- the sequences ----
+
+/** What a step sets, in the words of the operator: `Spider: Drop · Room: Welcome`. */
+function stepSets(step) {
+  return Object.entries(step.looks)
+    .map(([group, look]) => {
+      const name = look === 'off' ? 'off' : (lookOf(group, look)?.label ?? look);
+      return `${groupOf(group)?.label ?? group}: ${name}`;
+    })
+    .join(' · ');
+}
+
+function buildSequenceRow(sequence) {
+  const section = element('div', 'sequence-row');
+  const toggle = button('pick sequence-toggle', 'Start', () => pressSequence(sequence.id));
+  const info = element('div', 'sequence-info');
+  const name = element('h3', 'sequence-name');
+  const steps = element('ol', 'sequence-steps');
+  const status = element('p', 'sequence-status');
+  info.append(name, steps, status);
+  section.append(toggle, info);
+  return { section, toggle, name, steps, status, made: '' };
+}
+
+function renderSequence(row, sequence) {
+  row.name.textContent = sequence.label;
+  // The chips are made again only when the sequence or the names in it changed.
+  const made = JSON.stringify([sequence, sequence.steps.map(stepSets)]);
+  if (made !== row.made) {
+    row.made = made;
+    row.steps.replaceChildren(
+      ...sequence.steps.map((step) => {
+        const chip = element('li', 'sequence-step');
+        chip.append(element('span', 'step-bars', count(step.bars, 'bar')));
+        chip.append(element('span', 'step-sets', stepSets(step)));
+        return chip;
+      }),
+    );
+  }
+  const now = shell.sequence ?? { running: null };
+  const running = now.running === sequence.id;
+  row.toggle.textContent = running ? 'Stop' : 'Start';
+  row.toggle.setAttribute('aria-pressed', String(running));
+  row.toggle.setAttribute('aria-label', `${running ? 'Stop' : 'Start'} ${sequence.label}`);
+  [...row.steps.children].forEach((chip, index) => {
+    chip.dataset.state = running && index === now.step ? 'on' : 'idle';
+  });
+  let status = '';
+  if (running) {
+    status = now.paused
+      ? `Step ${now.step + 1} of ${now.steps}. Waiting: the music has stopped.`
+      : `Step ${now.step + 1} of ${now.steps}, ${count(now.barsLeft, 'bar')} to go.`;
+    if (now.problem) status += ` ${sentence(now.problem)}`;
+  }
+  row.status.textContent = status;
+  row.status.dataset.level = running && now.problem ? 'alarm' : 'note';
+}
+
+function renderSequences() {
+  const list = shell.show.sequences ?? [];
+  for (const [id, row] of sequenceRows) {
+    if (list.some((sequence) => sequence.id === id)) continue;
+    row.section.remove();
+    sequenceRows.delete(id);
+  }
+  list.forEach((sequence, index) => {
+    let row = sequenceRows.get(sequence.id);
+    if (!row) {
+      row = buildSequenceRow(sequence);
+      sequenceRows.set(sequence.id, row);
+    }
+    if (page.sequences.children[index] !== row.section) {
+      page.sequences.insertBefore(row.section, page.sequences.children[index] ?? null);
+    }
+    renderSequence(row, sequence);
+  });
+  page.sequencePanel.hidden = list.length === 0;
+}
+
 // ---- drawing ----
 
 /** A key of a lane: its name, and under it a line that says more. */
@@ -739,6 +834,7 @@ function render() {
   hint.hidden = !programming && show.groups.length > 0;
 
   renderGroups();
+  renderSequences();
   page.newGroup.hidden = !programming;
 }
 
@@ -779,6 +875,7 @@ async function main() {
     renderNotice();
   });
   shell.on('playback', render);
+  shell.on('sequence', renderSequences);
   // The groups have nothing to do with the masters.
   shell.on('change', renderMasters);
   programming = location.hash === PROGRAM;

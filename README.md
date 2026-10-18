@@ -21,7 +21,8 @@ the same console as slow scenery under the DMX fixtures.
 | Grand master, swing limits of the spider | Built, not yet tested on the real fixtures |
 | Simulator: the spiders in 3D from the bytes that are sent, a living room, a smoke machine | Works in a desktop browser, never compared with the real spider |
 | Home Assistant lamps and switches: one fixture, "Room Lights", with zones, scenery effects and a dimmer | Built. Tried against the real Home Assistant for the login, the lamps and a soak of the first throttle, and against a stand-in; not yet soaked again, and not on a tablet. See [docs/hass-fixtures-plan.md](docs/hass-fixtures-plan.md) |
-| Sequences, crossfades, holds | Not built, see [docs/show-design.md](docs/show-design.md) |
+| Sequences: the looks of the groups changing by themselves on the bars | Built, written in the show file by hand, started on the deck. Not yet tested on the real fixtures |
+| Crossfades, holds | Not built, see [docs/show-design.md](docs/show-design.md) |
 | Art-Net, sACN | Not built |
 | Running in a container | A `Dockerfile` is there, but this is not a supported way to run it yet |
 
@@ -244,6 +245,28 @@ A `limits:` entry per fixture (the spider's tilt, a `{ min, max }` per bar) keep
 going beyond that, whatever sets it. The room lamps are in groups, scenes and looks like any
 fixture, and the scenery effects (`still`, `rotate`, `shuffle`, `zones`) move the colours of
 the palette over them about once a minute.
+
+## Sequences
+
+A sequence changes the looks of the groups by itself, on the bars of the tempo. The spider can go
+through its looks while the room keeps its own. It is written in the show file, and started and
+stopped on the deck, where a panel of sequences shows the steps and where it is.
+
+```yaml
+sequences:
+  night:
+    label: The night
+    steps:
+      - { bars: 32, looks: { spider: glow, room: welcome } }
+      - { bars: 32, looks: { spider: floor-glow } }          # the room stays on welcome
+      - { bars: 32, looks: { spider: doors-open, room: pumpkin-patch } }
+      - { bars: 4,  looks: { spider: off } }                 # off is the lights of the group
+```
+
+A step lasts its bars and then the next one starts, and after the last one it starts over. A group
+that a step does not name is left alone, and a group is only set when its look changes, so a look
+you press by hand stands until the next step that changes that group. Stopping leaves everything as
+it is. When the music stops, the sequence waits.
 
 ## The rig file
 

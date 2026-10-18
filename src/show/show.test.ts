@@ -4,6 +4,7 @@ import { PatchError } from '../server/fixture.js';
 import {
   groupId,
   type KnownFixtures,
+  lookId,
   readGroupFixtures,
   readLabel,
   readShow,
@@ -116,6 +117,7 @@ describe('readShow', () => {
   it('reads nothing as the groups a show starts with', () => {
     const starting = {
       limits: {},
+      sequences: [],
       palettes: startingPalettes(),
       groups: startingGroups(RIG.fixtures),
     };
@@ -212,11 +214,13 @@ describe('readShow', () => {
   it('can have no groups at all', () => {
     expect(readShow({ groups: {} }, RIG)).toEqual({
       limits: {},
+      sequences: [],
       palettes: startingPalettes(),
       groups: [],
     });
     expect(readShow({ groups: null }, RIG)).toEqual({
       limits: {},
+      sequences: [],
       palettes: startingPalettes(),
       groups: [],
     });
@@ -263,6 +267,7 @@ describe('readShow', () => {
     });
     expect(readShow({ scenes: null }, RIG)).toEqual({
       limits: {},
+      sequences: [],
       palettes: startingPalettes(),
       groups: startingGroups(RIG.fixtures),
     });
@@ -316,11 +321,7 @@ describe('readShow', () => {
     const wrong: [unknown, string][] = [
       [[], 'the show must start with "groups:"'],
       ['groups', 'the show must start with "groups:"'],
-      [{ sequences: {} }, 'the show cannot have "sequences", only limits, palettes and groups'],
-      [
-        { groups: {}, sequences: {} },
-        'the show cannot have "sequences", only limits, palettes and groups',
-      ],
+      [{ steps: {} }, 'the show cannot have "steps", only limits, palettes, groups and sequences'],
       [
         { scenes: {}, groups: {} },
         'the show has "scenes" next to "groups". A scene belongs to a group: put it under the "scenes" of its group',
@@ -424,6 +425,7 @@ describe('readShow', () => {
     const nothing: KnownFixtures = { fixtures: [], check: () => {} };
     expect(readShow({ scenes: {} }, nothing)).toEqual({
       limits: {},
+      sequences: [],
       palettes: startingPalettes(),
       groups: [],
     });
@@ -655,5 +657,132 @@ describe('the limits of a show', () => {
 
   it('has no limits for a rig that cannot give any', () => {
     expect(() => readShow({ limits: { spider: {} } }, RIG)).toThrow(/cannot be limited/);
+  });
+});
+
+describe('the sequences of a show', () => {
+  const GROUPS = {
+    spider: {
+      fixtures: ['spider'],
+      scenes: { chase: { type: 'lights' } },
+      looks: { drop: { lights: 'chase' }, calm: { lights: 'chase' } },
+    },
+    laser: { fixtures: ['laser'], looks: {} },
+  };
+  const read = (sequences: unknown) => readShow({ groups: GROUPS, sequences }, RIG).sequences;
+
+  it('has none when the file has none', () => {
+    expect(readShow({ groups: GROUPS }, RIG).sequences).toEqual([]);
+    expect(readShow(null, RIG).sequences).toEqual([]);
+    expect(read(null)).toEqual([]);
+  });
+
+  it('reads the steps in order, with the group and the look of each', () => {
+    expect(
+      read(
+        new Map([
+          [
+            'night',
+            {
+              label: 'The night',
+              steps: [
+                { bars: 32, looks: { spider: 'drop' } },
+                { bars: 4, looks: new Map([['spider', 'calm']]) },
+                { bars: 1, looks: { spider: 'off' } },
+              ],
+            },
+          ],
+          ['short', { steps: [{ bars: 8, looks: { spider: 'drop' } }] }],
+        ]),
+      ),
+    ).toEqual([
+      {
+        id: 'night',
+        label: 'The night',
+        steps: [
+          { bars: 32, looks: { spider: 'drop' } },
+          { bars: 4, looks: { spider: 'calm' } },
+          { bars: 1, looks: { spider: 'off' } },
+        ],
+      },
+      { id: 'short', label: 'short', steps: [{ bars: 8, looks: { spider: 'drop' } }] },
+    ]);
+  });
+
+  it('can set the lights of a group off, and name two groups in a step', () => {
+    const [sequence] = read({
+      both: { steps: [{ bars: 2, looks: { spider: 'drop', laser: 'off' } }] },
+    });
+    expect(sequence?.steps[0]?.looks).toEqual({ spider: 'drop', laser: 'off' });
+  });
+
+  it('refuses a sequence without steps, and a step that sets nothing', () => {
+    expect(() => read({ a: { steps: [] } })).toThrow(/sequence "a" needs a list of steps/);
+    expect(() => read({ a: {} })).toThrow(/needs a list of steps/);
+    expect(() => read({ a: { steps: [{ bars: 4, looks: {} }] } })).toThrow(
+      /sequence "a", step 1 must set a look in at least one group/,
+    );
+    expect(() => read({ a: { steps: [{ bars: 4 }] } })).toThrow(/at least one group/);
+  });
+
+  it.each([0, -1, 1.5, '4', 1000, null])('refuses %j bars', (bars) => {
+    expect(() => read({ a: { steps: [{ bars, looks: { spider: 'drop' } }] } })).toThrow(
+      /bars must be a whole number from 1 to 999/,
+    );
+  });
+
+  it('refuses a group that is not there, and a look that is not in that group', () => {
+    expect(() => read({ a: { steps: [{ bars: 4, looks: { ghost: 'drop' } }] } })).toThrow(
+      /step 1: there is no group called "ghost"/,
+    );
+    expect(() => read({ a: { steps: [{ bars: 4, looks: { spider: 'nope' } }] } })).toThrow(
+      /there is no look called "nope" in the group "spider"/,
+    );
+    // A look of another group is not a look of this one.
+    expect(() => read({ a: { steps: [{ bars: 4, looks: { laser: 'drop' } }] } })).toThrow(
+      /no look called "drop" in the group "laser"/,
+    );
+    expect(() => read({ a: { steps: [{ bars: 4, looks: { spider: 3 } }] } })).toThrow(
+      /must be the id of a look, or off/,
+    );
+  });
+
+  it('says which step is wrong', () => {
+    expect(() =>
+      read({
+        a: {
+          steps: [
+            { bars: 4, looks: { spider: 'drop' } },
+            { bars: 4, looks: { spider: 'nope' } },
+          ],
+        },
+      }),
+    ).toThrow(/sequence "a", step 2/);
+  });
+
+  it('refuses a key it does not know, a bad id and a bad name', () => {
+    expect(() => read({ a: { steps: [{ bars: 1, looks: { spider: 'drop' } }], loop: 3 } })).toThrow(
+      /cannot have "loop"/,
+    );
+    expect(() => read({ a: { steps: [{ bars: 1, looks: { spider: 'drop' }, wait: 1 }] } })).toThrow(
+      /cannot have "wait"/,
+    );
+    expect(() => read({ 'A b': { steps: [{ bars: 1, looks: { spider: 'drop' } }] } })).toThrow(
+      /small letters/,
+    );
+    expect(() =>
+      read({ a: { label: '  ', steps: [{ bars: 1, looks: { spider: 'drop' } }] } }),
+    ).toThrow(/sequence needs a name/);
+    expect(() => read([])).toThrow(/list of sequences by their id/);
+  });
+
+  it('does not let a look be called off, because a step says off for the lights', () => {
+    expect(() =>
+      readShow(
+        { groups: { spider: { fixtures: ['spider'], looks: { off: { colour: 'x' } } } } },
+        RIG,
+      ),
+    ).toThrow(/"off" cannot be the id of a look/);
+    expect(lookId('Off', new Set())).toBe('off-2');
   });
 });

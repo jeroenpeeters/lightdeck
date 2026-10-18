@@ -1,6 +1,6 @@
 /**
- * The show: what has been programmed. That is the palettes, and the groups with their scenes
- * and their looks.
+ * The show: what has been programmed. That is the palettes, the groups with their scenes
+ * and their looks, and the sequences that change the looks of the groups by themselves.
  *
  * A palette is a list of colours that the effects take their colours from, kept once for the
  * whole show (`engine/palette.ts`). Colour is the one type of the three that belongs to no
@@ -47,6 +47,17 @@
  *           lights: chase
  *           colour: { palette: sunset, speed: 0.25 }
  *           motion: scissor-slow
+ *
+ *   sequences:                          # the looks of the groups, changing on the bars
+ *     night:
+ *       label: The night
+ *       steps:
+ *         - bars: 32                  # a step lasts a number of bars
+ *           looks: { spider: doors-open, room: welcome }
+ *         - bars: 32
+ *           looks: { spider: haunted }   # the room is left on welcome
+ *         - bars: 4
+ *           looks: { spider: off }       # off is the lights of the group
  *
  * A show without a file starts with a group for every fixture and one for all of them, and
  * the palettes `startingPalettes` gives. A file from before there were groups has `scenes:` at
@@ -119,6 +130,30 @@ export interface Group {
   looks: Look[];
 }
 
+/** A step of a sequence: how long it lasts, and the look it sets in each group it names. */
+export interface SequenceStep {
+  /** A whole number of bars, 1 to `MAX_BARS`. */
+  bars: number;
+  /**
+   * By the id of a group, the id of a look of that group, or `off` for the lights of the group.
+   * A group that is not named is left as it is.
+   */
+  looks: Record<string, string>;
+}
+
+/** A list of steps that runs on the tempo, a step after the other, and starts over at the end. */
+export interface Sequence {
+  /** Names the sequence in the file and in the API. */
+  id: string;
+  /** What the operator calls it. */
+  label: string;
+  /** At least one, in the order they run. */
+  steps: SequenceStep[];
+}
+
+/** The longest a step can last: a bit more than an hour at 126 bpm. */
+export const MAX_BARS = 999;
+
 export interface Show {
   /**
    * What the show limits of a fixture, by the id of the fixture, in the form its controller
@@ -129,6 +164,8 @@ export interface Show {
   palettes: Palette[];
   /** In the order of the file. */
   groups: Group[];
+  /** In the order of the file. */
+  sequences: Sequence[];
 }
 
 /** The data cannot be the show. The message is for the operator. */
@@ -231,7 +268,7 @@ export function paletteId(label: string, taken: ReadonlySet<string>): string {
 
 /** The id of a new look, by its name. `taken` has the ids of the looks of its group. */
 export function lookId(label: string, taken: ReadonlySet<string>): string {
-  return makeId(label, taken, 'look');
+  return makeId(label, new Set([...taken, OFF]), 'look');
 }
 
 function noFixture(id: string, fixtures: readonly ShowFixture[]): string {
@@ -417,6 +454,11 @@ function readLooks(listed: unknown, group: Group, palettes: readonly Palette[]):
   for (const [id, look] of entries(listed)) {
     const where = `look "${id}" of group "${group.id}"`;
     if (!ID.test(id)) throw new ShowError(`${where}: ${ID_RULE}`);
+    if (id === OFF) {
+      throw new ShowError(
+        `${where}: "${OFF}" cannot be the id of a look, a step of a sequence says off for the lights of a group`,
+      );
+    }
     if (!isObject(look)) throw new ShowError(`${where} must have a label and what it sets`);
     const extra = Object.keys(look).find(
       (key) => !['label', 'lights', 'colour', 'motion'].includes(key),
@@ -474,6 +516,68 @@ function readGroups(listed: unknown, known: KnownFixtures, palettes: readonly Pa
   return groups;
 }
 
+/** The sequences of the file. Every look a step names must be there, in the group it names. */
+function readSequences(listed: unknown, groups: readonly Group[]): Sequence[] {
+  if (listed === null || listed === undefined) return [];
+  if (!isObject(listed)) {
+    throw new ShowError('"sequences" must be a list of sequences by their id');
+  }
+
+  const sequences: Sequence[] = [];
+  for (const [id, sequence] of entries(listed)) {
+    const where = `sequence "${id}"`;
+    if (!ID.test(id)) throw new ShowError(`${where}: ${ID_RULE}`);
+    if (!isObject(sequence)) throw new ShowError(`${where} must have a label and steps`);
+    const extra = Object.keys(sequence).find((key) => key !== 'label' && key !== 'steps');
+    if (extra !== undefined) {
+      throw new ShowError(`${where} cannot have "${extra}", only label and steps`);
+    }
+    let label = id;
+    try {
+      if (sequence.label !== undefined) label = readLabel(sequence.label, 'sequence');
+    } catch (error) {
+      throw new ShowError(`${where}: ${message(error)}`);
+    }
+    if (!Array.isArray(sequence.steps) || sequence.steps.length === 0) {
+      throw new ShowError(`${where} needs a list of steps, at least one`);
+    }
+    const steps = sequence.steps.map((step, index) =>
+      readStep(step, `${where}, step ${index + 1}`, groups),
+    );
+    sequences.push({ id, label, steps });
+  }
+  return sequences;
+}
+
+function readStep(step: unknown, where: string, groups: readonly Group[]): SequenceStep {
+  if (!isObject(step)) throw new ShowError(`${where} must have bars and looks`);
+  const extra = Object.keys(step).find((key) => key !== 'bars' && key !== 'looks');
+  if (extra !== undefined)
+    throw new ShowError(`${where} cannot have "${extra}", only bars and looks`);
+  const { bars } = step;
+  if (typeof bars !== 'number' || !Number.isInteger(bars) || bars < 1 || bars > MAX_BARS) {
+    throw new ShowError(`${where}: bars must be a whole number from 1 to ${MAX_BARS}`);
+  }
+  if (!isObject(step.looks) || entries(step.looks).length === 0) {
+    throw new ShowError(`${where} must set a look in at least one group: looks: { group: look }`);
+  }
+  const looks: Record<string, string> = {};
+  for (const [groupId, lookId] of entries(step.looks)) {
+    const group = groups.find((each) => each.id === groupId);
+    if (!group) throw new ShowError(`${where}: there is no group called "${groupId}"`);
+    if (typeof lookId !== 'string') {
+      throw new ShowError(`${where}: the look for "${groupId}" must be the id of a look, or off`);
+    }
+    if (lookId !== OFF && !group.looks.some((look) => look.id === lookId)) {
+      throw new ShowError(
+        `${where}: there is no look called "${lookId}" in the group "${groupId}"`,
+      );
+    }
+    looks[groupId] = lookId;
+  }
+  return { bars, looks };
+}
+
 /**
  * Reads what the file holds as a show. Throws a `ShowError` that says what is wrong. The
  * palettes, the groups, and the scenes and looks of a group, can be a `Map`, which keeps their
@@ -481,14 +585,21 @@ function readGroups(listed: unknown, known: KnownFixtures, palettes: readonly Pa
  */
 export function readShow(data: unknown, known: KnownFixtures): Show {
   if (data === null || data === undefined) {
-    return { limits: {}, palettes: startingPalettes(), groups: startingGroups(known.fixtures) };
+    return {
+      limits: {},
+      palettes: startingPalettes(),
+      groups: startingGroups(known.fixtures),
+      sequences: [],
+    };
   }
   if (!isObject(data)) throw new ShowError('the show must start with "groups:"');
   const unknown = Object.keys(data).find(
-    (key) => !['groups', 'scenes', 'palettes', 'limits'].includes(key),
+    (key) => !['groups', 'scenes', 'palettes', 'limits', 'sequences'].includes(key),
   );
   if (unknown !== undefined) {
-    throw new ShowError(`the show cannot have "${unknown}", only limits, palettes and groups`);
+    throw new ShowError(
+      `the show cannot have "${unknown}", only limits, palettes, groups and sequences`,
+    );
   }
   const limits = readLimits(data.limits, known);
   // A show without the key has the palettes a show starts with. Writing it to the file is what
@@ -500,7 +611,8 @@ export function readShow(data: unknown, known: KnownFixtures): Show {
         'the show has "scenes" next to "groups". A scene belongs to a group: put it under the "scenes" of its group',
       );
     }
-    return { limits, palettes, groups: readGroups(data.groups, known, palettes) };
+    const groups = readGroups(data.groups, known, palettes);
+    return { limits, palettes, groups, sequences: readSequences(data.sequences, groups) };
   }
 
   // From before there were groups: the scenes are for every fixture.
@@ -511,5 +623,6 @@ export function readShow(data: unknown, known: KnownFixtures): Show {
   } else if (isObject(data.scenes) && entries(data.scenes).length > 0) {
     throw new ShowError('the show has scenes, and there is no fixture they can be for');
   }
-  return { limits, palettes, groups };
+  // A file from before there were groups has no looks, so no sequence can name one.
+  return { limits, palettes, groups, sequences: readSequences(data.sequences, groups) };
 }

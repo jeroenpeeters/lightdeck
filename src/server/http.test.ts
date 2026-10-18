@@ -661,6 +661,7 @@ describe('HTTP server', () => {
       file: null,
       problem: null,
       limits: {},
+      sequences: [],
       palettes: STARTING_PALETTES,
       groups: STARTING,
     });
@@ -998,7 +999,7 @@ describe('HTTP server', () => {
       `event: playback\ndata: {"groups":{"spider":${nothing},"spider-2":${nothing},"laser":${nothing},"all":${nothing}}}`,
     );
     expect(text).toContain(
-      `event: show\ndata: ${JSON.stringify({ file: null, problem: null, limits: {}, palettes: STARTING_PALETTES, groups: STARTING })}`,
+      `event: show\ndata: ${JSON.stringify({ file: null, problem: null, limits: {}, palettes: STARTING_PALETTES, groups: STARTING, sequences: [] })}`,
     );
 
     await post('/api/groups/laser/scenes', { label: 'Warm', type: 'lights' });

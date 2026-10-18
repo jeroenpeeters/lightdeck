@@ -167,6 +167,24 @@ more than one type, and priorities.
 - **One sequence runs at a time, at first.** Two at once, which share no fixture, come
   later. Until then, starting a sequence stops the one that runs.
 
+## What was built (2026-10-18)
+
+`src/server/sequencer.ts`, owned by the rig, with `POST /api/sequence` (`start` or `stop: true`),
+the `sequence` event and a panel of sequences on the deck. As the design above says, with these
+choices where it left room:
+
+- **A step lasts its bars from the first bar line after the start.** The first step is set at
+  once, and the next lands on a bar line, so the first step is up to a bar short.
+- **It counts bar lines, not time.** A tap or a change of bpm moves the next bar line and the timer
+  is armed again. More than two bar lines found at one look (a stalled machine) count as two.
+- **The music stops: the sequence waits** (like the effects) and counts again from the next bar line.
+- **The master speed does not move a sequence** (the proposal below), only the effects in a step.
+- **A step sets looks as a press does** (`Playback.playLook` with the origin `sequence`), so all of
+  it is all or nothing per look. A look that fails is reported on the deck and skipped, and the
+  other groups of the step are still set.
+- **Not built:** a deck editor for sequences, a sequence in the tablet page, starting on the next
+  bar, two at once, crossfades, holds (steps 5 to 7).
+
 ## Open
 
 - **Do sequences follow the master speed (÷4 to ×4)?** Proposal: no. A sequence
@@ -246,7 +264,7 @@ sequences:
   with, and its scenes are in the group of all fixtures, so that nothing that was stored
   is lost. Reading does not write: the first change from the deck writes the file with
   groups.
-- `sequences` is not read yet: until step 4 it is a mistake in the file.
+- `sequences` is read since 2026-10-18 (step 4). A step names a **look** per group, or `off` for the lights of the group (the design above spoke of scenes, from before there were looks), and a look can no longer be called `off`. `bars` is a whole number from 1 to 999. Every group and look a step names must be there, or the file is not used. A look or a group that a sequence uses cannot be deleted. The deck does not write sequences yet: they are made by hand in the file, which the deck keeps (comments included) when it writes.
 - Laser bytes are to be written with the range keys of the profile, as `pnpm laser`
   takes them, so that the file can be read. For now the file has plain numbers, which are
   raw bytes: `raw: { mode: 95, program: 60 }`.
@@ -263,7 +281,7 @@ sequences:
 | 2 | Groups: a scene belongs to a group, one scene per group is on, off per group. **Built** | A spider scene and a laser scene are on together, and each is changed without the other |
 | 3 | Grand master on the deck. **Built** | The evening can be run from one page |
 | 3b | Scene types: Lights, Colour and Motion, per group, with the first colour as foreground and the second as background. **Built 2026-10-07** | A colour scene is pressed under a running chase and the chase goes on in the new colour, and a motion scene moves the bars without touching either |
-| 4 | Sequences, one at a time | A loop runs by itself for an hour and stays on the bar, and a laser scene chosen by hand stays on under it |
+| 4 | Sequences, one at a time. **Built 2026-10-18**: steps name looks (not scenes) per group, counted in bars, written in the show file by hand, started and stopped on the deck | A loop runs by itself for an hour and stays on the bar, and a laser scene chosen by hand stays on under it |
 | 5 | Switching on the beat: a pressed scene starts on the next bar | A change never lands in the middle of a bar, unless asked |
 | 6 | Holds | Strobe burst while pressed, the scene is back on release |
 | 7 | Two sequences at once, crossfade of levels, phases as banks | |
