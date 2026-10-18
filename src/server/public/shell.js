@@ -58,8 +58,9 @@
 //   shell.tap()                            a tap on the beat, as the Tap key of the desk makes it
 //   shell.setBlackout(on)                  switch the blackout, for every fixture
 //   shell.links                            the state of the link lamps: { bridge, device, hass }, each
-//                                          { state: 'ok' | 'down' | 'unknown', text }. `hass` is
-//                                          there only when a fixture is driven by Home Assistant
+//                                          { state: 'ok' | 'down' | 'unknown' | 'simulated', text }.
+//                                          `hass` is there only when a fixture is driven by
+//                                          Home Assistant
 //   shell.on('status', () => ...)          the bridge or the LR512 came or went
 //
 // And for a page that shows the master:
@@ -610,15 +611,18 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     };
     // Home Assistant has a lamp only when a fixture is driven by it.
     if (status.hass === undefined) return { bridge, device };
-    const hass = {
-      state: status.hass === 'connected' ? 'ok' : 'down',
-      text:
-        status.hass === 'connected'
-          ? 'Home Assistant'
-          : status.hass === 'refused'
-            ? 'Token refused'
-            : 'Home Assistant down',
-    };
+    const hass =
+      status.hass === 'simulated'
+        ? { state: 'simulated', text: 'Home Assistant simulated' }
+        : {
+            state: status.hass === 'connected' ? 'ok' : 'down',
+            text:
+              status.hass === 'connected'
+                ? 'Home Assistant'
+                : status.hass === 'refused'
+                  ? 'Token refused'
+                  : 'Home Assistant down',
+          };
     return { bridge, device, hass };
   }
 
@@ -767,6 +771,11 @@ export async function start({ page = 'fixture', bare = false } = {}) {
         notes[0];
       level = note?.level ?? 'note';
       text = note?.text ?? '';
+      // Nothing else to say: the room page still says that its lamps are made up.
+      if (text === '' && usesHass && status.hass === 'simulated') {
+        level = 'note';
+        text = 'Home Assistant is simulated: no real lamp is touched by what you set here.';
+      }
     }
     const notice = $('notice');
     notice.dataset.level = level;

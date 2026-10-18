@@ -27,6 +27,9 @@
  *                                       rig file has fixtures
  *                    HASS_TOKEN         a long-lived access token of Home Assistant. Environment
  *                                       only: a flag shows in the list of processes
+ *                    HASS_SIMULATE      1 or true (or --hass-simulate): run the lamps of the room
+ *                                       against a Home Assistant that lives in lightdeck, so that
+ *                                       no real lamp is touched. No URL or token needed
  *   --rig            RIG_FILE           the rig file, with the lamps of the room (default rig.yaml,
  *                                       where lightdeck is started). Without the file there are
  *                                       no lamps and nothing is asked of Home Assistant
@@ -37,6 +40,7 @@
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { HassClient } from './outputs/hass/client.js';
+import { simulatedHass } from './outputs/hass/simulated.js';
 import { hassWebSocketUrl } from './outputs/hass/url.js';
 import { Lr512BridgeClient } from './outputs/lr512/bridgeClient.js';
 import { createHttpServer } from './server/http.js';
@@ -76,6 +80,7 @@ const { values: args } = parseArgs({
     tempo: { type: 'string' },
     'audio-record': { type: 'string' },
     hass: { type: 'string' },
+    'hass-simulate': { type: 'boolean' },
     rig: { type: 'string' },
     port: { type: 'string' },
     host: { type: 'string' },
@@ -109,6 +114,8 @@ try {
   fail((error as Error).message);
 }
 const hassToken = process.env.HASS_TOKEN;
+const hassSimulated =
+  args['hass-simulate'] === true || /^(1|true|yes)$/i.test(process.env.HASS_SIMULATE ?? '');
 const rigFile = args.rig ?? process.env.RIG_FILE ?? 'rig.yaml';
 const port = wholeNumber(args.port ?? process.env.PORT ?? '8080', 'port');
 const host = args.host ?? process.env.HOST ?? '0.0.0.0';
@@ -136,7 +143,7 @@ try {
 const lampEntities = fixtures.flatMap((fixture) =>
   'lamps' in fixture ? fixture.lamps.map((lamp) => lamp.entity) : [],
 );
-if (lampEntities.length > 0) {
+if (lampEntities.length > 0 && !hassSimulated) {
   if (!hassUrl)
     fail(`${rigFile} has lamps, so lightdeck needs --hass (or HASS_URL) to reach Home Assistant`);
   if (!hassToken) fail(`${rigFile} has lamps, so lightdeck needs HASS_TOKEN in its environment`);
@@ -181,15 +188,25 @@ const bridge = bridgeUrl
 
 /** The link to Home Assistant, or none when no lamp needs it. It never keeps lightdeck waiting. */
 const hass =
-  lampEntities.length > 0 && hassUrl && hassToken
+  lampEntities.length > 0 && hassSimulated
     ? new HassClient({
-        url: hassUrl,
-        token: hassToken,
+        url: 'ws://simulated/api/websocket',
+        token: 'simulated',
         entities: lampEntities,
-        log: (message) => log(`home assistant: ${message}`),
-        onStatus: (status) => rig?.setHassStatus(status),
+        socketFactory: simulatedHass(lampEntities),
+        log: (message) => log(`home assistant (simulated): ${message}`),
+        // The real client says connected; the pages must say what this is.
+        onStatus: (status) => rig?.setHassStatus(status === 'connected' ? 'simulated' : status),
       })
-    : undefined;
+    : lampEntities.length > 0 && hassUrl && hassToken
+      ? new HassClient({
+          url: hassUrl,
+          token: hassToken,
+          entities: lampEntities,
+          log: (message) => log(`home assistant: ${message}`),
+          onStatus: (status) => rig?.setHassStatus(status),
+        })
+      : undefined;
 
 try {
   rig = new Rig({
@@ -224,7 +241,13 @@ server.listen(port, host, () => {
         : `${fixture.label} at address ${fixture.address}, universe index ${fixture.universe}, page /fixtures/${fixture.id}`,
     );
   }
-  if (hass) log(`home assistant ${hassUrl}`);
+  if (hass) {
+    log(
+      hassSimulated
+        ? 'home assistant SIMULATED: no lamp is touched, the lamps are made up'
+        : `home assistant ${hassUrl}`,
+    );
+  }
   if (laserAddress === undefined) log('no laser: started with laser address "none"');
   const show = rig?.playback.getShow();
   if (show) {

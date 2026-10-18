@@ -652,3 +652,9 @@ taken from it, the client is written new after `bridgeClient.ts`.
   whole rail when its lamps want the same thing, which is what a dimmer or a single colour is. It
   would cut the commands by up to five, but lightdeck would have to know which entity is a group
   of which lamps, and a lamp that differs must be left out.
+- **Simulation mode (2026-10-18).** `--hass-simulate` / `HASS_SIMULATE=1` runs the room against a
+  Home Assistant that lives in lightdeck (`src/outputs/hass/simulated.ts`), so that programming
+  and rehearsing never touch the lamps of the house. It is a socket under the real `HassClient`,
+  not a second output: the throttle, the encoding, the status and the states that come back are
+  the real ones, and the made-up mesh answers 4 commands per second, one after the other. The
+  link status is `simulated`, and the pages say so (an amber lamp, a note on the room page).

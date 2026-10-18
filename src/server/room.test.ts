@@ -151,6 +151,14 @@ describe('a rig with the room', () => {
       expect(seen).toHaveLength(2);
     });
 
+    it('can say that Home Assistant is simulated, and keeps saying it', () => {
+      rig.setHassStatus('simulated');
+      expect(rig.getStatus().hass).toBe('simulated');
+      rig.setBridgeConnected(true);
+      rig.setBridgeConnected(false);
+      expect(rig.getStatus().hass).toBe('simulated');
+    });
+
     it('keeps it when the bridge goes away', () => {
       rig.setHassStatus('connected');
       rig.setBridgeConnected(true);

@@ -53,6 +53,12 @@ palettes:
     mode: static
     change: step
     speed: 0.25
+  dusk:
+    label: Dusk
+    colours: [ "#ff5a00", "#8a00ff", "#ff2a6d" ]
+    mode: static
+    change: step
+    speed: 0.25
 groups:
   spider:
     label: Spider
@@ -254,6 +260,94 @@ groups:
     label: Laser
     fixtures: [ laser ]
     scenes: {}
+  room:
+    label: Room
+    fixtures: [ room ]
+    scenes:
+      steady:
+        label: Steady
+        type: lights
+        fixtures:
+          room:
+            levels: { r1s1: 0.6, r1s2: 0.6, r1s3: 0.6, r1s4: 0.6, r1s5: 0.6, r2s1: 0.6, r2s2: 0.6, r2s3: 0.6, r2s4: 0.6, r2d1: 0.6, r3s1: 0.6, r3s2: 0.6, r3s3: 0.6, r3s4: 0.6 }
+            fade: 4
+      spread:
+        label: Spread
+        type: lights
+        fixtures:
+          room:
+            levels: { r1s1: 0.6, r1s2: 0.6, r1s3: 0.6, r1s4: 0.6, r1s5: 0.6, r2s1: 0.6, r2s2: 0.6, r2s3: 0.6, r2s4: 0.6, r2d1: 0.6, r3s1: 0.6, r3s2: 0.6, r3s3: 0.6, r3s4: 0.6 }
+            effect: { id: still, speed: 1 }
+            fade: 4
+      swap:
+        label: Swap
+        type: lights
+        fixtures:
+          room:
+            levels: { r1s1: 0.6, r1s2: 0.6, r1s3: 0.6, r1s4: 0.6, r1s5: 0.6, r2s1: 0.6, r2s2: 0.6, r2s3: 0.6, r2s4: 0.6, r2d1: 0.6, r3s1: 0.6, r3s2: 0.6, r3s3: 0.6, r3s4: 0.6 }
+            effect: { id: rotate, speed: 1 }
+            fade: 5
+      mix:
+        label: Mix
+        type: lights
+        fixtures:
+          room:
+            levels: { r1s1: 0.55, r1s2: 0.55, r1s3: 0.55, r1s4: 0.55, r1s5: 0.55, r2s1: 0.55, r2s2: 0.55, r2s3: 0.55, r2s4: 0.55, r2d1: 0.55, r3s1: 0.55, r3s2: 0.55, r3s3: 0.55, r3s4: 0.55 }
+            effect: { id: shuffle, speed: 1 }
+            fade: 5
+      rails:
+        label: Rails
+        type: lights
+        fixtures:
+          room:
+            levels: { r1s1: 0.6, r1s2: 0.6, r1s3: 0.6, r1s4: 0.6, r1s5: 0.6, r2s1: 0.6, r2s2: 0.6, r2s3: 0.6, r2s4: 0.6, r2d1: 0.6, r3s1: 0.6, r3s2: 0.6, r3s3: 0.6, r3s4: 0.6 }
+            effect: { id: zones, speed: 1 }
+            fade: 5
+      low:
+        label: Low
+        type: lights
+        fixtures:
+          room:
+            levels: { r1s1: 0.35, r1s2: 0.35, r1s3: 0.35, r1s4: 0.35, r1s5: 0.35, r2s1: 0.35, r2s2: 0.35, r2s3: 0.35, r2s4: 0.35, r2d1: 0.35, r3s1: 0.35, r3s2: 0.35, r3s3: 0.35, r3s4: 0.35 }
+            effect: { id: still, speed: 1 }
+            fade: 6
+    looks:
+      welcome:
+        label: 1 Welcome
+        lights: steady
+        colour: { palette: halloween }
+      pumpkin-patch:
+        label: 2 Pumpkin patch
+        lights: swap
+        colour: { palette: pumpkin }
+      brew:
+        label: 3 Brew
+        lights: mix
+        colour: { palette: witch }
+      dusk-rails:
+        label: 4 Dusk rails
+        lights: rails
+        colour: { palette: dusk }
+      party:
+        label: 5 Party
+        lights: spread
+        colour: { palette: rainbow }
+      blood-moon:
+        label: 6 Blood moon
+        lights: spread
+        colour: { palette: bloodmoon }
+      storm:
+        label: 7 Storm
+        lights: mix
+        colour: { palette: lightning }
+      embers:
+        label: 8 Embers
+        lights: low
+        colour: { palette: ember }
+      the-void:
+        label: 9 The void
+        lights: low
+        colour: { palette: void }
   all:
     label: All
     fixtures: [ spider, laser ]

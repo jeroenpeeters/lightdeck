@@ -127,6 +127,11 @@ pnpm lamp light.a light.b light.c --soak 3          # fade them through colours 
 
 Without `rig.yaml` there are no lamps and nothing asks Home Assistant.
 
+To program or rehearse without touching the real lamps, start lightdeck with `--hass-simulate`
+(or `HASS_SIMULATE=1`). The room then runs against a Home Assistant that lives in lightdeck, with
+no URL or token: the lamps answer at about the pace of a real Zigbee mesh, and the status bar
+says "Home Assistant simulated" in amber.
+
 ### 4. Open the console
 
 Go to `http://<computer-ip>:8080` on the tablet. The console has:
@@ -161,6 +166,7 @@ As a flag, or as an environment variable.
 | `--show` | `SHOW_FILE` | `show.yaml` | The show file |
 | `--hass` | `HASS_URL` | none | Home Assistant: `http://<host>:8123` (or `ws://<host>:8123/api/websocket`). Needed when `rig.yaml` has lamps |
 | | `HASS_TOKEN` | none | A long-lived access token for Home Assistant. Environment or `.env` only, never a flag |
+| `--hass-simulate` | `HASS_SIMULATE` | off | Run the lamps against a simulated Home Assistant: no real lamp is touched, no URL or token needed |
 | `--rig` | `RIG_FILE` | `rig.yaml` | The rig file, with the lamps of the room. No file, no lamps |
 | `--max-fps` | `MAX_FPS` | `25` | The most DMX frames per second to send, 1 to 60 |
 | `--lead-ms` | `LEAD_MS` | `0` | How far ahead of the beat the output is made |

@@ -187,6 +187,12 @@ legend {
 .link[data-state="ok"] .lamp {
   background: var(--go);
 }
+.link[data-state="simulated"] .lamp {
+  background: var(--signal);
+}
+.link[data-state="simulated"] .link-text {
+  color: var(--signal);
+}
 .link[data-state="down"] .lamp {
   background: var(--stop);
 }

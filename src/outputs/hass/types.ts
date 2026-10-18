@@ -6,8 +6,11 @@
  * the reconnecting, is the output's business: see `client.ts` and `throttle.ts`.
  */
 
-/** The link to Home Assistant, as the rig shows it. */
-export type HassStatus = 'down' | 'refused' | 'connected';
+/**
+ * The link to Home Assistant, as the rig shows it. `simulated` is a Home Assistant that lives in
+ * lightdeck (`--hass-simulate`): no lamp is touched, and the pages say so.
+ */
+export type HassStatus = 'down' | 'refused' | 'connected' | 'simulated';
 
 /** A service call for one entity. The entity itself is given beside it. */
 export interface HassCommand {
