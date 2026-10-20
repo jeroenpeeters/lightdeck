@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { curveAt, curveInverse, curveRange } from './curve.js';
+import { curveAt, curveInverse, curveRange, curveRangeBetween } from './curve.js';
 
 const tilt = [
   [0, 90],
@@ -58,5 +58,40 @@ describe('curveRange', () => {
   it('has the smallest and the largest value', () => {
     expect(curveRange(tilt)).toEqual({ min: -90, max: 90 });
     expect(curveRange([])).toBeUndefined();
+  });
+});
+
+describe('curveRangeBetween', () => {
+  const bend = [
+    [0, 20],
+    [0.3, 0],
+    [0.87, -90],
+    [1, -108],
+  ] as const;
+
+  it('is the range of the curve over all of it', () => {
+    expect(curveRangeBetween(bend, 0, 1)).toEqual(curveRange(bend));
+  });
+
+  it('reads the values at the two ends of a part of the curve', () => {
+    const part = curveRangeBetween(bend, 0.1, 0.6);
+    expect(part?.max).toBeCloseTo(20 * (1 - 0.1 / 0.3), 6);
+    expect(part?.min).toBeCloseTo((-90 * 0.3) / 0.57, 6);
+  });
+
+  it('counts a point in between, where the curve turns', () => {
+    const turn = [
+      [0, 0],
+      [0.5, 100],
+      [1, 0],
+    ] as const;
+    const range = curveRangeBetween(turn, 0.2, 0.8);
+    expect(range?.min).toBeCloseTo(40, 6);
+    expect(range?.max).toBe(100);
+  });
+
+  it('takes the ends in either order, and has no range without points', () => {
+    expect(curveRangeBetween(bend, 0.6, 0.1)).toEqual(curveRangeBetween(bend, 0.1, 0.6));
+    expect(curveRangeBetween([], 0, 1)).toBeUndefined();
   });
 });

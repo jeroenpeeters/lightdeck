@@ -32,6 +32,23 @@ export function curveRange(curve: Curve): { min: number; max: number } | undefin
 }
 
 /**
+ * The smallest and the largest value of a curve between `from` and `to` (in x): the values at the
+ * two ends and at every point in between. With the whole of the curve it is `curveRange`.
+ */
+export function curveRangeBetween(
+  curve: Curve,
+  from: number,
+  to: number,
+): { min: number; max: number } | undefined {
+  if (curve.length === 0) return undefined;
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+  const values = [curveAt(curve, lo), curveAt(curve, hi)];
+  for (const [x, y] of curve) if (x > lo && x < hi) values.push(y);
+  return { min: Math.min(...values), max: Math.max(...values) };
+}
+
+/**
  * The x at which `curve` has the value `y`: the first place on the curve that does, and the end
  * point that comes nearest when `y` lies outside what the curve reaches. It is undefined when
  * the curve cannot tell: fewer than two points, or the same value everywhere, so that every x

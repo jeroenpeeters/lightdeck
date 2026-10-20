@@ -41,9 +41,12 @@ beat at speed 1 breaks the limit without anyone noticing, which is the other rea
 the rule above.
 
 **An effect sets only what it says it sets, and only what its type owns.** For the spider: a
-light effect gives levels per slot and nothing else; a motion effect gives the tilts, and the
-motor speed only when it says `setsMotorSpeed` (`scissor-motor`, which works it out from
-`motion`, the calibration of the layout, and leaves it alone when it cannot). The tilts and the
+light effect gives levels per slot and nothing else; a motion effect gives the tilts and the
+motor speed (`setsMotorSpeed`), and the tilt is where the bars must END UP, changed once per leg
+and not on every frame (Jeroen, 2026-10-20: a tilt that follows the beat makes the motor stutter).
+The motor speed is worked out from `motion`, the calibration of the layout, so the move takes the
+leg (`pathFrame` in `motionEffects.ts` does it for effects that go to and fro), and it is left
+alone when the fixture gives no calibration. The tilts and the
 motor speed are properties of the motion type of scene, so a motion effect reaches into no other
 type. Brightness and the strobe channel stay with the operator. For the laser: the controls in
 `drives`, and the rest stays with the operator, so a colour set by hand goes together with an

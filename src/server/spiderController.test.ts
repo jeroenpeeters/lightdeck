@@ -387,7 +387,9 @@ describe('SpiderController', () => {
     expect(details.motionEffects[2]).toEqual(
       expect.objectContaining({ id: 'scissor-motor', setsMotorSpeed: true }),
     );
-    expect(details.motionEffects[1].setsMotorSpeed).toBe(false);
+    expect(details.motionEffects.every((e: { setsMotorSpeed: boolean }) => e.setsMotorSpeed)).toBe(
+      true,
+    );
   });
 
   it('is coloured by the palettes of the show', () => {
@@ -658,7 +660,7 @@ describe('SpiderController effects', () => {
       levels: { tilt1: 0, tilt2: 0, red3: 1 },
       motion: { id: 'tiltwave' },
     });
-    advance(((60_000 / 126) * 2) | 0); // two beats: a quarter of the swing
+    advance(((60_000 / 126) * 1) | 0); // one beat in: the bars have been sent to the high end
     expect(ch(output, 1)).toBeGreaterThan(190);
     expect(ch(output, 3)).toBeLessThan(65);
     expect(ch(output, 15)).toBe(255); // red3, set by hand
@@ -677,7 +679,7 @@ describe('SpiderController effects', () => {
     const reds = Array.from({ length: 8 }, (_, i) => ch(output, 7 + i * 4) ?? 0);
     expect(reds.indexOf(Math.max(...reds))).toBe(2);
     expect(Math.max(...reds)).toBe(255);
-    expect(ch(output, 1)).toBeGreaterThan(150); // the bar has moved
+    expect(ch(output, 1)).toBeGreaterThan(40); // the bar has been sent to the low end of the wave
     expect(ch(output, 1)).not.toBe(0);
   });
 
@@ -746,7 +748,7 @@ describe('SpiderController effects', () => {
     expect(output.frames.length).toBe(before);
   });
 
-  it('keeps the tilts of a motion effect within the limits', () => {
+  it('maps the tilts of a motion effect into the limits, and does not cut it off at them', () => {
     controller.setLimits({
       tilt: [
         { min: 0.4, max: 0.6 },
@@ -761,9 +763,18 @@ describe('SpiderController effects', () => {
     }
     expect(Math.min(...seen)).toBeGreaterThanOrEqual(102);
     expect(Math.max(...seen)).toBeLessThanOrEqual(153);
-    // The wave does reach the limits: it is cut off there, not stopped.
-    expect(Math.max(...seen)).toBe(153);
-    expect(Math.min(...seen)).toBe(102);
+    // The wave goes from 0.2 to 0.8 of the window, which is 0.44 to 0.56 of the tilt: it swings all
+    // the way within the limits and does not stand still at one of them.
+    expect(Math.max(...seen)).toBe(Math.round(0.56 * 255));
+    expect(Math.min(...seen)).toBe(Math.round(0.44 * 255));
+  });
+
+  it('still cuts off a tilt that is set by hand at the limits', () => {
+    controller.setLimits({ tilt: [{ min: 0.4, max: 0.6 }] });
+    controller.update({ levels: { tilt1: 1 } });
+    expect(ch(output, 1)).toBe(153);
+    controller.update({ levels: { tilt1: 0 } });
+    expect(ch(output, 1)).toBe(102);
   });
 
   it('goes back to the tilts of the operator when the motion effect stops', () => {
@@ -837,7 +848,10 @@ describe('SpiderController effects', () => {
       expect(dimmed.map((f) => f.data[5])).toEqual(new Array(made).fill(128));
       expect(full.map((f) => f.data[5])).toEqual(new Array(made).fill(255));
       expect(dimmed.map((f) => butDimmer(f.data))).toEqual(full.map((f) => butDimmer(f.data)));
-      expect(new Set(dimmed.map((f) => butDimmer(f.data).join())).size).toBeGreaterThan(5);
+      // A light effect makes a new picture most frames; a motion effect sends the bars to an end and
+      // holds it, so it has only the few that its legs make in a second.
+      const pictures = new Set(dimmed.map((f) => butDimmer(f.data).join())).size;
+      expect(pictures).toBeGreaterThan(kind === 'effect' ? 5 : 1);
     }
   });
 

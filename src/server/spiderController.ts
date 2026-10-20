@@ -609,7 +609,12 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
         beat: read.beat,
         bpm: bpm * read.speed,
         bars: this.layout.bars.length,
-        motion: { tilt: this.layout.tiltCurve, motorSpeed: this.layout.motorSpeedCurve },
+        // The effect works inside the swing limits: mapped into them and not cut off by them.
+        motion: {
+          tilt: this.layout.tiltCurve,
+          motorSpeed: this.layout.motorSpeedCurve,
+          limits: this.limits.tilt,
+        },
       });
       frame.tilt = moved.tilt;
       if (moved.motorSpeed !== undefined) frame.motorSpeed = moved.motorSpeed;
@@ -633,6 +638,7 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       if (frame.motorSpeed !== undefined) levels[MOTOR_SPEED_CONTROL] = clamp01(frame.motorSpeed);
     }
     // Whatever sets a tilt, by hand, in a scene or by a motion effect, the bar stays within its limits.
+    // A motion effect already works inside them, so this cuts off only what is set by hand or in a scene.
     this.layout.tilt.forEach((name, bar) => {
       const limit = this.limits.tilt[bar];
       if (limit && name in levels) {

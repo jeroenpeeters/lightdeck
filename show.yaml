@@ -371,5 +371,5 @@ sequences:
 limits:
   spider:
     tilt:
-      - { min: 0, max: 0.35 } #top bar
-      - {min: 0, max: 0.85}
+      - { min: 0, max: 0.3 }
+      - { min: 0.16, max: 0.8 }
