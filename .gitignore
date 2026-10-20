@@ -32,3 +32,4 @@ android-camera/build/
 android-camera/*.apk
 android-camera/*.idsig
 android-camera/debug.keystore
+/android-bridge/image.tar.gz
