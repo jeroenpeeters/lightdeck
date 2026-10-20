@@ -1,0 +1,10 @@
+# Started by init once Android has booted: installs bridge-gate.apk (if it is not there or has
+# changed) and keeps the bridge app running.
+service lightdeck-bridge /system/bin/sh /system/bin/lightdeck-bridge.sh
+    class late_start
+    user root
+    group root
+    disabled
+
+on property:sys.boot_completed=1
+    start lightdeck-bridge

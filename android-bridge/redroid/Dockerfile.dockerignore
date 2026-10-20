@@ -1,0 +1,5 @@
+# The context is android-bridge/; only the apk and redroid/ go into the image.
+*
+!bridge-gate.apk
+!redroid/lightdeck-bridge.rc
+!redroid/lightdeck-bridge.sh
