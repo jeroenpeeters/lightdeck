@@ -1,6 +1,6 @@
 # Plan: the laser in the simulator
 
-Status: parked, nothing built (2026-10-14). Written after Jeroen asked for the laser in the
+Status: the survey tool is built (2026-10-19, see "The survey tool" below); the simulator is not, and no photo has been taken. Parked before that (2026-10-14). Written after Jeroen asked for the laser in the
 simulator and proposed the first step himself: photograph every pattern of the laser and put
 the pictures in the project. Decisions marked "Jeroen" are his; the rest is a proposal. No
 photo has been taken yet, so everything about what the photos will show is expectation.
@@ -56,6 +56,23 @@ of material are needed, not one:
 
 Not drawn, as with the spider's own programs: the laser's auto and sound programs 1 to 4.
 The simulator says so. A filmed clip of each could approximate them later; not planned.
+
+## The survey tool (2026-10-19)
+
+Jeroen's idea, after the manual plan: a phone app that takes the pictures while lightdeck steps
+through the laser settings, and saves each picture with the bytes. Built:
+
+- `android-camera/`: the camera app, HTTP on port 9020, exposure fixed by hand (see its README).
+- `pnpm laser-survey` (`src/cli/laser-survey.ts`, `src/laserSurvey/`): `status`, `shot`, `clip`,
+  `pilot` (the table below), `sweep <channel>` (every `--step` byte and the edges of the ranges; `sweep
+  program --step 1` is all 256 bytes of channel 2, which settles how the 51 patterns lie).
+- Shots go to `docs/laser-photos/<set>/<name>.jpg|.mp4` with a `.json` (bytes by name and as the ten
+  channels, camera settings as the phone reports them, distance, note). A stopped run continues.
+
+What a sweep costs: about 2.3 s a shot (800 ms settle, the exposure, the transfer), so 256 bytes of one
+channel is about 10 minutes. Not verified: the app on a phone, whether 800 ms is enough for the
+scanner to draw a new picture, whether 100 ms of exposure gives a clean picture (banding), and the
+pilot has not been run. The rest of this file is still the plan for what to do with the pictures.
 
 ## How to shoot
 

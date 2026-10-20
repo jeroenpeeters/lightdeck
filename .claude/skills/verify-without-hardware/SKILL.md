@@ -169,3 +169,20 @@ Spider, effect "chase", 126 bpm, speed ×1
 Put the command or the presses above it, and ask for the log of the bridge when
 something is off. When the answers come, move what is confirmed out of the unverified
 assumptions and correct what is not.
+
+## The laser survey without the phone camera
+
+`scripts/standin-camera.mjs` speaks the HTTP of `android-camera/` (`/status`, `/settings`, `/photo`,
+`/clip`; a small JPEG, a few bytes for a clip, the settings in `x-lightdeck-settings`), so that
+`pnpm laser-survey` can run with `standin-bridge.mjs` and no phone:
+
+```bash
+node $SKILL/scripts/standin-bridge.mjs --port 9010 --dump bridge.json --quiet &
+node $SKILL/scripts/standin-camera.mjs --port 9020 &
+pnpm laser-survey sweep rotation --step 100 --settle 100 --yes --camera 127.0.0.1 --bridge 127.0.0.1 --out /tmp/shots
+```
+
+Check the files in the output folder and that `bridge.json` ends with the laser closed
+(`"universes": {"0": {}}`), also after a Ctrl-C in the middle. `--not-ready` makes the stand-in answer
+503 like an app that is behind another one; `--slow <ms>` delays photos. This checks the lightdeck
+side only: not the Camera2 code of the app, not the exposure, not what the laser draws.

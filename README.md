@@ -199,6 +199,9 @@ pnpm laser <phone-ip> mode=manual program=pattern:12
 pnpm laser --list
 node tools/lr512-send.mjs <phone-ip> 0 set 6=255 7=255    # raw channels
 pnpm lamp light.bar dimmer=50 red=100 fade=2              # a Home Assistant light, see step 3
+
+# photograph the laser at its settings (the phone app in android-camera/ looks at the wall)
+pnpm laser-survey pilot --camera <camera-phone-ip> --bridge <bridge-phone-ip> --pattern 26 --distance 3
 ```
 
 Each of these sends one fixture and zeros for the rest of the universe, so other

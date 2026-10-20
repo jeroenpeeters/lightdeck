@@ -24,3 +24,11 @@ android-tablet/build/
 android-tablet/*.apk
 android-tablet/*.idsig
 android-tablet/debug.keystore
+
+# Laser survey photos (large; the simulator textures made from them are what goes in git)
+/docs/laser-photos/
+
+android-camera/build/
+android-camera/*.apk
+android-camera/*.idsig
+android-camera/debug.keystore

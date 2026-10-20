@@ -13,15 +13,8 @@
 
 import { parseArgs } from 'node:util';
 import { ALIEN_LASER_10CH } from '../fixtures/laser.js';
-import {
-  byteForStep,
-  byteInRange,
-  encodeFixture,
-  type FunctionControl,
-  findRange,
-  UNIVERSE_SIZE,
-  writeFixture,
-} from '../fixtures/profile.js';
+import { encodeFixture, UNIVERSE_SIZE, writeFixture } from '../fixtures/profile.js';
+import { parseAssignments, UsageError } from './assign.js';
 import { printBytes, printTable, sendToBridge } from './shared.js';
 
 const profile = ALIEN_LASER_10CH;
@@ -62,36 +55,6 @@ function integerOption(value: string | undefined, fallback: number, name: string
   return n;
 }
 
-/** The byte that `text` asks for on a control: a raw byte, a key, or a key and a number. */
-function byteFor(control: FunctionControl, text: string): number {
-  if (/^\d+$/.test(text)) {
-    const byte = Number(text);
-    if (byte > 255) fail(`${control.name} is a byte 0..255, got ${text}`);
-    return byte;
-  }
-  const [key = '', amount, ...rest] = text.split(':');
-  const range = findRange(control, key);
-  if (!range || rest.length > 0) {
-    const keys = control.ranges.flatMap((r) => (r.key === undefined ? [] : [r.key]));
-    fail(`${control.name} takes a byte 0..255 or one of: ${keys.join(', ')}. Got "${text}".`);
-  }
-  if (amount === undefined) return byteInRange(control, range);
-
-  const n = Number(amount);
-  if (amount === '' || Number.isNaN(n)) fail(`"${amount}" is not a number in "${text}"`);
-  if (range.steps !== undefined) {
-    if (!Number.isInteger(n) || n < 1 || n > range.steps) {
-      fail(`${control.name}=${key} takes a whole number 1..${range.steps}, got ${amount}`);
-    }
-    return byteForStep(range, n);
-  }
-  if (range.scale === undefined) {
-    fail(`${control.name}=${key} is a plain choice, it takes no number`);
-  }
-  if (n < 0 || n > 100) fail(`${control.name}=${key} takes a percentage 0..100, got ${amount}`);
-  return byteInRange(control, range, n / 100);
-}
-
 const { values: options, positionals } = parseArgs({
   allowPositionals: true,
   options: {
@@ -121,17 +84,12 @@ const universeIndex = integerOption(options.universe, 0, 'universe');
 const address = integerOption(options.address, 44, 'address');
 const port = integerOption(options.port, 9010, 'port');
 
-const raw: Record<string, number> = {};
 if (options.blackout && assignments.length > 0) fail('--blackout takes no values');
-for (const assignment of assignments) {
-  const [name, ...parts] = assignment.split('=');
-  const text = parts.join('=');
-  if (!name || text === '') fail(`expected name=value, got "${assignment}"`);
-  const control = profile.controls.find((c) => c.name === name);
-  if (control?.kind !== 'function') {
-    fail(`unknown channel "${name}". Run with --list to see the names.`);
-  }
-  raw[name] = byteFor(control, text);
+let raw: Record<string, number>;
+try {
+  raw = parseAssignments(profile, assignments);
+} catch (error) {
+  fail(error instanceof UsageError ? error.message : String(error));
 }
 
 const universe = new Uint8Array(UNIVERSE_SIZE);
