@@ -242,6 +242,18 @@ describe('the sequence API', () => {
     expect((await state()).playback.groups.spider.look.look).toBe('bright');
   });
 
+  it('goes on to the next step at once when asked', async () => {
+    await post('/api/sequence', { start: 'night' });
+    const skipped = await post('/api/sequence', { next: true });
+    expect(skipped.status).toBe(200);
+    expect((await state()).sequence).toMatchObject({ running: 'night', step: 1 });
+    expect((await state()).playback.groups.spider.look.look).not.toBe('bright');
+    // Without a sequence that runs it does nothing, and is not a mistake.
+    await post('/api/sequence', { stop: true });
+    expect((await post('/api/sequence', { next: true })).status).toBe(200);
+    expect((await state()).sequence.running).toBeNull();
+  });
+
   it('stops the sequence that runs when another is started', async () => {
     await post('/api/sequence', { start: 'night' });
     await post('/api/sequence', { start: 'other' });
@@ -253,9 +265,10 @@ describe('the sequence API', () => {
     for (const [body, message] of [
       [{ start: 'nope' }, 'there is no sequence called "nope"'],
       [{ start: 3 }, 'say which sequence, by its id'],
-      [{}, 'say which sequence to start, or stop: true'],
-      [{ start: 'night', stop: true }, 'say which sequence to start, or stop: true'],
+      [{}, 'say which sequence to start, or stop: true, or next: true'],
+      [{ start: 'night', stop: true }, 'say which sequence to start, or stop: true, or next: true'],
       [{ stop: false }, '"stop" can only be true'],
+      [{ next: false }, '"next" can only be true'],
       [{ halt: true }, /halt/],
     ] as const) {
       const refused = await post('/api/sequence', body);

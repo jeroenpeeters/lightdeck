@@ -89,6 +89,10 @@
   letter-spacing: 0.08em;
 }
 /* Off is not black paint: it is a slot that is dark, and it says so. */
+/* A colour after the ones that show: it is in the pool a cycle draws from, and no lens shows it. */
+.chip[data-pool="true"] {
+  opacity: 0.45;
+}
 .chip[data-off="true"] .chip-colour {
   border: 2px dashed var(--dim);
   background: var(--ground);

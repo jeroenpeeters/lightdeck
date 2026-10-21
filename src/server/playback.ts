@@ -73,9 +73,22 @@ export interface SceneSummary {
   fixtures: string[];
 }
 
+export interface MoodSummary {
+  id: string;
+  label: string;
+  /** Ids of scenes of lights that go with the mood. */
+  lights: string[];
+  /** Ids of palettes that go with the mood. */
+  colour: string[];
+  /** Ids of scenes of motion that go with the mood. */
+  motion: string[];
+}
+
 export interface LookSummary {
   id: string;
   label: string;
+  /** Id of the mood the look is in, or null. */
+  mood: string | null;
   /** Id of the scene of lights it sets, or null. */
   lights: string | null;
   /** The palette it sets, with the speed that is its own, or null. */
@@ -92,6 +105,8 @@ export interface PaletteSummary {
   mode: PaletteMode;
   change: PaletteChange;
   speed: number;
+  /** How many of the first slots show, when fewer than the palette has. */
+  visible?: number;
 }
 
 export interface SequenceSummary {
@@ -109,6 +124,7 @@ export interface GroupSummary {
   /** True when a fixture of the group takes palettes, so that the colour lane means something. */
   palettes: boolean;
   scenes: SceneSummary[];
+  moods: MoodSummary[];
   looks: LookSummary[];
 }
 
@@ -239,15 +255,17 @@ export class Playback {
       file: this.file.path ?? null,
       problem: this.file.getProblem(),
       limits: { ...show.limits },
-      palettes: show.palettes.map(({ id, label, colours, mode, change, speed }) => ({
+      palettes: show.palettes.map(({ id, label, colours, mode, change, speed, visible }) => ({
         id,
         label,
         colours: colours.map((colour) => formatColour(colour)),
         mode,
         change,
         speed,
+        // Only when the palette shows fewer colours than it has.
+        ...(visible === undefined ? {} : { visible }),
       })),
-      groups: show.groups.map(({ id, label, fixtures, scenes, looks }) => ({
+      groups: show.groups.map(({ id, label, fixtures, scenes, moods, looks }) => ({
         id,
         label,
         fixtures: [...fixtures],
@@ -258,9 +276,17 @@ export class Playback {
           type: scene.type,
           fixtures: Object.keys(scene.fixtures),
         })),
+        moods: moods.map((mood) => ({
+          id: mood.id,
+          label: mood.label,
+          lights: [...mood.lights],
+          colour: [...mood.colour],
+          motion: [...mood.motion],
+        })),
         looks: looks.map((look) => ({
           id: look.id,
           label: look.label,
+          mood: look.mood ?? null,
           lights: look.lights ?? null,
           colour: look.colour
             ? { palette: look.colour.palette, speed: look.colour.speed ?? null }
@@ -418,6 +444,12 @@ export class Playback {
           `the scene "${label}" is used by the look "${user.label}". Change or delete the look first`,
         );
       }
+      const mood = found.moods.find((each) => [...each.lights, ...each.motion].includes(id));
+      if (mood) {
+        throw new PatchError(
+          `the scene "${label}" is in the mood "${mood.label}". Take it out of the mood in the show file first`,
+        );
+      }
       if (!document.deleteIn(['groups', found.id, 'scenes', id])) {
         throw new PatchError(`the scene "${label}" could not be taken out of the show file`);
       }
@@ -445,11 +477,15 @@ export class Playback {
   storeLookOver(group: unknown, look: unknown): void {
     const { found, id } = this.file.edit((document, show) => {
       const found = this.needGroup(group, show);
-      const { id, label } = this.needLook(found, look);
+      const { id, label, mood } = this.needLook(found, look);
       const lanes = this.lanesOn(found);
-      // The look is replaced by lanes, and keeps its name.
+      // The look is replaced by lanes, and keeps its name and its mood.
       document.deleteIn(['groups', found.id, 'looks', id]);
-      setIn(document, ['groups', found.id, 'looks', id], { label, ...lanes });
+      setIn(document, ['groups', found.id, 'looks', id], {
+        label,
+        ...(mood === undefined ? {} : { mood }),
+        ...lanes,
+      });
       return { found, id };
     });
     this.looksOn.set(found.id, id);
@@ -520,8 +556,8 @@ export class Playback {
   }
 
   /**
-   * Changes a palette: any of `label`, `colours`, `mode`, `change` and `speed`. What the
-   * change does not name stays. The fixtures use the new colours at once.
+   * Changes a palette: any of `label`, `colours`, `mode`, `change`, `speed` and `visible` (`null`
+   * shows all). What the change does not name stays. The fixtures use the new colours at once.
    */
   updatePalette(name: unknown, change: unknown): void {
     if (typeof change !== 'object' || change === null || Array.isArray(change)) {
@@ -529,11 +565,11 @@ export class Playback {
     }
     const patch = change as Record<string, unknown>;
     const extra = Object.keys(patch).find(
-      (key) => !['label', 'colours', 'mode', 'change', 'speed'].includes(key),
+      (key) => !['label', 'colours', 'mode', 'change', 'speed', 'visible'].includes(key),
     );
     if (extra !== undefined) {
       throw new PatchError(
-        `a palette cannot change "${extra}", only label, colours, mode, change and speed`,
+        `a palette cannot change "${extra}", only label, colours, mode, change, speed and visible`,
       );
     }
     this.file.edit((document, show) => {
@@ -545,6 +581,8 @@ export class Playback {
       const base = ['palettes', current.id];
       if (label !== undefined) setIn(document, [...base, 'label'], readLabel(label, 'palette'));
       for (const [key, value] of Object.entries(data)) setIn(document, [...base, key], value);
+      // Showing all of the colours is not kept in the file.
+      if (data.visible === undefined) document.deleteIn([...base, 'visible']);
     });
   }
 
@@ -660,6 +698,10 @@ export class Playback {
       for (const look of group.looks) {
         if (look.colour?.palette === id)
           users.push(`the look "${look.label}" of "${group.label}" uses it`);
+      }
+      for (const mood of group.moods) {
+        if (mood.colour.includes(id))
+          users.push(`the mood "${mood.label}" of "${group.label}" lists it`);
       }
     }
     return users;

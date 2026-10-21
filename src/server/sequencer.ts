@@ -20,6 +20,8 @@
  * - **The music stops: the sequence waits.** Like the effects, a sequence does not go on while
  *   the tempo is not running (the audio source says the music has stopped), and counts again
  *   from the next bar line when it does.
+ * - **Next skips ahead.** `next()` sets the following step at once, as the bar line does, for an
+ *   operator who has had enough of a look: it counts its bars from here, and the sequence goes on.
  * - **One sequence runs at a time.** Starting one stops the one that runs. Stopping leaves the
  *   fixtures as they are. A sequence is never started by itself, not at startup either.
  *
@@ -120,6 +122,19 @@ export class Sequencer extends EventEmitter {
     this.apply(sequence, 0);
     this.emit('sequence', this.getState());
     this.arm();
+  }
+
+  /**
+   * Sets the next step now, in place of waiting for the bar line, and counts its bars from here.
+   * Does nothing when no sequence runs. After the last step it is the first again.
+   */
+  next(): void {
+    const sequence = this.current();
+    if (!sequence) return;
+    this.step = (this.step + 1) % sequence.steps.length;
+    this.barsLeft = sequence.steps[this.step]?.bars ?? 1;
+    this.apply(sequence, this.step);
+    this.emit('sequence', this.getState());
   }
 
   /** Stops the sequence that runs. The fixtures stay as they are. */

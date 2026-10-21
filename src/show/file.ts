@@ -90,6 +90,7 @@ function idsAsTyped(document: Document): void {
   for (const { key, value } of groups.items) {
     if (!isMap(value)) continue;
     asTyped(value.get('scenes', true), 'scene', ` of group "${idOf(key)}"`);
+    asTyped(value.get('moods', true), 'mood', ` of group "${idOf(key)}"`);
     asTyped(value.get('looks', true), 'look', ` of group "${idOf(key)}"`);
   }
 }
@@ -126,6 +127,7 @@ function dataOf(document: Document): unknown {
     const node = groups.get(id, true);
     if (!isObject(group) || !isMap(node)) continue;
     group.scenes = inOrder(node.get('scenes', true), group.scenes);
+    group.moods = inOrder(node.get('moods', true), group.moods);
     group.looks = inOrder(node.get('looks', true), group.looks);
   }
   return data;

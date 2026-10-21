@@ -180,3 +180,36 @@ export function views(names, onShow = () => {}) {
     },
   };
 }
+
+// ---- notices that can be clicked away ----
+
+/** By notice, the words the operator clicked away. */
+const clickedAway = new WeakMap();
+
+/**
+ * Lets the operator click a notice away (tablet pages: a notice lies over the keys and would stay
+ * as long as its cause does). It stays away while it says the same, and comes back when it says
+ * something else, and when it has been silent and speaks again.
+ */
+export function makeDismissible(notice) {
+  notice.dataset.dismissible = 'true';
+  notice.tabIndex = 0;
+  const away = () => {
+    clickedAway.set(notice, notice.textContent);
+    notice.hidden = true;
+  };
+  notice.addEventListener('click', away);
+  notice.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      away();
+    }
+  });
+}
+
+/** Puts words in a notice, or hides it when there are none or the operator clicked those away. */
+export function setNotice(notice, text) {
+  if (text === '') clickedAway.delete(notice);
+  notice.textContent = text;
+  notice.hidden = text === '' || clickedAway.get(notice) === text;
+}

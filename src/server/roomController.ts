@@ -37,7 +37,7 @@
 import { EventEmitter } from 'node:events';
 import { EffectClock } from '../engine/effectClock.js';
 import { type Rgbw, SPEEDS } from '../engine/effects.js';
-import { colourAt, FALLBACK_PALETTE, PaletteBook, paint } from '../engine/palette.js';
+import { colourAt, FALLBACK_PALETTE, PaletteBook, paint, shownSlots } from '../engine/palette.js';
 import { findRoomEffect, PERIOD_BEATS, ROOM_EFFECTS } from '../engine/roomEffects.js';
 import type { SceneType } from '../fixtures/profile.js';
 import { clamp01 } from '../model/fixture.js';
@@ -722,7 +722,7 @@ export class RoomController extends EventEmitter implements FixtureController {
       beat: read.beat,
       cells: this.cells,
       bars: this.bars,
-      slots: used.colours.length,
+      slots: shownSlots(used),
     });
     const painted = paint(levels, used, step);
     if (running) this.frozen = { key, colours: painted };

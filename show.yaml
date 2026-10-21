@@ -59,6 +59,36 @@ palettes:
     mode: static
     change: step
     speed: 0.25
+  sunset-drift:
+    label: Sunset drift
+    colours: [ "#ff5a00", "#ff2a6d", "#8a00ff" ]
+    mode: cycle
+    change: fade
+    speed: 0.25
+  mid-shift:
+    label: Mid shift
+    # Two colours of the theme that move on by one every bar: the pool is four colours, two show.
+    colours: [ "#ff5a00", "#8a00ff", "#ff2a6d", "#39ff14" ]
+    mode: cycle
+    change: step
+    speed: 0.25
+    visible: 2
+  techno-pulse:
+    label: Techno pulse
+    # One colour, and nothing behind it, that changes on every beat through the colours of the theme.
+    colours: [ "#ff0000", "#8a00ff", "#39ff14", "#ff5a00", "#d8e0ff" ]
+    mode: cycle
+    change: step
+    speed: 1
+    visible: 1
+  techno-bar:
+    label: Techno bar
+    # The same, one colour for a bar.
+    colours: [ "#ff0000", "#8a00ff", "#39ff14", "#ff5a00", "#d8e0ff" ]
+    mode: cycle
+    change: step
+    speed: 0.25
+    visible: 1
 groups:
   spider:
     label: Spider
@@ -205,61 +235,506 @@ groups:
           spider:
             levels: { dimmer: 0.7 }
             effect: { id: glow, speed: 0.5 }
+      breathe:
+        label: Breathe
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.7 }
+            effect: { id: fade, speed: 0.5 }
+      wandering:
+        label: Wandering
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.75 }
+            effect: { id: bounce, speed: 0.5 }
+      spreading:
+        label: Spreading
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.75 }
+            effect: { id: spread, speed: 0.25 }
+      heartbeat:
+        label: Heartbeat
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.85 }
+            effect: { id: kick, speed: 1 }
+      bouncing:
+        label: Bouncing
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.85 }
+            effect: { id: bounce, speed: 1 }
+      pumping:
+        label: Pumping
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.85 }
+            effect: { id: pump, speed: 1 }
+      sparkling:
+        label: Sparkling
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.8 }
+            effect: { id: sparkle, speed: 1 }
+      alternating:
+        label: Alternating
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.85 }
+            effect: { id: alternate, speed: 1 }
+      rolling:
+        label: Rolling
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.85 }
+            effect: { id: wave, speed: 1 }
+      scanning:
+        label: Scan
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.65 }
+            effect: { id: scan, speed: 1 }
+      pairing:
+        label: Pairs
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.65 }
+            effect: { id: pairs, speed: 1 }
+      bursting:
+        label: Burst
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.6 }
+            effect: { id: burst, speed: 1 }
+      building:
+        label: Build-up
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.65 }
+            effect: { id: build, speed: 1 }
+      static-dark:
+        label: Static
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.55 }
+            effect: { id: sparkle, speed: 1 }
+      slow-sway:
+        label: Slow sway
+        type: motion
+        fixtures:
+          spider:
+            motion: { id: tiltwave, speed: 0.25 }
+      swing:
+        label: Swing
+        type: motion
+        fixtures:
+          spider:
+            motion: { id: tiltwave, speed: 1 }
+      scissors-rest:
+        label: Scissors, rest
+        type: motion
+        fixtures:
+          spider:
+            motion: { id: scissor-motor, speed: 0.5 }
+      scissors-fast:
+        label: Scissors fast
+        type: motion
+        fixtures:
+          spider:
+            motion: { id: scissor, speed: 1 }
+    # What goes together, for the tablet (/moods): a look is in one, and while it is on the tablet
+    # offers the rest of the mood to vary it with.
+    moods:
+      begin:
+        label: Begin
+        lights: [ glow, floor-glow, doors-open, breathe, wandering, spreading ]
+        colour: [ pumpkin, ember, dusk, sunset-drift ]
+        motion: [ slow-sway, slightly-down, floor, sway, drifting, adrift ]
+      midden:
+        label: Midden
+        lights: [ creeping-in, candles-low, heartbeat, bouncing, pumping, sparkling ]
+        colour: [ mid-shift, halloween, witch, bloodmoon ]
+        motion: [ swing, scissors, scissors-rest, stalking, drifting, sway ]
+      techno:
+        label: Techno
+        lights: [ crossfire, the-void, scanning, pairing, bursting, static-dark ]
+        colour: [ techno-pulse, techno-bar, void, bloodmoon ]
+        motion: [ guillotine, staring, scissors-fast, scissors-rest, adrift, over-heads ]
     looks:
       glow:
         label: 1 Glow
+        mood: begin
         lights: glow
         colour: { palette: pumpkin }
         motion: slightly-down
       floor-glow:
         label: 2 Floor glow
+        mood: begin
         lights: floor-glow
         colour: { palette: ember }
         motion: floor
       doors-open:
         label: 3 Doors open
+        mood: begin
         lights: doors-open
         colour: { palette: pumpkin }
         motion: sway
       creeping-in:
         label: 4 Creeping in
+        mood: midden
         lights: creeping-in
         colour: { palette: witch }
         motion: stalking
       candles-low:
         label: 5 Candles low
+        mood: midden
         lights: candles-low
         colour: { palette: ember }
         motion: drifting
       haunted:
         label: 6 Haunted
+        mood: techno
         lights: haunted
         colour: { palette: witch }
         motion: scissors
       crossfire:
         label: 7 Crossfire
+        mood: techno
         lights: crossfire
         colour: { palette: bloodmoon }
         motion: guillotine
       lightning:
         label: 8 Lightning
+        mood: techno
         lights: lightning
         colour: { palette: lightning }
         motion: staring
       storm:
         label: 9 Storm
+        mood: techno
         lights: storm
         colour: { palette: lightning }
         motion: guillotine
       the-void:
         label: 10 The void
+        mood: techno
         lights: the-void
         colour: { palette: void }
         motion: adrift
+      breathe:
+        label: Breathe
+        mood: begin
+        lights: breathe
+        colour: { palette: sunset-drift }
+        motion: slow-sway
+      wandering:
+        label: Wandering
+        mood: begin
+        lights: wandering
+        colour: { palette: dusk }
+        motion: drifting
+      aurora:
+        label: Aurora
+        mood: begin
+        lights: spreading
+        colour: { palette: sunset-drift }
+        motion: sway
+      glow-dusk:
+        label: Glow dusk
+        mood: begin
+        lights: glow
+        colour: { palette: dusk }
+        motion: slow-sway
+      floor-drift:
+        label: Floor drift
+        mood: begin
+        lights: floor-glow
+        colour: { palette: sunset-drift }
+        motion: floor
+      slow-ember:
+        label: Slow ember
+        mood: begin
+        lights: breathe
+        colour: { palette: ember }
+        motion: slightly-down
+      doors-dusk:
+        label: Doors dusk
+        mood: begin
+        lights: doors-open
+        colour: { palette: dusk }
+        motion: slow-sway
+      wandering-pumpkin:
+        label: Wandering pumpkin
+        mood: begin
+        lights: wandering
+        colour: { palette: pumpkin }
+        motion: sway
+      heartbeat:
+        label: Heartbeat
+        mood: midden
+        lights: heartbeat
+        colour: { palette: mid-shift }
+        motion: swing
+      bounce:
+        label: Bounce
+        mood: midden
+        lights: bouncing
+        colour: { palette: mid-shift }
+        motion: scissors-rest
+      pump:
+        label: Pump
+        mood: midden
+        lights: pumping
+        colour: { palette: halloween }
+        motion: scissors
+      sparkle:
+        label: Sparkle
+        mood: midden
+        lights: sparkling
+        colour: { palette: witch }
+        motion: stalking
+      alternate:
+        label: Alternate
+        mood: midden
+        lights: alternating
+        colour: { palette: mid-shift }
+        motion: drifting
+      rolling:
+        label: Rolling
+        mood: midden
+        lights: rolling
+        colour: { palette: halloween }
+        motion: swing
+      heartbeat-red:
+        label: Heartbeat red
+        mood: midden
+        lights: heartbeat
+        colour: { palette: bloodmoon }
+        motion: scissors
+      bounce-witch:
+        label: Bounce witch
+        mood: midden
+        lights: bouncing
+        colour: { palette: witch }
+        motion: swing
+      scan:
+        label: Scan
+        mood: techno
+        lights: scanning
+        colour: { palette: techno-pulse }
+        motion: guillotine
+      pairs:
+        label: Pairs
+        mood: techno
+        lights: pairing
+        colour: { palette: techno-bar }
+        motion: scissors-rest
+      burst:
+        label: Burst
+        mood: techno
+        lights: bursting
+        colour: { palette: bloodmoon }
+        motion: guillotine
+      build-up:
+        label: Build-up
+        mood: techno
+        lights: building
+        colour: { palette: void }
+        motion: staring
+      static:
+        label: Static
+        mood: techno
+        lights: static-dark
+        colour: { palette: techno-bar }
+        motion: adrift
+      cross-pulse:
+        label: Cross pulse
+        mood: techno
+        lights: crossfire
+        colour: { palette: techno-pulse }
+        motion: guillotine
+      scan-red:
+        label: Scan red
+        mood: techno
+        lights: scanning
+        colour: { palette: void }
+        motion: scissors-fast
   laser:
     label: Laser
     fixtures: [ laser ]
-    scenes: {}
+    # The patterns are numbered because nobody has looked at them yet (docs/laser-simulator-plan.md):
+    # a first guess, to be renamed once the survey has photographed them. Mode 95 is manual, the
+    # program byte is the pattern and the colour byte one of the single colours.
+    scenes:
+      pattern-12:
+        label: Pattern 12
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 57, colour: 22 }
+      pattern-26:
+        label: Pattern 26
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 127, colour: 4 }
+      pattern-40:
+        label: Pattern 40
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 197, colour: 49 }
+      mixed-18:
+        label: Mixed 18
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 87, colour: 100 }
+      dots-26:
+        label: Dots 26
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 127, colour: 40, drawing: 200 }
+      changing-22:
+        label: Changing 22
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 107, colour: 200 }
+      pattern-chase:
+        label: Pattern chase
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 12, colour: 22 }
+            effect: { id: patterns, speed: 0.5 }
+      colour-chase:
+        label: Colour chase
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 127 }
+            effect: { id: colours, speed: 1 }
+            colours: [ 4, 22, 40 ]
+      big-still:
+        label: Big, still
+        type: motion
+        fixtures:
+          laser:
+            raw: { size: 10 }
+      small-still:
+        label: Small, still
+        type: motion
+        fixtures:
+          laser:
+            raw: { size: 40 }
+      breathe:
+        label: Breathe
+        type: motion
+        fixtures:
+          laser:
+            motion: { id: pulse, speed: 0.5 }
+      sweeping:
+        label: Sweep
+        type: motion
+        fixtures:
+          laser:
+            raw: { size: 20 }
+            motion: { id: sweep, speed: 0.5 }
+      twisting:
+        label: Twist
+        type: motion
+        fixtures:
+          laser:
+            raw: { size: 20 }
+            motion: { id: twist, speed: 0.5 }
+      spin:
+        label: Spin
+        type: motion
+        fixtures:
+          laser:
+            raw: { size: 20, rotation: 140 }
+      spin-back:
+        label: Spin back
+        type: motion
+        fixtures:
+          laser:
+            raw: { size: 20, rotation: 210 }
+    moods:
+      calm:
+        label: Calm
+        lights: [ pattern-12, pattern-26, pattern-40, changing-22 ]
+        motion: [ big-still, small-still, spin ]
+      beat:
+        label: On the beat
+        lights: [ pattern-chase, colour-chase, dots-26, mixed-18 ]
+        motion: [ breathe, big-still, small-still ]
+      moving:
+        label: Moving
+        lights: [ pattern-12, pattern-26, pattern-40, mixed-18 ]
+        motion: [ spin, spin-back, sweeping, twisting ]
+    looks:
+      calm-12:
+        label: Calm 12
+        mood: calm
+        lights: pattern-12
+        motion: big-still
+      calm-26:
+        label: Calm 26
+        mood: calm
+        lights: pattern-26
+        motion: small-still
+      calm-40:
+        label: Calm 40
+        mood: calm
+        lights: pattern-40
+        motion: big-still
+      pattern-beat:
+        label: Pattern beat
+        mood: beat
+        lights: pattern-chase
+        motion: breathe
+      colour-beat:
+        label: Colour beat
+        mood: beat
+        lights: colour-chase
+        motion: big-still
+      dots-beat:
+        label: Dots beat
+        mood: beat
+        lights: dots-26
+        motion: breathe
+      spinner:
+        label: Spinner
+        mood: moving
+        lights: pattern-26
+        motion: spin
+      sweeper:
+        label: Sweeper
+        mood: moving
+        lights: pattern-12
+        motion: sweeping
+      twister:
+        label: Twister
+        mood: moving
+        lights: pattern-40
+        motion: twisting
   room:
     label: Room
     fixtures: [ room ]
@@ -311,41 +786,59 @@ groups:
             levels: { r1s1: 0.35, r1s2: 0.35, r1s3: 0.35, r1s4: 0.35, r1s5: 0.35, r2s1: 0.35, r2s2: 0.35, r2s3: 0.35, r2s4: 0.35, r2d1: 0.35, r3s1: 0.35, r3s2: 0.35, r3s3: 0.35, r3s4: 0.35 }
             effect: { id: still, speed: 1 }
             fade: 6
+    moods:
+      warm:
+        label: Warm and low
+        lights: [ steady, low, swap ]
+        colour: [ halloween, pumpkin, ember, void ]
+      colourful:
+        label: Colourful
+        lights: [ spread, mix, rails ]
+        colour: [ rainbow, witch, bloodmoon, dusk, lightning ]
     looks:
       welcome:
         label: 1 Welcome
+        mood: warm
         lights: steady
         colour: { palette: halloween }
       pumpkin-patch:
         label: 2 Pumpkin patch
+        mood: warm
         lights: swap
         colour: { palette: pumpkin }
       brew:
         label: 3 Brew
+        mood: colourful
         lights: mix
         colour: { palette: witch }
       dusk-rails:
         label: 4 Dusk rails
+        mood: colourful
         lights: rails
         colour: { palette: dusk }
       party:
         label: 5 Party
+        mood: colourful
         lights: spread
         colour: { palette: rainbow }
       blood-moon:
         label: 6 Blood moon
+        mood: colourful
         lights: spread
         colour: { palette: bloodmoon }
       storm:
         label: 7 Storm
+        mood: colourful
         lights: mix
         colour: { palette: lightning }
       embers:
         label: 8 Embers
+        mood: warm
         lights: low
         colour: { palette: ember }
       the-void:
         label: 9 The void
+        mood: warm
         lights: low
         colour: { palette: void }
   all:
@@ -368,6 +861,49 @@ sequences:
       - { bars: 32, looks: { spider: lightning } }
       - { bars: 32, looks: { spider: storm, room: blood-moon } }
       - { bars: 32, looks: { spider: the-void } }
+  # The three parts of the evening (Jeroen, 2026-10-20): each loops over its looks on the bars, so the
+  # spider needs no attention. The room and the laser are left to the hand.
+  begin:
+    label: Begin
+    steps:
+      - { bars: 32, looks: { spider: glow } }
+      - { bars: 32, looks: { spider: breathe } }
+      - { bars: 32, looks: { spider: doors-open } }
+      - { bars: 32, looks: { spider: aurora } }
+      - { bars: 32, looks: { spider: floor-glow } }
+      - { bars: 32, looks: { spider: wandering } }
+      - { bars: 32, looks: { spider: glow-dusk } }
+      - { bars: 32, looks: { spider: slow-ember } }
+      - { bars: 32, looks: { spider: doors-dusk } }
+      - { bars: 32, looks: { spider: floor-drift } }
+      - { bars: 32, looks: { spider: wandering-pumpkin } }
+  midden:
+    label: Midden
+    steps:
+      - { bars: 24, looks: { spider: creeping-in } }
+      - { bars: 24, looks: { spider: heartbeat } }
+      - { bars: 24, looks: { spider: candles-low } }
+      - { bars: 24, looks: { spider: bounce } }
+      - { bars: 24, looks: { spider: pump } }
+      - { bars: 24, looks: { spider: rolling } }
+      - { bars: 24, looks: { spider: sparkle } }
+      - { bars: 24, looks: { spider: alternate } }
+      - { bars: 24, looks: { spider: heartbeat-red } }
+      - { bars: 24, looks: { spider: bounce-witch } }
+  techno:
+    label: Techno
+    steps:
+      - { bars: 16, looks: { spider: crossfire } }
+      - { bars: 16, looks: { spider: scan } }
+      - { bars: 16, looks: { spider: pairs } }
+      - { bars: 16, looks: { spider: the-void } }
+      - { bars: 8, looks: { spider: build-up } }
+      - { bars: 16, looks: { spider: burst } }
+      - { bars: 16, looks: { spider: haunted } }
+      - { bars: 16, looks: { spider: cross-pulse } }
+      - { bars: 16, looks: { spider: static } }
+      - { bars: 8, looks: { spider: lightning } }
+      - { bars: 16, looks: { spider: scan-red } }
 limits:
   spider:
     tilt:

@@ -12,6 +12,11 @@
  * tempo, one of `SPEEDS`: one step per beat at ×1, one per bar at ÷4. Slots beyond the end of
  * the list do not take part in the shift: they stay off.
  *
+ * A palette can show fewer colours than it has (`visible`, Jeroen, 2026-10-20): the first `visible`
+ * slots are what the effects get and the rest of the list is the pool that the shift draws from.
+ * With `visible: 1` and a cycle, a light effect has one colour that changes on every step through
+ * all the colours of the theme, and nothing behind it: the colour is an effect of its own.
+ *
  * The palettes belong to the show and are used by name. `PaletteBook` is where the fixtures
  * look them up, so that a palette that is edited changes what is shown at once.
  */
@@ -40,6 +45,11 @@ export interface PaletteFields {
   change: PaletteChange;
   /** How fast a cycle steps, one of `SPEEDS`. It is the pace unless a look says another. */
   speed: number;
+  /**
+   * How many of the first slots show, when fewer than the list has. The slots after them are dark,
+   * and in a cycle the colours still come from the whole list. Absent: all of them.
+   */
+  visible?: number | undefined;
 }
 
 export interface Palette extends PaletteFields {
@@ -85,11 +95,11 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 export function readPaletteFields(data: unknown): PaletteFields {
   if (!isObject(data)) throw new PaletteError('a palette needs colours');
   const extra = Object.keys(data).find(
-    (key) => !['label', 'colours', 'mode', 'change', 'speed'].includes(key),
+    (key) => !['label', 'colours', 'mode', 'change', 'speed', 'visible'].includes(key),
   );
   if (extra !== undefined) {
     throw new PaletteError(
-      `a palette cannot have "${extra}", only label, colours, mode, change and speed`,
+      `a palette cannot have "${extra}", only label, colours, mode, change, speed and visible`,
     );
   }
   const listed = data.colours;
@@ -120,7 +130,26 @@ export function readPaletteFields(data: unknown): PaletteFields {
   if (typeof speed !== 'number' || !SPEEDS.includes(speed)) {
     throw new PaletteError(`the speed of a palette must be one of ${SPEEDS.join(', ')}`);
   }
-  return { colours, mode: mode as PaletteMode, change: change as PaletteChange, speed };
+  let visible: number | undefined;
+  if (data.visible !== undefined && data.visible !== null) {
+    if (typeof data.visible !== 'number' || !Number.isInteger(data.visible) || data.visible < 1) {
+      throw new PaletteError('the number of colours a palette shows is a whole number, 1 or more');
+    }
+    // As many as the list has, or more, is all of them.
+    if (data.visible < colours.length) visible = data.visible;
+  }
+  return {
+    colours,
+    mode: mode as PaletteMode,
+    change: change as PaletteChange,
+    speed,
+    ...(visible === undefined ? {} : { visible }),
+  };
+}
+
+/** How many slots of a palette show: the effects get no more colours than this. */
+export function shownSlots(palette: PaletteFields): number {
+  return Math.min(palette.visible ?? palette.colours.length, palette.colours.length);
 }
 
 /** The fields as the file and the API have them, which `readPaletteFields` reads back. */
@@ -130,6 +159,7 @@ export function paletteData(palette: PaletteFields): Record<string, unknown> {
     mode: palette.mode,
     change: palette.change,
     speed: palette.speed,
+    ...(palette.visible === undefined ? {} : { visible: palette.visible }),
   };
 }
 
@@ -140,7 +170,7 @@ export function paletteData(palette: PaletteFields): Record<string, unknown> {
 export function colourAt(palette: PaletteFields, slot: number, step: number): Rgbw | null {
   const { colours } = palette;
   const count = colours.length;
-  if (slot < 0 || slot >= count) return null;
+  if (slot < 0 || slot >= shownSlots(palette)) return null;
   if (palette.mode !== 'cycle' || count < 2) return colours[slot] ?? null;
   const whole = Math.floor(step);
   const from = colours[(((slot + whole) % count) + count) % count] ?? null;

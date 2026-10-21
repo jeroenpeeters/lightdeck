@@ -9,6 +9,7 @@ import {
   paint,
   paletteData,
   readPaletteFields,
+  shownSlots,
   startingPalettes,
 } from './palette.js';
 
@@ -207,5 +208,61 @@ describe('the palette book', () => {
     expect(book.list().map((palette) => palette.id)).toEqual(['white', 'rainbow']);
     book.set([FALLBACK_PALETTE]);
     expect(book.get('rainbow')).toBeUndefined();
+  });
+});
+
+describe('a palette that shows fewer colours than it has', () => {
+  const pool = [parseColour('#ff0000'), parseColour('#00ff00'), parseColour('#0000ff')];
+
+  it('is read, and is the same as showing all when it shows as many as it has or more', () => {
+    const data = { colours: ['#ff0000', '#00ff00', '#0000ff'], mode: 'cycle' };
+    expect(readPaletteFields({ ...data, visible: 1 }).visible).toBe(1);
+    expect(readPaletteFields({ ...data, visible: 2 }).visible).toBe(2);
+    expect(readPaletteFields({ ...data, visible: 3 }).visible).toBeUndefined();
+    expect(readPaletteFields({ ...data, visible: 8 }).visible).toBeUndefined();
+    expect(readPaletteFields({ ...data, visible: null }).visible).toBeUndefined();
+    expect(readPaletteFields(data).visible).toBeUndefined();
+  });
+
+  it('refuses what cannot be a number of colours', () => {
+    const data = { colours: ['#ff0000', '#00ff00'] };
+    for (const visible of [0, -1, 1.5, '1', true]) {
+      expect(() => readPaletteFields({ ...data, visible })).toThrow(
+        new PaletteError('the number of colours a palette shows is a whole number, 1 or more'),
+      );
+    }
+  });
+
+  it('is written back only when it is set', () => {
+    const data = { colours: ['#ff0000', '#00ff00'], mode: 'cycle' };
+    expect(paletteData(readPaletteFields(data))).not.toHaveProperty('visible');
+    expect(paletteData(readPaletteFields({ ...data, visible: 1 }))).toHaveProperty('visible', 1);
+  });
+
+  it('counts the slots that show', () => {
+    expect(shownSlots(fields(pool))).toBe(3);
+    expect(shownSlots(fields(pool, { visible: 1 }))).toBe(1);
+    expect(shownSlots(fields(pool, { visible: 7 }))).toBe(3);
+  });
+
+  it('shows one colour that goes through all of them on a cycle, with the others dark', () => {
+    const cycle = fields(pool, { mode: 'cycle', visible: 1 });
+    expect([0, 1, 2, 3].map((step) => colourAt(cycle, 0, step))).toEqual([RED, GREEN, BLUE, RED]);
+    expect(colourAt(cycle, 1, 0)).toBeNull();
+    expect(colourAt(cycle, 2, 5)).toBeNull();
+  });
+
+  it('fades the one colour to the next of the pool', () => {
+    const fade = fields(pool, { mode: 'cycle', change: 'fade', visible: 1 });
+    const half = colourAt(fade, 0, 0.5);
+    expect(half?.red).toBeCloseTo(0.5);
+    expect(half?.green).toBeCloseTo(0.5);
+    expect(colourAt(fade, 1, 0.5)).toBeNull();
+  });
+
+  it('cuts a static palette to its first colours', () => {
+    const still = fields(pool, { visible: 2 });
+    expect(colourAt(still, 1, 0)).toEqual(GREEN);
+    expect(colourAt(still, 2, 0)).toBeNull();
   });
 });

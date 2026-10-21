@@ -295,6 +295,13 @@ function choice(title, keys, choose) {
   };
 }
 
+/** Chooses how many of the first colours show. All is `undefined`, and is sent as null. */
+function chooseShown(card, count) {
+  card.visible = count;
+  draw(card);
+  send(card, { visible: count ?? null });
+}
+
 function buildCard(id) {
   const card = {
     id,
@@ -303,6 +310,7 @@ function buildCard(id) {
     mode: 'static',
     change: 'step',
     speed: 0.25,
+    visible: undefined,
     rows: [],
     busy: 0,
     until: 0,
@@ -363,13 +371,24 @@ function buildCard(id) {
     draw(card);
     send(card, { speed: chosen });
   });
+  // How many of the first colours show; the others are the pool that a cycle draws from.
+  const shown = element('fieldset', 'choice shown');
+  shown.append(element('legend', '', 'Colours shown'));
+  card.shownKeys = [
+    { n: undefined, key: button('pick', 'All', () => chooseShown(card, undefined)) },
+  ];
+  for (let n = 1; n < MAX_COLOURS; n++) {
+    card.shownKeys.push({ n, key: button('pick', String(n), () => chooseShown(card, n)) });
+  }
+  shown.append(...card.shownKeys.map(({ key }) => key));
+  card.shownSet = shown;
   card.showMode = mode.show;
   card.showChange = change.show;
   card.showSpeed = showSpeed;
   card.changeSet = change.fieldset;
   card.speedSet = speed;
   card.pace = element('p', 'hint pace');
-  settings.append(mode.fieldset, change.fieldset, speed, card.pace);
+  settings.append(mode.fieldset, change.fieldset, speed, card.pace, shown);
 
   card.rename = nameRow({
     id: `pal.${id}.name`,
@@ -399,6 +418,7 @@ function adopt(card, palette) {
   card.mode = palette.mode;
   card.change = palette.change;
   card.speed = palette.speed;
+  card.visible = palette.visible;
   // An entry that is off keeps the colour it had, so that Off pressed again brings it back.
   card.entries = palette.colours.map((text, index) => {
     const entry = parseEntry(text);
@@ -427,6 +447,8 @@ function drawStrip(card) {
   card.entries.forEach((entry, index) => {
     const chip = strip.children[index];
     chip.dataset.off = String(entry.off);
+    // The colours after the ones that show are the pool a cycle draws from.
+    chip.dataset.pool = String(index >= (card.visible ?? card.entries.length));
     chip.firstElementChild.style.background = entry.off ? '' : mix(entry);
     chip.firstElementChild.textContent = entry.off ? 'OFF' : '';
     chip.lastElementChild.textContent = String(index + 1);
@@ -476,6 +498,9 @@ function draw(card) {
     card.mode === 'static'
       ? 'Static'
       : `Cycle · ${card.change === 'fade' ? 'Fade' : 'Hard step'} · ${speedText(card.speed)}`;
+  if (card.visible !== undefined) {
+    card.mark.textContent += ` · shows ${card.visible} of ${card.entries.length}`;
+  }
   card.edit.setAttribute('aria-pressed', String(open));
   card.edit.setAttribute('aria-expanded', String(open));
   card.editor.hidden = !open;
@@ -514,6 +539,12 @@ function draw(card) {
   card.showSpeed(card.speed);
   card.changeSet.disabled = !cycles;
   card.speedSet.disabled = !cycles;
+  card.shownSet.hidden = card.entries.length < 2;
+  for (const { n, key } of card.shownKeys) {
+    // Showing as many as the palette has is All.
+    key.hidden = n !== undefined && n >= card.entries.length;
+    key.setAttribute('aria-pressed', String(n === card.visible));
+  }
   card.pace.textContent = cycles
     ? `${card.change === 'fade' ? 'Fades' : 'Cuts'} to the next colour, ${paceOf(card.speed)}.`
     : 'Static: the colours stay as they are. Change and speed are for a cycle.';

@@ -74,7 +74,7 @@
 //   masterPercent(level)                   the master in percent, as the shell shows it
 
 import { changesOnTheWay, merge } from './changes.js';
-import { $, element, percent, slider, speedName } from './ui.js';
+import { $, element, makeDismissible, percent, setNotice, slider, speedName } from './ui.js';
 
 const BEATS_PER_BAR = 4;
 const RETRY_MS = 600;
@@ -167,7 +167,11 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   document.body.prepend(frame.content);
   // A bare page draws its own controls: the bar and the tempo desk stay there, out of sight, so
   // that nothing that works on them has to know. The notice stays, for the page to put where it wants.
-  if (bare) document.body.classList.add('bare-shell');
+  if (bare) {
+    document.body.classList.add('bare-shell');
+    // Over the keys of a tablet a notice has to be able to go: a click on it clears it.
+    makeDismissible($('notice'));
+  }
 
   const id =
     page === 'fixture'
@@ -228,6 +232,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     { name: 'Deck', href: '/deck', here: page === 'deck' },
     { name: 'Palettes', href: '/palettes', here: page === 'palettes' },
     { name: 'Tablet', href: '/tablet', here: page === 'tablet' },
+    { name: 'Moods', href: '/moods', here: page === 'moods' },
     ...initial.fixtures.map((each) => ({
       name: each.label,
       href: `/fixtures/${each.id}`,
@@ -800,8 +805,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     }
     const notice = $('notice');
     notice.dataset.level = level;
-    notice.textContent = text;
-    notice.hidden = text === '';
+    setNotice(notice, text);
   }
 
   function render() {

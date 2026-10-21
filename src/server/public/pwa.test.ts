@@ -85,7 +85,7 @@ describe('the page of the tablet', () => {
 
   it('has a key for full screen, for where the page is not installed', () => {
     expect(html).toContain('id="t-full"');
-    const script = read('tablet.js').toString();
+    const script = read('tabletParts.js').toString();
     expect(script).toContain('requestFullscreen');
     expect(script).toContain("navigationUI: 'hide'");
     // ... and not in the tablet app, which is full screen and says so in its user agent.
@@ -98,7 +98,10 @@ describe('the page of the tablet', () => {
   });
 
   it('registers the service worker, where the browser has one', () => {
-    const script = read('tablet.js').toString();
+    // The pages share it: tablet.js and moods.js both call registerWorker of tabletParts.js.
+    expect(read('tablet.js').toString()).toContain('registerWorker()');
+    expect(read('moods.js').toString()).toContain('registerWorker()');
+    const script = read('tabletParts.js').toString();
     expect(script).toContain("'serviceWorker' in navigator");
     expect(script).toContain("register('/sw.js')");
   });
@@ -157,11 +160,16 @@ describe('the service worker', () => {
     return respond.mock.calls.length === 0 ? undefined : await respond.mock.calls[0]?.[0];
   }
 
-  it('keeps only the pieces of the tablet page', async () => {
+  it('keeps only the pieces of the two pages for a tablet', async () => {
     for (const path of [
       '/tablet',
       '/tablet.js',
       '/tablet.css',
+      '/tabletKit.js',
+      '/tabletParts.js',
+      '/moods',
+      '/moods.js',
+      '/moods.css',
       '/shell.js',
       '/ui.js',
       '/changes.js',

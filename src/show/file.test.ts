@@ -152,9 +152,17 @@ describe('ShowFile', () => {
             fixtures: { spider: { levels: { dimmer: 1 } } },
           },
         ],
+        moods: [],
         looks: [],
       },
-      { id: 'both', label: 'Both', fixtures: ['spider', 'laser'], scenes: [], looks: [] },
+      {
+        id: 'both',
+        label: 'Both',
+        fixtures: ['spider', 'laser'],
+        scenes: [],
+        moods: [],
+        looks: [],
+      },
     ]);
     expect(readFileSync(path, 'utf8')).toBe(HAND_MADE);
   });

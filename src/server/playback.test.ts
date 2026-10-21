@@ -49,7 +49,7 @@ const GROUP = (
   fixtures: string[],
   scenes: unknown[] = [],
   looks: unknown[] = [],
-) => ({ id, label, fixtures, palettes: fixtures.includes('spider'), scenes, looks });
+) => ({ id, label, fixtures, palettes: fixtures.includes('spider'), scenes, moods: [], looks });
 
 const STEP_ONE = `# The show of the evening.
 scenes:
@@ -1639,6 +1639,27 @@ describe('Playback', () => {
       ]);
     });
 
+    it('shows fewer colours than it has when the palette says so, and shows all again with null', () => {
+      rig.playback.addPalette('Pool', {
+        colours: ['#ff0000', '#00ff00', '#0000ff'],
+        mode: 'cycle',
+        visible: 1,
+      });
+      const pool = () => rig.playback.getShow().palettes.find((each) => each.id === 'pool');
+      expect(pool()?.visible).toBe(1);
+      expect(parse(readFileSync(path, 'utf8')).palettes.pool.visible).toBe(1);
+      rig.playback.updatePalette('pool', { visible: 2 });
+      expect(pool()?.visible).toBe(2);
+      // Taking a colour away so that two is all of them: the palette shows all, and the file says nothing.
+      rig.playback.updatePalette('pool', { colours: ['#ff0000', '#00ff00'] });
+      expect(pool()).not.toHaveProperty('visible');
+      rig.playback.updatePalette('pool', { visible: 1 });
+      rig.playback.updatePalette('pool', { visible: null });
+      expect(pool()).not.toHaveProperty('visible');
+      expect(parse(readFileSync(path, 'utf8')).palettes.pool).not.toHaveProperty('visible');
+      expect(() => rig.playback.updatePalette('pool', { visible: 0 })).toThrow(PatchError);
+    });
+
     it('starts with no palette at all when the file says so', () => {
       rig.close();
       writeFileSync(path, 'palettes: {}\n');
@@ -1689,6 +1710,7 @@ describe('Playback', () => {
       expect(look('spider', 'drop')).toEqual({
         id: 'drop',
         label: 'Drop',
+        mood: null,
         lights: 'chase',
         colour: { palette: 'rainbow', speed: null },
         motion: 'low',
@@ -1706,6 +1728,7 @@ describe('Playback', () => {
       expect(look('spider', 'just-colour')).toEqual({
         id: 'just-colour',
         label: 'Just colour',
+        mood: null,
         lights: null,
         colour: { palette: 'rainbow', speed: 4 },
         motion: null,
@@ -1948,6 +1971,64 @@ describe('Playback', () => {
       for (const [act, message] of refused) expect(act).toThrow(new PatchError(message));
     });
 
+    describe('moods', () => {
+      const WITH_MOODS =
+        'groups:\n  spider:\n    fixtures: [spider]\n    scenes:\n      chase:\n        type: lights\n        fixtures:\n          spider: { levels: { dimmer: 1 }, effect: { id: chase } }\n      low:\n        type: motion\n        fixtures:\n          spider: { levels: { tilt1: 0.2 } }\n    moods:\n      calm:\n        label: Calm\n        lights: [chase]\n        colour: [rainbow]\n        motion: [low]\n    looks:\n      drop:\n        mood: calm\n        lights: chase\n        colour: white\n';
+      const open = () => {
+        rig.close();
+        writeFileSync(path, WITH_MOODS);
+        start();
+      };
+
+      it('tells the pages the moods of a group and the mood of a look', () => {
+        open();
+        const spider = group('spider');
+        expect(rig.playback.getShow().problem).toBeNull();
+        expect(spider?.moods).toEqual([
+          { id: 'calm', label: 'Calm', lights: ['chase'], colour: ['rainbow'], motion: ['low'] },
+        ]);
+        expect(spider?.looks.map((each) => each.mood)).toEqual(['calm']);
+      });
+
+      it('keeps the mood of a look when what is on is stored over it', () => {
+        open();
+        rig.playback.playLook('spider', 'drop');
+        rig.playback.setPalette('spider', 'rainbow');
+        rig.playback.storeLookOver('spider', 'drop');
+        expect(group('spider')?.looks[0]).toMatchObject({
+          mood: 'calm',
+          colour: { palette: 'rainbow' },
+        });
+        expect(parse(readFileSync(path, 'utf8')).groups.spider.looks.drop.mood).toBe('calm');
+      });
+
+      it('keeps the moods in the file when the deck writes to it', () => {
+        open();
+        rig.playback.addPalette('Extra');
+        const written = parse(readFileSync(path, 'utf8')).groups.spider;
+        expect(written.moods.calm).toEqual({
+          label: 'Calm',
+          lights: ['chase'],
+          colour: ['rainbow'],
+          motion: ['low'],
+        });
+      });
+
+      it('does not take away a scene or a palette that a mood lists', () => {
+        open();
+        // The look uses the scene "chase" as well, so take that out of the way to reach the mood.
+        rig.playback.removeLook('spider', 'drop');
+        expect(() => rig.playback.remove('spider', 'chase')).toThrow(
+          new PatchError(
+            'the scene "chase" is in the mood "Calm". Take it out of the mood in the show file first',
+          ),
+        );
+        expect(() => rig.playback.removePalette('rainbow')).toThrow(
+          /the mood "Calm" of "spider" lists it/,
+        );
+      });
+    });
+
     describe('written by hand', () => {
       const WITH_LOOK = (extra: string) =>
         `groups:\n  spider:\n    fixtures: [spider]\n    scenes:\n      chase:\n        type: lights\n        fixtures:\n          spider: { levels: { dimmer: 1 }, effect: { id: chase } }\n      low:\n        type: motion\n        fixtures:\n          spider: { levels: { tilt1: 0.2 } }\n    looks:\n${extra}`;
@@ -1973,6 +2054,7 @@ describe('Playback', () => {
           {
             id: 'a',
             label: 'a',
+            mood: null,
             lights: 'chase',
             colour: { palette: 'rainbow', speed: null },
             motion: null,
@@ -1980,6 +2062,7 @@ describe('Playback', () => {
           {
             id: 'b',
             label: 'B',
+            mood: null,
             lights: null,
             colour: { palette: 'white', speed: 0.5 },
             motion: 'low',
@@ -2016,7 +2099,7 @@ describe('Playback', () => {
           /"colour" cannot have "tint"/,
         );
         expect(problem('      a:\n        lights: chase\n        sound: loud\n')).toMatch(
-          /cannot have "sound", only label, lights, colour and motion/,
+          /cannot have "sound", only label, mood, lights, colour and motion/,
         );
         expect(problem('      Big:\n        lights: chase\n')).toMatch(/an id has small letters/);
       });

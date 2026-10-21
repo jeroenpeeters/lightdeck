@@ -27,7 +27,7 @@ import { EventEmitter } from 'node:events';
 import { EffectClock } from '../engine/effectClock.js';
 import { EFFECTS, findEffect, type Rgbw, SPEEDS } from '../engine/effects.js';
 import { findMotionEffect, MOTION_EFFECTS } from '../engine/motionEffects.js';
-import { FALLBACK_PALETTE, PaletteBook, paint } from '../engine/palette.js';
+import { FALLBACK_PALETTE, PaletteBook, paint, shownSlots } from '../engine/palette.js';
 import {
   controlsOf,
   type FixtureProfile,
@@ -592,7 +592,7 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
         beat: read.beat,
         cells: this.layout.cells,
         bars: this.layout.bars,
-        slots: palette.colours.length,
+        slots: shownSlots(palette),
       });
       frame.cells = paint(levels, palette, step);
     }

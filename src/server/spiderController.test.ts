@@ -440,6 +440,19 @@ const PALETTES: Palette[] = [
     speed: 1,
   },
   {
+    id: 'pool',
+    label: 'Pool',
+    colours: [
+      { red: 1, green: 0, blue: 0, white: 0 },
+      { red: 0, green: 1, blue: 0, white: 0 },
+      { red: 0, green: 0, blue: 1, white: 0 },
+    ],
+    mode: 'cycle',
+    change: 'step',
+    speed: 1,
+    visible: 1,
+  },
+  {
     id: 'fader',
     label: 'Fader',
     colours: [
@@ -1021,6 +1034,23 @@ describe('SpiderController effects', () => {
       expect(lens(1)).toEqual([0, 0, 255, 0]); // blue after two
       advance(500);
       expect(lens(1)).toEqual([255, 0, 0, 0]); // and round again
+    });
+
+    it('shows one colour that changes through the pool, with nothing behind it, when the palette shows one', () => {
+      tempo.update({ bpm: 120, sync: true });
+      // Bars puts the first colour on the first bar and the second colour on the second bar.
+      controller.update({
+        levels: { dimmer: 1 },
+        effect: { id: 'bars' },
+        colour: { palette: 'pool' },
+      });
+      expect(lens(1)).toEqual([255, 0, 0, 0]);
+      expect(lens(5)).toEqual([0, 0, 0, 0]);
+      advance(550);
+      expect(lens(1)).toEqual([0, 255, 0, 0]);
+      expect(lens(5)).toEqual([0, 0, 0, 0]);
+      advance(500);
+      expect(lens(1)).toEqual([0, 0, 255, 0]);
     });
 
     it('runs at the pace of the palette, or at the one that is set for this use', () => {

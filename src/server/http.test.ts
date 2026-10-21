@@ -635,22 +635,40 @@ describe('HTTP server', () => {
     },
   ];
   const STARTING = [
-    { id: 'spider', label: 'Spider', fixtures: ['spider'], palettes: true, scenes: [], looks: [] },
+    {
+      id: 'spider',
+      label: 'Spider',
+      fixtures: ['spider'],
+      palettes: true,
+      scenes: [],
+      moods: [],
+      looks: [],
+    },
     {
       id: 'spider-2',
       label: 'Spider 2',
       fixtures: ['spider-2'],
       palettes: true,
       scenes: [],
+      moods: [],
       looks: [],
     },
-    { id: 'laser', label: 'Laser', fixtures: ['laser'], palettes: false, scenes: [], looks: [] },
+    {
+      id: 'laser',
+      label: 'Laser',
+      fixtures: ['laser'],
+      palettes: false,
+      scenes: [],
+      moods: [],
+      looks: [],
+    },
     {
       id: 'all',
       label: 'All',
       fixtures: ['spider', 'spider-2', 'laser'],
       palettes: true,
       scenes: [],
+      moods: [],
       looks: [],
     },
   ];
@@ -873,6 +891,7 @@ describe('HTTP server', () => {
         fixtures: ['spider', 'spider-2'],
         palettes: true,
         scenes: [{ id: 'warm', label: 'Warm', type: 'lights', fixtures: [] }],
+        moods: [],
         looks: [],
       },
     ]);
@@ -1008,13 +1027,13 @@ describe('HTTP server', () => {
       `event: playback\ndata: {"groups":{"spider":${nothing},"spider-2":${nothing},"laser":${warm},"all":${nothing}}}`,
     );
     expect(text).toContain(
-      '{"id":"laser","label":"Laser","fixtures":["laser"],"palettes":false,"scenes":[{"id":"warm","label":"Warm","type":"lights","fixtures":[]}],"looks":[]}',
+      '{"id":"laser","label":"Laser","fixtures":["laser"],"palettes":false,"scenes":[{"id":"warm","label":"Warm","type":"lights","fixtures":[]}],"moods":[],"looks":[]}',
     );
 
     await post('/api/groups', { label: 'Front', fixtures: ['spider'] });
     await readUntil(`"all":${nothing},"front":${nothing}}}`);
     expect(text).toContain(
-      '{"id":"front","label":"Front","fixtures":["spider"],"palettes":true,"scenes":[],"looks":[]}',
+      '{"id":"front","label":"Front","fixtures":["spider"],"palettes":true,"scenes":[],"moods":[],"looks":[]}',
     );
     abort.abort();
   });
@@ -1088,7 +1107,7 @@ describe('HTTP server', () => {
       [
         '/api/palettes/white/update',
         { tint: 1 },
-        'a palette cannot change "tint", only label, colours, mode, change and speed',
+        'a palette cannot change "tint", only label, colours, mode, change, speed and visible',
       ],
       ['/api/palettes/nope/delete', {}, 'there is no palette called "nope"'],
       ['/api/palettes/rainbow/delete', {}, 'the palette "Rainbow" is in use: it is on in "Spider"'],
@@ -1118,6 +1137,7 @@ describe('HTTP server', () => {
       {
         id: 'drop',
         label: 'Drop',
+        mood: null,
         lights: 'chase',
         colour: { palette: 'rainbow', speed: 0.5 },
         motion: 'low',

@@ -6,6 +6,8 @@
  *   GET  /palettes                    the palettes of the show: their colours, and how they move
  *   GET  /tablet                      a page for a tablet at the side of the dance floor: the
  *                                     tap, the master, the looks of the spider and little else
+ *   GET  /moods                       the other page for a tablet: the looks of a group by mood, with
+ *                                     what goes with the mood in a tray under them (Jeroen, 2026-10-20)
  *   GET  /listen                      the listen page: the microphone of the laptop, which
  *                                     the browser only gives to localhost
  *   GET  /simulator                   the simulator: the fixtures drawn in 3D from the bytes
@@ -41,7 +43,8 @@
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
  *   POST /api/sequence                `start`, the id of a sequence of the show, which sets its first
  *                                     step at once and goes on on the bars (it stops the one that
- *                                     runs), or `stop: true`. The fixtures stay as they are
+ *                                     runs), `next: true` (the next step now) or `stop: true`. A
+ *                                     stop leaves the fixtures as they are
  *   POST /api/playback                `group` with one of: `scene`, the id of the scene of
  *                                     lights or motion to set the fixtures of the group to
  *                                     (only the properties of the type of the scene);
@@ -54,7 +57,7 @@
  *                                     `#rrggbbww` or `off`, eight at most), `mode` (static
  *                                     or cycle), `change` (step or fade) and `speed`: makes a
  *                                     palette of the show, and answers with its `id`
- *   POST /api/palettes/<id>/update    any of `label`, `colours`, `mode`, `change`, `speed`
+ *   POST /api/palettes/<id>/update    any of `label`, `colours`, `mode`, `change`, `speed`, `visible`
  *   POST /api/palettes/<id>/delete    refused while the palette is on in a group or a look
  *                                     uses it
  *   POST /api/groups                  `label` and `fixtures`, the ids of its fixtures:
@@ -121,6 +124,7 @@ const DECK = '/deck';
 const LISTEN = '/listen';
 const PALETTES = '/palettes';
 const TABLET = '/tablet';
+const MOODS = '/moods';
 const INSTALL = '/install';
 const SIMULATOR = '/simulator';
 
@@ -408,12 +412,15 @@ export function createHttpServer(options: HttpOptions): Server {
 
     if (req.method === 'POST' && path === '/api/sequence') {
       const { change } = split(await readJson(req));
-      const { start, stop } = readObject(change, 'the sequence', ['start', 'stop']);
-      if ((start === undefined) === (stop === undefined)) {
-        throw new PatchError('say which sequence to start, or stop: true');
+      const { start, stop, next } = readObject(change, 'the sequence', ['start', 'stop', 'next']);
+      if ([start, stop, next].filter((given) => given !== undefined).length !== 1) {
+        throw new PatchError('say which sequence to start, or stop: true, or next: true');
       }
       if (start !== undefined) {
         rig.sequencer.start(start);
+      } else if (next !== undefined) {
+        if (next !== true) throw new PatchError('"next" can only be true');
+        rig.sequencer.next();
       } else {
         if (stop !== true) throw new PatchError('"stop" can only be true');
         rig.sequencer.stop();
@@ -539,6 +546,7 @@ export function createHttpServer(options: HttpOptions): Server {
       if (path === LISTEN && sendFile(req, res, '/listen.html')) return;
       if (path === PALETTES && sendFile(req, res, '/palettes.html')) return;
       if (path === TABLET && sendFile(req, res, '/tablet.html')) return;
+      if (path === MOODS && sendFile(req, res, '/moods.html')) return;
       if (path === INSTALL && sendFile(req, res, '/install.html')) return;
       if (path === SIMULATOR && sendFile(req, res, '/simulator.html')) return;
       const page = FIXTURE_PAGE.exec(path);

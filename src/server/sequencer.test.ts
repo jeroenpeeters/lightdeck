@@ -197,6 +197,39 @@ describe('Sequencer', () => {
     expect(playback.calls).toEqual(['spider:calm@sequence']);
   });
 
+  it('sets the next step at once when asked, counts its bars from there, and starts over after the last', () => {
+    playback.sequences = [
+      seq('a', [
+        step(4, { spider: 'drop' }),
+        step(2, { spider: 'calm' }),
+        step(1, { spider: 'low' }),
+      ]),
+    ];
+    sequencer.start('a');
+    playback.calls = [];
+    sequencer.next();
+    expect(playback.calls).toEqual(['spider:calm@sequence']);
+    expect(sequencer.getState()).toMatchObject({ step: 1, barsLeft: 2 });
+    sequencer.next();
+    sequencer.next();
+    expect(playback.calls).toEqual([
+      'spider:calm@sequence',
+      'spider:low@sequence',
+      'spider:drop@sequence',
+    ]);
+    expect(sequencer.getState()).toMatchObject({ step: 0, barsLeft: 4 });
+    // The bars go on being counted from the bar lines.
+    goTo(1);
+    expect(sequencer.getState().barsLeft).toBe(3);
+  });
+
+  it('does nothing for a next when no sequence runs', () => {
+    playback.sequences = [seq('a', [step(1, { spider: 'drop' })])];
+    sequencer.next();
+    expect(playback.calls).toEqual([]);
+    expect(states).toEqual([]);
+  });
+
   it('is stopped by a stop and leaves the fixtures as they are', () => {
     playback.sequences = [seq('a', [step(1, { spider: 'drop' }), step(1, { spider: 'calm' })])];
     sequencer.start('a');

@@ -21,32 +21,40 @@
     <!-- The shell keeps its bar and its tempo desk out of sight. The notice of the shell goes below. -->
     <main class="tablet" id="console">
       <header class="t-top">
-        <div class="t-keys">
-          <a class="t-main" href="/deck">Main view</a>
-          <!-- Full screen without the bar of the browser. Hidden where the browser cannot, or when the app already is. -->
-          <button type="button" class="t-main t-full" id="t-full" aria-pressed="false" hidden>
-            Fullscreen
+        <!-- A small menu with the keys that are seldom needed and the lamps of the links. Its key has one dot: green, or red when a link is down. -->
+        <div class="t-menu-wrap">
+          <button
+            type="button"
+            class="t-menu-key"
+            id="t-menu-key"
+            aria-expanded="false"
+            aria-controls="t-menu"
+            aria-label="Menu"
+          >
+            <span class="t-dot" id="t-dot" data-state="unknown" aria-hidden="true"></span>
+            <span>Menu</span>
           </button>
+          <div class="t-menu" id="t-menu" hidden>
+            <a class="t-main" href="/deck">Main view</a>
+            <a class="t-main" href="/moods">Moods</a>
+            <!-- Full screen without the bar of the browser. Hidden where the browser cannot, or when the app already is. -->
+            <button type="button" class="t-main t-full" id="t-full" aria-pressed="false" hidden>
+              Fullscreen
+            </button>
+            <ul class="links t-links" aria-label="Connection">
+              <li class="link" id="t-link-bridge" data-state="unknown">
+                <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
+              </li>
+              <li class="link" id="t-link-device" data-state="unknown">
+                <span class="lamp" aria-hidden="true"></span><span class="link-text">LR512</span>
+              </li>
+              <li class="link" id="t-link-hass" data-state="unknown" hidden>
+                <span class="lamp" aria-hidden="true"></span><span class="link-text">Home Assistant</span>
+              </li>
+            </ul>
+          </div>
         </div>
-        <ul class="links t-links" aria-label="Connection">
-          <li class="link" id="t-link-bridge" data-state="unknown">
-            <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
-          </li>
-          <li class="link" id="t-link-device" data-state="unknown">
-            <span class="lamp" aria-hidden="true"></span><span class="link-text">LR512</span>
-          </li>
-          <li class="link" id="t-link-hass" data-state="unknown" hidden>
-            <span class="lamp" aria-hidden="true"></span><span class="link-text">Home Assistant</span>
-          </li>
-        </ul>
-        <button type="button" class="blackout t-blackout" id="t-blackout" aria-pressed="false">
-          Blackout
-        </button>
-      </header>
-
-      <!-- The left column in landscape: the tempo and the masters. -->
-      <div class="t-left">
-      <section class="panel t-tempo" aria-label="Tempo">
+        <!-- The bpm, the beat lamps and the Tap key stand in the top row, between the menu and the blackout. -->
         <div class="t-bpm-row">
           <p class="t-bpm">
             <span class="t-bpm-name" id="t-bpm-name">BPM</span>
@@ -58,19 +66,22 @@
             <li></li>
             <li></li>
           </ol>
+          <button type="button" class="t-tap" id="t-tap">Tap</button>
         </div>
-        <button type="button" class="t-tap" id="t-tap">Tap</button>
-      </section>
+        <!-- The masters stand in the top row, beside the blackout. -->
+        <section class="t-masters" aria-label="Masters">
+          <div class="grand-master" id="t-master"></div>
+          <fieldset class="choice master-speed" id="t-speed">
+            <legend>Master speed</legend>
+          </fieldset>
+        </section>
+        <button type="button" class="blackout t-blackout" id="t-blackout" aria-pressed="false">
+          Blackout
+        </button>
+      </header>
 
-      <section class="panel t-master" aria-label="Masters">
-        <div class="grand-master" id="t-master"></div>
-        <fieldset class="choice master-speed" id="t-speed">
-          <legend>Master speed</legend>
-        </fieldset>
-      </section>
-      </div>
 
-      <!-- The right column in landscape: the sequences on top, then the looks of the spider, then the lamps of the room. -->
+      <!-- The sequences on top, then the looks of the spider, then the lamps of the room. -->
       <div class="t-right">
       <!-- The sequences of the show: only the names. A press starts one, and a press on the one that runs stops it. -->
       <section class="panel t-seq" id="t-seq" aria-labelledby="t-seq-title" hidden>

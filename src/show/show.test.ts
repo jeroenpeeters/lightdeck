@@ -83,15 +83,15 @@ describe('readGroupFixtures', () => {
 describe('startingGroups', () => {
   it('has a group for every fixture, and then one for all of them', () => {
     expect(startingGroups([SPIDER, LASER])).toEqual([
-      { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [], looks: [] },
-      { id: 'laser', label: 'Laser', fixtures: ['laser'], scenes: [], looks: [] },
-      { id: 'all', label: 'All', fixtures: ['spider', 'laser'], scenes: [], looks: [] },
+      { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [], moods: [], looks: [] },
+      { id: 'laser', label: 'Laser', fixtures: ['laser'], scenes: [], moods: [], looks: [] },
+      { id: 'all', label: 'All', fixtures: ['spider', 'laser'], scenes: [], moods: [], looks: [] },
     ]);
   });
 
   it('has no separate group for all with one fixture', () => {
     expect(startingGroups([SPIDER])).toEqual([
-      { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [], looks: [] },
+      { id: 'spider', label: 'Spider', fixtures: ['spider'], scenes: [], moods: [], looks: [] },
     ]);
     expect(startingGroups([])).toEqual([]);
   });
@@ -170,6 +170,7 @@ describe('readShow', () => {
             fixtures: { laser: { raw: { mode: 95 } } },
           },
         ],
+        moods: [],
         looks: [],
       },
       {
@@ -185,9 +186,10 @@ describe('readShow', () => {
           },
           { id: 'dark', label: 'dark', type: 'motion', fixtures: {} },
         ],
+        moods: [],
         looks: [],
       },
-      { id: 'bare', label: 'bare', fixtures: ['spider'], scenes: [], looks: [] },
+      { id: 'bare', label: 'bare', fixtures: ['spider'], scenes: [], moods: [], looks: [] },
     ]);
   });
 
@@ -281,6 +283,7 @@ describe('readShow', () => {
         label: 'Spider',
         fixtures: ['spider'],
         scenes: [{ id: 'warm', label: 'warm', type: 'lights', fixtures: {} }],
+        moods: [],
         looks: [],
       },
     ]);
@@ -334,7 +337,7 @@ describe('readShow', () => {
       [{ groups: { spider: 'spider' } }, 'group "spider" must have a label, fixtures and scenes'],
       [
         { groups: { spider: { fixtures: ['spider'], colour: 'red' } } },
-        'group "spider" cannot have "colour", only label, fixtures, scenes and looks',
+        'group "spider" cannot have "colour", only label, fixtures, scenes, moods and looks',
       ],
       [
         { groups: { spider: { fixtures: ['spider'], label: '' } } },
@@ -517,7 +520,7 @@ describe('readShow', () => {
         ],
         [
           { blue: { colours: ['#0000ff'], tint: 1 } },
-          'palette "blue": a palette cannot have "tint", only label, colours, mode, change and speed',
+          'palette "blue": a palette cannot have "tint", only label, colours, mode, change, speed and visible',
         ],
         [{ blue: { colours: ['#0000ff'], label: '' } }, 'palette "blue": a palette needs a name'],
         [
@@ -528,6 +531,110 @@ describe('readShow', () => {
       for (const [palettes, message] of wrong) {
         expect(() => readShow({ palettes, groups: {} }, RIG)).toThrow(new ShowError(message));
       }
+    });
+  });
+
+  describe('moods', () => {
+    const SCENES = {
+      chase: { type: 'lights' },
+      pulse: { type: 'lights' },
+      lean: { type: 'motion' },
+    };
+    const readGroup = (group: Record<string, unknown>) =>
+      readShow({ groups: { spider: { fixtures: ['spider'], scenes: SCENES, ...group } } }, RIG)
+        .groups[0];
+    const moods = (listed: unknown) => readGroup({ moods: listed })?.moods;
+
+    it('reads what goes together, in the order of the file, and has none when there are none', () => {
+      expect(
+        moods(
+          new Map([
+            ['minimal', { label: 'Minimal', lights: ['pulse', 'chase'], colour: ['white'] }],
+            ['moving', { motion: ['lean'] }],
+          ]),
+        ),
+      ).toEqual([
+        {
+          id: 'minimal',
+          label: 'Minimal',
+          lights: ['pulse', 'chase'],
+          colour: ['white'],
+          motion: [],
+        },
+        { id: 'moving', label: 'moving', lights: [], colour: [], motion: ['lean'] },
+      ]);
+      expect(moods(undefined)).toEqual([]);
+      expect(moods(null)).toEqual([]);
+    });
+
+    it('puts a look in a mood of its group', () => {
+      const group = readGroup({
+        moods: { minimal: { lights: ['chase'] } },
+        looks: { drop: { mood: 'minimal', lights: 'chase' }, plain: { lights: 'pulse' } },
+      });
+      expect(group?.looks.map((look) => look.mood)).toEqual(['minimal', undefined]);
+    });
+
+    it('says what is wrong with a mood', () => {
+      const wrong: [unknown, string][] = [
+        [[], 'group "spider": "moods" must be a list of moods by their id'],
+        [
+          { 'Big one': { lights: ['chase'] } },
+          'mood "Big one" of group "spider": an id has small letters, digits and dashes only',
+        ],
+        [
+          { calm: 'chase' },
+          'mood "calm" of group "spider" must have a label and what goes together',
+        ],
+        [
+          { calm: { sound: 'loud' } },
+          'mood "calm" of group "spider" cannot have "sound", only label, lights, colour and motion',
+        ],
+        [
+          { calm: {} },
+          'mood "calm" of group "spider": a mood lists at least one scene of lights, palette or scene of motion',
+        ],
+        [
+          { calm: { lights: 'chase' } },
+          'mood "calm" of group "spider": "lights" must be a list of ids',
+        ],
+        [
+          { calm: { lights: ['nope'] } },
+          'mood "calm" of group "spider": there is no scene called "nope" in this group',
+        ],
+        [
+          { calm: { lights: ['lean'] } },
+          'mood "calm" of group "spider": the scene "lean" is motion, and not lights',
+        ],
+        [
+          { calm: { motion: ['chase'] } },
+          'mood "calm" of group "spider": the scene "chase" is lights, and not motion',
+        ],
+        [
+          { calm: { colour: ['nope'] } },
+          'mood "calm" of group "spider": there is no palette called "nope"',
+        ],
+        [
+          { calm: { lights: ['chase', 'chase'] } },
+          'mood "calm" of group "spider": "chase" is in "lights" twice',
+        ],
+      ];
+      for (const [listed, message] of wrong) {
+        expect(() => moods(listed), message).toThrow(new ShowError(message));
+      }
+    });
+
+    it('refuses a look in a mood the group does not have', () => {
+      expect(() =>
+        readGroup({
+          moods: { calm: { lights: ['chase'] } },
+          looks: { drop: { mood: 'storm', lights: 'chase' } },
+        }),
+      ).toThrow(
+        new ShowError(
+          'look "drop" of group "spider": there is no mood called "storm" in this group',
+        ),
+      );
     });
   });
 
@@ -575,7 +682,7 @@ describe('readShow', () => {
         [{ drop: 'chase' }, 'look "drop" of group "spider" must have a label and what it sets'],
         [
           { drop: { sound: 'loud' } },
-          'look "drop" of group "spider" cannot have "sound", only label, lights, colour and motion',
+          'look "drop" of group "spider" cannot have "sound", only label, mood, lights, colour and motion',
         ],
         [
           { drop: {} },

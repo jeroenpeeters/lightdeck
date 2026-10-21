@@ -11,7 +11,10 @@
  * holds the properties of its type that fixture should have, in the form the controller of
  * the fixture gives and takes; a fixture of the group that it does not name has those
  * properties at rest. A look is a key that sets a light scene, a palette and a motion scene of
- * its group together; it names them and holds no copy of them. The show knows fixtures by
+ * its group together; it names them and holds no copy of them. A mood is a list of the scenes
+ * and palettes of the group that go together (a minimal mood, a stormy one): a look can be in
+ * one, and the tablet then offers the rest of the mood to vary the look with. A mood changes
+ * nothing by itself. The show knows fixtures by
  * their id only. Which fixtures there are, and whether one of them can take a part, is handed
  * to it.
  *
@@ -41,9 +44,16 @@
  *             spider:
  *               levels: { dimmer: 1 }
  *               effect: { id: chase }
+ *       moods:                        # what fits together, for the tablet (Jeroen, 2026-10-20)
+ *         minimal:
+ *           label: Minimal
+ *           lights: [chase, pulse]        # scenes of lights
+ *           colour: [sunset, ice]         # palettes
+ *           motion: [scissor-slow]        # scenes of motion
  *       looks:
  *         drop:
  *           label: Drop
+ *           mood: minimal                 # optional: the mood the look is in
  *           lights: chase
  *           colour: { palette: sunset, speed: 0.25 }
  *           motion: scissor-slow
@@ -110,11 +120,30 @@ export interface Look {
   id: string;
   /** What the operator calls it. */
   label: string;
+  /** Id of a mood of the group this look is in, or absent. */
+  mood?: string;
   /** Id of a scene of the group of type lights. */
   lights?: string;
   colour?: LookColour;
   /** Id of a scene of the group of type motion. */
   motion?: string;
+}
+
+/**
+ * Scenes and palettes of a group that go together, to vary a look with: a minimal mood, a stormy
+ * one. It sets nothing, it only says what the tablet offers while a look of the mood is on.
+ */
+export interface Mood {
+  /** Names the mood in the file and in the API. Its own within its group. */
+  id: string;
+  /** What the operator calls it. */
+  label: string;
+  /** Ids of scenes of the group of type lights. */
+  lights: string[];
+  /** Ids of palettes of the show. */
+  colour: string[];
+  /** Ids of scenes of the group of type motion. */
+  motion: string[];
 }
 
 export interface Group {
@@ -126,6 +155,8 @@ export interface Group {
   fixtures: string[];
   /** In the order of the file. */
   scenes: Scene[];
+  /** In the order of the file. */
+  moods: Mood[];
   /** In the order of the file. */
   looks: Look[];
 }
@@ -304,6 +335,7 @@ export function startingGroups(fixtures: readonly ShowFixture[]): Group[] {
     label: tidyLabel(label).slice(0, MAX_LABEL).trim() || id,
     fixtures: [id],
     scenes: [],
+    moods: [],
     looks: [],
   }));
   if (fixtures.length > 1) {
@@ -313,6 +345,7 @@ export function startingGroups(fixtures: readonly ShowFixture[]): Group[] {
       label: 'All',
       fixtures: ids,
       scenes: [],
+      moods: [],
       looks: [],
     });
   }
@@ -444,6 +477,63 @@ function sceneOfType(group: Group, id: unknown, type: StoredType): string {
   return id;
 }
 
+/** A list of ids in a mood, without one twice. */
+function readMoodList(value: unknown, key: string, check: (id: string) => string): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new PatchError(`"${key}" must be a list of ids`);
+  const ids: string[] = [];
+  for (const entry of value) {
+    const id = check(entry as string);
+    if (ids.includes(id)) throw new PatchError(`"${id}" is in "${key}" twice`);
+    ids.push(id);
+  }
+  return ids;
+}
+
+/** The moods of a group: scenes of its own and palettes of the show that go together. */
+function readMoods(listed: unknown, group: Group, palettes: readonly Palette[]): Mood[] {
+  if (listed === null || listed === undefined) return [];
+  if (!isObject(listed)) {
+    throw new ShowError(`group "${group.id}": "moods" must be a list of moods by their id`);
+  }
+
+  const moods: Mood[] = [];
+  for (const [id, mood] of entries(listed)) {
+    const where = `mood "${id}" of group "${group.id}"`;
+    if (!ID.test(id)) throw new ShowError(`${where}: ${ID_RULE}`);
+    if (!isObject(mood)) throw new ShowError(`${where} must have a label and what goes together`);
+    const extra = Object.keys(mood).find(
+      (key) => !['label', 'lights', 'colour', 'motion'].includes(key),
+    );
+    if (extra !== undefined) {
+      throw new ShowError(`${where} cannot have "${extra}", only label, lights, colour and motion`);
+    }
+    try {
+      const read: Mood = {
+        id,
+        label: mood.label === undefined ? id : readLabel(mood.label, 'mood'),
+        lights: readMoodList(mood.lights, 'lights', (each) => sceneOfType(group, each, 'lights')),
+        colour: readMoodList(mood.colour, 'colour', (each) => {
+          if (typeof each !== 'string' || !palettes.some((palette) => palette.id === each)) {
+            throw new PatchError(`there is no palette called "${String(each)}"`);
+          }
+          return each;
+        }),
+        motion: readMoodList(mood.motion, 'motion', (each) => sceneOfType(group, each, 'motion')),
+      };
+      if (read.lights.length + read.colour.length + read.motion.length === 0) {
+        throw new PatchError(
+          'a mood lists at least one scene of lights, palette or scene of motion',
+        );
+      }
+      moods.push(read);
+    } catch (error) {
+      throw new ShowError(`${where}: ${message(error)}`);
+    }
+  }
+  return moods;
+}
+
 function readLooks(listed: unknown, group: Group, palettes: readonly Palette[]): Look[] {
   if (listed === null || listed === undefined) return [];
   if (!isObject(listed)) {
@@ -461,16 +551,24 @@ function readLooks(listed: unknown, group: Group, palettes: readonly Palette[]):
     }
     if (!isObject(look)) throw new ShowError(`${where} must have a label and what it sets`);
     const extra = Object.keys(look).find(
-      (key) => !['label', 'lights', 'colour', 'motion'].includes(key),
+      (key) => !['label', 'mood', 'lights', 'colour', 'motion'].includes(key),
     );
     if (extra !== undefined) {
-      throw new ShowError(`${where} cannot have "${extra}", only label, lights, colour and motion`);
+      throw new ShowError(
+        `${where} cannot have "${extra}", only label, mood, lights, colour and motion`,
+      );
     }
     try {
       const read: Look = {
         id,
         label: look.label === undefined ? id : readLabel(look.label, 'look'),
       };
+      if (look.mood !== undefined) {
+        if (typeof look.mood !== 'string' || !group.moods.some((each) => each.id === look.mood)) {
+          throw new PatchError(`there is no mood called "${String(look.mood)}" in this group`);
+        }
+        read.mood = look.mood;
+      }
       if (look.lights !== undefined) read.lights = sceneOfType(group, look.lights, 'lights');
       if (look.colour !== undefined) read.colour = readLookColour(look.colour, palettes);
       if (look.motion !== undefined) read.motion = sceneOfType(group, look.motion, 'motion');
@@ -495,14 +593,19 @@ function readGroups(listed: unknown, known: KnownFixtures, palettes: readonly Pa
     if (!ID.test(id)) throw new ShowError(`${where}: ${ID_RULE}`);
     if (!isObject(group)) throw new ShowError(`${where} must have a label, fixtures and scenes`);
     const extra = Object.keys(group).find(
-      (key) => key !== 'label' && key !== 'fixtures' && key !== 'scenes' && key !== 'looks',
+      (key) =>
+        key !== 'label' &&
+        key !== 'fixtures' &&
+        key !== 'scenes' &&
+        key !== 'moods' &&
+        key !== 'looks',
     );
     if (extra !== undefined) {
       throw new ShowError(
-        `${where} cannot have "${extra}", only label, fixtures, scenes and looks`,
+        `${where} cannot have "${extra}", only label, fixtures, scenes, moods and looks`,
       );
     }
-    const read: Group = { id, label: id, fixtures: [], scenes: [], looks: [] };
+    const read: Group = { id, label: id, fixtures: [], scenes: [], moods: [], looks: [] };
     try {
       if (group.label !== undefined) read.label = readLabel(group.label, 'group');
       read.fixtures = readGroupFixtures(group.fixtures ?? [], known.fixtures);
@@ -510,6 +613,7 @@ function readGroups(listed: unknown, known: KnownFixtures, palettes: readonly Pa
       throw new ShowError(`${where}: ${message(error)}`);
     }
     read.scenes = readScenes(group.scenes, read, known, ` of ${where}`);
+    read.moods = readMoods(group.moods, read, palettes);
     read.looks = readLooks(group.looks, read, palettes);
     groups.push(read);
   }

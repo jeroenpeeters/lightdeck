@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f1114" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lightdeck" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <title>Moods · Lightdeck</title>
+    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+    <!-- The keys, the top row and the tempo are those of the other page for a tablet. -->
+    <link rel="stylesheet" href="/tablet.css" />
+    <link rel="stylesheet" href="/moods.css" />
+  </head>
+  <body>
+    <!--
+      The other page for a tablet: the looks of a group stand in columns by mood, and under them a
+      tray holds what goes with the mood that is on, to vary the look with. The ids that start with
+      t- are those of tablet.html, so that tabletParts.js draws the same tempo, masters, links,
+      sequences and lamps of the room here.
+    -->
+    <main class="moods" id="console">
+      <header class="t-top">
+        <!-- A small menu with the keys that are seldom needed and the lamps of the links. Its key has one dot: green, or red when a link is down. -->
+        <div class="t-menu-wrap">
+          <button
+            type="button"
+            class="t-menu-key"
+            id="t-menu-key"
+            aria-expanded="false"
+            aria-controls="t-menu"
+            aria-label="Menu"
+          >
+            <span class="t-dot" id="t-dot" data-state="unknown" aria-hidden="true"></span>
+            <span>Menu</span>
+          </button>
+          <div class="t-menu" id="t-menu" hidden>
+            <a class="t-main" href="/deck">Main view</a>
+            <a class="t-main" href="/tablet">Tablet</a>
+            <!-- Full screen without the bar of the browser. Hidden where the browser cannot, or when the app already is. -->
+            <button type="button" class="t-main t-full" id="t-full" aria-pressed="false" hidden>
+              Fullscreen
+            </button>
+            <ul class="links t-links" aria-label="Connection">
+              <li class="link" id="t-link-bridge" data-state="unknown">
+                <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
+              </li>
+              <li class="link" id="t-link-device" data-state="unknown">
+                <span class="lamp" aria-hidden="true"></span><span class="link-text">LR512</span>
+              </li>
+              <li class="link" id="t-link-hass" data-state="unknown" hidden>
+                <span class="lamp" aria-hidden="true"></span><span class="link-text">Home Assistant</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <!-- The bpm, the beat lamps and the Tap key stand in the top row, between the menu and the blackout. -->
+        <div class="t-bpm-row">
+          <p class="t-bpm">
+            <span class="t-bpm-name" id="t-bpm-name">BPM</span>
+            <span class="t-bpm-value" id="t-bpm"></span>
+          </p>
+          <ol class="t-beats" id="t-beats" aria-hidden="true">
+            <li></li>
+            <li></li>
+            <li></li>
+            <li></li>
+          </ol>
+          <button type="button" class="t-tap" id="t-tap">Tap</button>
+        </div>
+        <!-- The masters stand in the top row, beside the blackout. -->
+        <section class="t-masters" aria-label="Masters">
+          <div class="grand-master" id="t-master"></div>
+          <fieldset class="choice master-speed" id="t-speed">
+            <legend>Master speed</legend>
+          </fieldset>
+        </section>
+        <button type="button" class="blackout t-blackout" id="t-blackout" aria-pressed="false">
+          Blackout
+        </button>
+      </header>
+
+
+      <section class="m-stage" aria-label="Looks">
+        <!--
+          The parts of the evening: a key per sequence of the show (Begin, Midden, Techno ...). A press
+          starts it, and the looks change by themselves on the bars. Next skips to the next step, Hold
+          stops the sequence and leaves the lights as they are.
+        -->
+        <section class="m-phases" id="m-phases" aria-label="Parts of the evening" hidden>
+          <div class="m-phase-keys" id="m-phase-keys"></div>
+          <div class="m-phase-side">
+            <button type="button" class="m-key" id="m-next">Next</button>
+            <button type="button" class="m-key" id="m-hold">Hold</button>
+          </div>
+          <p class="m-phase-status" id="m-phase-status"></p>
+        </section>
+
+        <!--
+          What is shown below, in one row when it fits: a key per group that has looks (it says which look
+          is on), and which moods of the group are shown: one, or All of them side by side.
+        -->
+        <div class="m-selectors">
+          <nav class="m-tabs" id="m-tabs" aria-label="Groups"></nav>
+          <nav class="m-moodbar" id="m-moodbar" aria-label="Moods" hidden></nav>
+        </div>
+
+        <!-- The lamps of the room: their dimmer and a switch per rail. Only on the tab of the room. -->
+        <section class="m-room" id="t-room" aria-label="Room lights" hidden>
+          <div class="t-room-dimmer" id="t-room-dimmer"></div>
+          <fieldset class="t-rails" id="t-rails" aria-label="Rails" hidden></fieldset>
+        </section>
+
+        <!-- The looks of the group: those of one mood, or a column per mood. -->
+        <div class="m-looks">
+          <p class="t-none" id="m-looks-none" hidden></p>
+          <div class="m-moods" id="m-moods"></div>
+        </div>
+
+        <!-- What goes with the mood of the look that is on: always there, never over the looks. -->
+        <section class="panel m-tray" id="m-tray" aria-labelledby="m-tray-title">
+          <div class="m-tray-head">
+            <h2 id="m-tray-title">Vary</h2>
+            <p class="m-tray-hint" id="m-tray-hint"></p>
+            <button type="button" class="m-key" id="m-all" aria-expanded="false" aria-controls="m-sheet">
+              All
+            </button>
+            <button type="button" class="m-key" id="m-off">Off</button>
+          </div>
+          <section class="m-lane" data-lane="colour" id="m-lane-colour" aria-label="Colour">
+            <span class="m-lane-name" id="m-name-colour">Colour</span>
+            <div class="m-keys" id="m-keys-colour"></div>
+          </section>
+          <section class="m-lane" data-lane="lights" id="m-lane-lights" aria-label="Lights">
+            <span class="m-lane-name" id="m-name-lights">Effect</span>
+            <div class="m-keys" id="m-keys-lights"></div>
+          </section>
+          <section class="m-lane" data-lane="motion" id="m-lane-motion" aria-label="Motion">
+            <span class="m-lane-name" id="m-name-motion">Movement</span>
+            <div class="m-keys" id="m-keys-motion"></div>
+          </section>
+        </section>
+
+        <!-- Everything of the group, for what no mood has. It lies over the looks, and is closed by its key. -->
+        <section class="panel m-sheet" id="m-sheet" aria-label="All of the group" hidden>
+          <div class="m-sheet-head">
+            <h2 id="m-sheet-title">All</h2>
+            <button type="button" class="m-key" id="m-close">Close</button>
+          </div>
+          <section class="m-lane" data-lane="colour" id="m-sheet-lane-colour">
+            <span class="m-lane-name" id="m-sheet-name-colour">Colour</span>
+            <div class="m-keys" id="m-sheet-keys-colour"></div>
+          </section>
+          <section class="m-lane" data-lane="lights" id="m-sheet-lane-lights">
+            <span class="m-lane-name" id="m-sheet-name-lights">Effect</span>
+            <div class="m-keys" id="m-sheet-keys-lights"></div>
+          </section>
+          <section class="m-lane" data-lane="motion" id="m-sheet-lane-motion">
+            <span class="m-lane-name" id="m-sheet-name-motion">Movement</span>
+            <div class="m-keys" id="m-sheet-keys-motion"></div>
+          </section>
+        </section>
+      </section>
+
+      <!-- Last, and over the bottom of the screen: a notice takes no room, so no key moves when it comes. -->
+      <div class="notices-stack" id="notices">
+        <p class="notice" id="t-notice" data-level="alarm" role="alert" hidden></p>
+      </div>
+    </main>
+
+    <script type="module" src="/moods.js"></script>
+  </body>
+</html>
