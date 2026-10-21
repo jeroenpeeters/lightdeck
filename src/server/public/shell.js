@@ -44,7 +44,8 @@
 //   shell.on('fixtures', (id) => ...)      the state of some fixture changed (every page hears it)
 //   shell.on('frame', ({ dmx, beat }) => ...)           what is being sent, while it animates
 //   shell.rkbx                             what rekordbox says through rkbx_link: { status,
-//                                          following, bpm, beats, port }
+//                                          following, bpm, beats, port, breakdown: { enabled,
+//                                          phrase, active } }
 //   shell.on('rkbx', (rkbx) => ...)        what rekordbox says changed
 //   shell.on('change', () => ...)          blackout, master or tempo changed
 //   shell.notes(() => [{ text, level, urgent }])        what the page has to say
@@ -113,6 +114,7 @@ const FRAME = `
         <button type="button" class="pick" id="source-manual" aria-pressed="true">By hand</button>
         <button type="button" class="pick" id="source-rekordbox" aria-pressed="false">Rekordbox</button>
       </fieldset>
+      <button type="button" class="pick" id="breakdown" aria-pressed="false">Idle in breakdown</button>
       <p class="heard" id="heard" data-state="off"></p>
     </div>
     <div class="sliders" id="tempo-sliders"></div>
@@ -341,6 +343,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     ? sender(`/api/fixtures/${id}/update`, { leave: onTheWay.leave, drop: onTheWay.drop })
     : undefined;
   const sendBlackout = sender('/api/blackout');
+  const sendRkbx = sender('/api/rkbx');
   // A tap on the beat is only right at the moment it was made.
   const sendTempo = sender('/api/tempo', { again: ({ sync: _sync, ...kept }) => kept });
   const sendMaster = sender('/api/master', {
@@ -559,6 +562,14 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     return tempo.source === 'manual' ? patch : { ...patch, source: 'manual' };
   }
 
+  /** Whether the effects are idle while rekordbox is in a breakdown. Off at every start. */
+  function setBreakdown(on) {
+    rkbx = { ...rkbx, breakdown: { ...rkbx.breakdown, enabled: on } };
+    sendRkbx({ breakdown: on });
+    render();
+    tell('rkbx', rkbx);
+  }
+
   function setMaster(level) {
     master = Math.min(1, Math.max(0, level));
     sendMaster({ master });
@@ -591,6 +602,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   $('source-rekordbox').addEventListener('click', () => {
     if (tempo.source !== 'rekordbox') setTempo({ source: 'rekordbox' });
   });
+  $('breakdown').addEventListener('click', () => setBreakdown(!rkbx.breakdown.enabled));
   $('tempo-down').addEventListener('click', () => nudgeTempo(-1));
   $('tempo-up').addEventListener('click', () => nudgeTempo(1));
 
@@ -705,6 +717,9 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     if (!rkbx.beats && tempo.running) {
       return `rkbx_link sends the bpm but no beats, so the beat is where it was. Turn on osc.msg.master/beat/trigger with 1 in its config.`;
     }
+    if (rkbx.breakdown.enabled && rkbx.beats && rkbx.breakdown.phrase === undefined) {
+      return 'Idle in breakdown is on, but no phrase is coming. Turn on osc.msg.master/phrase in rkbx_link, or this track has no phrase analysis.';
+    }
     return '';
   }
 
@@ -714,14 +729,21 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     if (rkbx.port === undefined) return { text: 'Not listening for rkbx_link', state: 'down' };
     if (rkbx.status === 'waiting') return { text: 'Waiting for rkbx_link', state: 'down' };
     const bpm = rkbx.bpm === undefined ? '' : ` · ${rkbx.bpm.toFixed(1)} bpm`;
-    if (rkbx.beats) return { text: `Rekordbox${bpm}`, state: 'beat' };
-    if (!tempo.running) return { text: 'No beat from Rekordbox · effects idle', state: 'silent' };
+    // The phrase is shown whether idling for it is on or not: it is how to see whether it fits the music.
+    const { phrase, active } = rkbx.breakdown;
+    const named = phrase === undefined ? '' : ` · ${phrase}`;
+    if (!rkbx.beats && !tempo.running)
+      return { text: 'Rekordbox stopped · effects idle', state: 'silent' };
+    if (active && !tempo.running)
+      return { text: `Breakdown${named} · effects idle`, state: 'silent' };
+    if (rkbx.beats) return { text: `Rekordbox${bpm}${named}`, state: 'beat' };
     return { text: `Rekordbox${bpm}, no beats`, state: 'music' };
   }
 
   function renderSource() {
     $('source-manual').setAttribute('aria-pressed', String(tempo.source === 'manual'));
     $('source-rekordbox').setAttribute('aria-pressed', String(tempo.source === 'rekordbox'));
+    $('breakdown').setAttribute('aria-pressed', String(rkbx.breakdown.enabled));
     const { text, state } = rkbxLine();
     const line = $('heard');
     line.textContent = text;

@@ -591,6 +591,10 @@ legend {
 .source-keys .pick {
   min-width: 6.5rem;
 }
+/* The breakdown key stands apart from the two that say who sets the tempo. */
+.tempo-source > .pick {
+  flex: none;
+}
 .heard {
   flex: 1;
   min-width: 0;

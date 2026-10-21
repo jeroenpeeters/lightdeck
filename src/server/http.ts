@@ -22,6 +22,9 @@
  *                                     fixture animates, `frame` with the bytes being sent
  *                                     and the beat
  *   POST /api/tempo                   `bpm`, `rate`, `sync`, `source` (`manual` or `rekordbox`)
+ *   POST /api/rkbx                    `breakdown`: true or false, whether the effects are idle while
+ *                                     rekordbox is in a breakdown phrase (Down or Bridge). Off at
+ *                                     every start
  *   POST /api/output                  how the output is made: `maxFps`, the most frames per
  *                                     second (default 25), and `leadMs`, how far ahead of
  *                                     the beat it is made. Answers with both
@@ -348,6 +351,13 @@ export function createHttpServer(options: HttpOptions): Server {
     if (req.method === 'POST' && path === '/api/output') {
       const { change } = split(await readJson(req));
       sendJson(res, 200, { ok: true, output: rig.setOutput(change) });
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/rkbx') {
+      const { change } = split(await readJson(req));
+      rig.rkbx.update(change);
+      sendJson(res, 200, { ok: true });
       return;
     }
 

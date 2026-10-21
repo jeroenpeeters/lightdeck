@@ -484,6 +484,18 @@ describe('HTTP server', () => {
       expect(got.rkbx.following).toBe(false);
     });
 
+    it('turns the breakdown on and off, and refuses what it does not know', async () => {
+      expect((await state()).rkbx.breakdown.enabled).toBe(false);
+      expect((await post('/api/rkbx', { breakdown: true })).status).toBe(200);
+      expect((await state()).rkbx.breakdown.enabled).toBe(true);
+      expect((await post('/api/rkbx', { breakdown: false })).status).toBe(200);
+      expect((await state()).rkbx.breakdown.enabled).toBe(false);
+      const wrong = await post('/api/rkbx', { breakdown: 'yes' });
+      expect(wrong.status).toBe(400);
+      expect(await error(wrong)).toMatch(/true or false/);
+      expect((await post('/api/rkbx', { colour: 'red' })).status).toBe(400);
+    });
+
     it('refuses a source it does not know, and changes nothing', async () => {
       const response = await post('/api/tempo', { source: 'link' });
       expect(response.status).toBe(400);
