@@ -135,7 +135,7 @@ describe('Engine', () => {
   });
 
   it('follows the beat when it is moved by what is heard', () => {
-    tempo.update({ source: 'audio' });
+    tempo.update({ source: 'rekordbox' });
     run(600);
     tempo.follow({ beatAt: clock + 30, snap: true });
     const before = fixture.renders.length;
@@ -163,7 +163,7 @@ describe('Engine', () => {
   });
 
   it('gives the fixtures one last frame when the music stops, and goes quiet', () => {
-    tempo.update({ source: 'audio' });
+    tempo.update({ source: 'rekordbox' });
     const own = new FakeFixture();
     own.wantsFrames = () => tempo.isRunning();
     engine.close();
@@ -187,7 +187,7 @@ describe('Engine', () => {
   });
 
   it('makes a frame at once when the tempo brings an effect back, not at the next point', () => {
-    tempo.update({ source: 'audio' });
+    tempo.update({ source: 'rekordbox' });
     const own = new FakeFixture();
     own.wantsFrames = () => tempo.isRunning();
     engine.close();

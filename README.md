@@ -157,8 +157,7 @@ Go to `http://<computer-ip>:8080` on the tablet. The console has:
   https (or the Chrome flag `unsafely-treat-insecure-origin-as-secure` set to the address of the
   computer), the tablet page has a **Fullscreen** key in the top row that hides the bar of the
   browser while the page is open.
-- **Listen** (`/listen`): open it on the computer with the microphone, and the tempo can follow
-  the music. **Simulator** (`/simulator`): the 3D view.
+- **Simulator** (`/simulator`): the 3D view.
 - On every page: the tempo with tap and nudge, the speed of the effects, the blackout,
   and lamps that show whether the bridge and the LR512 are connected.
 
@@ -180,8 +179,8 @@ As a flag, or as an environment variable.
 | `--rig` | `RIG_FILE` | `rig.yaml` | The rig file, with the lamps of the room. No file, no lamps |
 | `--max-fps` | `MAX_FPS` | `25` | The most DMX frames per second to send, 1 to 60 |
 | `--lead-ms` | `LEAD_MS` | `0` | How far ahead of the beat the output is made |
-| `--tempo` | `TEMPO_SOURCE` | `manual` | Who sets the tempo at the start: `manual` or `audio` |
-| `--audio-record` | `AUDIO_RECORD_DIR` | off | Write the sound of the listen page to WAV files there, to tune the listening |
+| `--tempo` | `TEMPO_SOURCE` | `manual` | Who sets the tempo at the start: `manual` or `rekordbox` (the OSC of rkbx_link) |
+| `--rkbx` | `RKBX_PORT` | `4460` | The UDP port for the OSC of rkbx_link, or `off`. `pnpm rkbx-monitor` shows what arrives |
 | `--port` | `PORT` | `8080` | Port of the console |
 | `--host` | `HOST` | `0.0.0.0` | Address to listen on |
 

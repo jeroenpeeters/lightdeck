@@ -98,16 +98,16 @@ describe('Tempo that follows the music', () => {
     seen.length = 0;
     tempo = new Tempo({ now: () => clock });
     tempo.update({ bpm: 120, sync: true });
-    tempo.update({ source: 'audio' });
+    tempo.update({ source: 'rekordbox' });
     tempo.on('tempo', (state, origin) => seen.push({ state, origin }));
   });
 
-  it('takes the listening as its source, and the effects run until it says they should not', () => {
-    expect(tempo.getState().source).toBe('audio');
+  it('takes rekordbox as its source, and the effects run until it says they should not', () => {
+    expect(tempo.getState().source).toBe('rekordbox');
     expect(tempo.isRunning()).toBe(true);
   });
 
-  it('ignores what listening finds while the source is by hand', () => {
+  it('ignores what rekordbox says while the source is by hand', () => {
     tempo.update({ source: 'manual' });
     seen.length = 0;
     tempo.follow({ bpm: 140, running: false, beatAt: clock + 100 });
@@ -118,7 +118,9 @@ describe('Tempo that follows the music', () => {
   it('can be told to stop and to run again, and says who told it', () => {
     tempo.follow({ running: false });
     expect(tempo.isRunning()).toBe(false);
-    expect(seen).toEqual([{ state: expect.objectContaining({ running: false }), origin: 'audio' }]);
+    expect(seen).toEqual([
+      { state: expect.objectContaining({ running: false }), origin: 'rekordbox' },
+    ]);
     tempo.follow({ running: true });
     expect(tempo.isRunning()).toBe(true);
   });
@@ -156,8 +158,8 @@ describe('Tempo that follows the music', () => {
     expect(tempo.getState().bpm).toBe(60);
   });
 
-  it('moves the beats a part of the way to a beat that was heard late', () => {
-    // 500 ms per beat. A beat was heard at 4.1 beats: the count is 0.1 beat ahead.
+  it('moves the beats a part of the way to a beat that came late', () => {
+    // 500 ms per beat. A beat came at 4.1 beats: the count is 0.1 beat ahead.
     clock += 2000;
     tempo.follow({ beatAt: 1000 + 2050 });
     // 0.1 of a beat is 50 ms, and a quarter of that is 12.5 ms later.
@@ -168,12 +170,12 @@ describe('Tempo that follows the music', () => {
     clock += 2000;
     tempo.follow({ beatAt: 1000 + 2050, snap: true });
     expect(tempo.getBeat()).toBeCloseTo(4 - 0.1, 2);
-    clock += 50 - 0; // at the heard beat the count is whole
+    clock += 50 - 0; // at the beat that came the count is whole
     expect(Math.abs(tempo.getBeat() - Math.round(tempo.getBeat()))).toBeLessThan(0.001);
   });
 
   it('never moves the beats by more than half a beat, so the bar stays the bar', () => {
-    // Heard just over half a beat after the count's beat: the nearest whole beat is the next one.
+    // Came just over half a beat after the count's beat: the nearest whole beat is the next one.
     tempo.follow({ beatAt: 1000 + 4 * 500 + 260, snap: true });
     // The count at that moment is now 5, not 4: the bar did not move a whole beat.
     clock = 1000 + 4 * 500 + 260;
@@ -186,7 +188,7 @@ describe('Tempo that follows the music', () => {
   });
 
   it('keeps the bar that was tapped: one stays one', () => {
-    // A tap makes beat one now. The listening then finds beats a little off, and the count stays.
+    // A tap makes beat one now. Rekordbox then sends beats a little off, and the count stays.
     tempo.update({ sync: true });
     clock += 2000;
     tempo.follow({ beatAt: clock - 20, snap: true });
@@ -238,7 +240,7 @@ describe('Tempo grid, taps and lead', () => {
     expect(tempo.epoch).toBe(first);
     tempo.update({ sync: true });
     expect(tempo.epoch).toBe(first + 1);
-    tempo.update({ source: 'audio' });
+    tempo.update({ source: 'rekordbox' });
     tempo.follow({ beatAt: clock + 30, snap: true, bpm: 131 });
     expect(tempo.epoch).toBe(first + 1);
     tempo.update({ bpm: 120, sync: true });

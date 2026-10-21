@@ -10,7 +10,6 @@
  *               arrives) or `chase` (a step on every beat)
  *   --seconds   how long to run, default 30
  *   --bpm       the tempo, default 126
- *   --audio 1   with the microphone feed analysed on the same event loop
  *   --laser 1   with the laser effect running too
  *
  * It prints the frame rate, how many frames equal the one before, how far from the ideal grid a
@@ -26,13 +25,11 @@ import { join } from 'node:path';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { Rig } from '../../src/server/rig.js';
 import { Lr512BridgeClient } from '../../src/outputs/lr512/bridgeClient.js';
-import { toInt16 } from '../../src/inputs/audio/wav.js';
-import { kickTrack } from '../../src/inputs/audio/synth.js';
 import { type Frame, identicalShare, intervalStats, show } from './analyze.js';
 
 const arg = (name: string, d: string) => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1]! : d; };
 const where = arg('where', 'controller'), effect = arg('effect', 'chase'), seconds = Number(arg('seconds', '30'));
-const audio = arg('audio', '0') === '1', bpm = Number(arg('bpm', '126')), laser = arg('laser', '0') === '1';
+const bpm = Number(arg('bpm', '126')), laser = arg('laser', '0') === '1';
 const beatMs = 60000 / bpm;
 const wall = () => performance.timeOrigin + performance.now();
 
@@ -69,23 +66,13 @@ if (laser) rig.find('laser')!.controller.update({ raw: { mode: 95 }, effect: { i
 const t = performance.now(); const beat = rig.tempo.getBeat();
 const originPerf = t - beat * beatMs;
 
-let pushTimer: NodeJS.Timeout | undefined;
-if (audio) {
-  const rate = 48000, sig = kickTrack(126, { seconds: 12, rate }), pcm = toInt16(sig);
-  let index = 0; const per = rate / 10;
-  pushTimer = setInterval(() => {
-    const from = (index % sig.length), bytes = pcm.subarray(from * 2, (from + per) * 2);
-    rig.mic.push({ bytes: new Uint8Array(bytes), sampleRate: rate, index, feed: 'perf' }); index += per;
-  }, 100);
-}
-
 const loop = monitorEventLoopDelay({ resolution: 1 }); loop.enable();
 let gcCount = 0, gcMs = 0, gcMax = 0;
 const gc = new PerformanceObserver((list) => { for (const e of list.getEntries()) { gcCount++; gcMs += e.duration; gcMax = Math.max(gcMax, e.duration); } }); gc.observe({ entryTypes: ['gc'] });
 const cpu0 = process.cpuUsage(), w0 = performance.now(), heap0 = process.memoryUsage().heapUsed;
 await new Promise((r) => setTimeout(r, seconds * 1000));
 const cpu = process.cpuUsage(cpu0), wallMs = performance.now() - w0;
-loop.disable(); if (pushTimer) clearInterval(pushTimer);
+loop.disable();
 const heap1 = process.memoryUsage().heapUsed;
 
 let frames: Frame[] = own, origin = originPerf;
@@ -130,7 +117,7 @@ if (where === 'receiver') for (const at of outliers) {
   console.log(`  handed over  ${near(handed)}`);
   console.log(`  received     ${near(frames)}`);
 }
-console.log(`\n== ${where}, effect ${effect}, ${bpm} bpm, ${seconds} s${audio ? ', with the microphone feed analysed' : ''}${laser ? ', laser effect running' : ''} ==`);
+console.log(`\n== ${where}, effect ${effect}, ${bpm} bpm, ${seconds} s${laser ? ', laser effect running' : ''} ==`);
 const iv = intervalStats(frames.slice(40));
 console.log(`  frames ${iv.frames}  (${iv.perSecond.toFixed(1)} per second)   identical to the one before: ${(identicalShare(frames) * 100).toFixed(0)}%`);
 console.log(`  frame interval   mean ${iv.mean.toFixed(1)}  sd ${iv.sd.toFixed(1)}  p50 ${iv.p50.toFixed(1)}  p95 ${iv.p95.toFixed(1)}  p99 ${iv.p99.toFixed(1)}  min ${iv.min.toFixed(1)}  max ${iv.max.toFixed(1)} ms;  >40 ms: ${(iv.over40 * 100).toFixed(1)}%  <10 ms: ${(iv.under10 * 100).toFixed(1)}%`);

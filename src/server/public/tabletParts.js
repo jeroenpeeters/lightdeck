@@ -294,6 +294,8 @@ export function renderChange() {
   fader.refresh();
   showSpeed(shell.tempo.rate);
   $('t-bpm').textContent = String(Math.round(shell.tempo.bpm));
+  // Rekordbox sends the beat, so there is nothing to tap.
+  $('t-tap').hidden = shell.tempo.source === 'rekordbox';
   const on = shell.blackout;
   const key = $('t-blackout');
   key.setAttribute('aria-pressed', String(on));

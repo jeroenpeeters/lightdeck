@@ -376,7 +376,7 @@ describe('LaserController effects', () => {
     expect(laser.wantsFrames()).toBe(false);
     laser.update({ raw: { mode: MANUAL } });
     expect(laser.wantsFrames()).toBe(true);
-    tempo.update({ source: 'audio' });
+    tempo.update({ source: 'rekordbox' });
     tempo.follow({ running: false });
     expect(laser.wantsFrames()).toBe(false);
     tempo.follow({ running: true });
@@ -423,7 +423,7 @@ describe('LaserController effects', () => {
   });
 
   it('is idle while the tempo does not run: it shows what is set, and is neither opened nor closed', () => {
-    tempo.update({ source: 'audio', sync: true });
+    tempo.update({ source: 'rekordbox', sync: true });
     laser.update({ raw: { mode: MANUAL }, effect: { id: 'patterns' } });
     advance(BEAT_MS * 2 + 25);
     expect(ch(output, LASER_AT + 1)).toBe(12); // pattern 3
@@ -442,7 +442,7 @@ describe('LaserController effects', () => {
   });
 
   it('is idle in the tempo even when something is changed meanwhile, and comes back after', () => {
-    tempo.update({ source: 'audio', sync: true });
+    tempo.update({ source: 'rekordbox', sync: true });
     laser.update({ raw: { mode: MANUAL, program: 57 }, effect: { id: 'patterns' } });
     tempo.follow({ running: false });
     laser.update({ raw: { size: 100 } });

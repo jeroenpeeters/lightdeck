@@ -50,7 +50,7 @@ describe('Sequencer', () => {
   /** Moves to just before a bar line. */
   const goBefore = (bars: number) => run(origin + bars * BAR - 5 - Date.now());
   const stopMusic = () => {
-    tempo.update({ source: 'audio' });
+    tempo.update({ source: 'rekordbox' });
     tempo.follow({ running: false });
   };
   const startMusic = () => tempo.follow({ running: true });

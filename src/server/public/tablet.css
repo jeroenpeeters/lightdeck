@@ -306,6 +306,9 @@ a {
   -webkit-user-select: none;
   user-select: none;
 }
+.t-tap[hidden] {
+  display: none;
+}
 .t-tap:active {
   background: var(--key-down);
 }

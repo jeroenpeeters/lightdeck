@@ -14,16 +14,14 @@
  * Events: `fixture` (id, state, dmx, origin; `dmx` is undefined for a fixture that is not
  * on DMX), `frame` (id, dmx, beat),
  * `tempo` (state, beat, origin), `blackout` (blackout, origin), `master` (level, origin),
- * `status` (status), `show` (summary), `playback` (state), `audio` (what is heard),
+ * `status` (status), `show` (summary), `playback` (state), `rkbx` (what rekordbox says),
  * `output` (how often and how far ahead of the beat the output is made).
  */
 
 import { EventEmitter } from 'node:events';
 import { PaletteBook } from '../engine/palette.js';
-import { BrowserMicSource } from '../inputs/audio/browserMic.js';
-import { type AudioState, Follower } from '../inputs/audio/follower.js';
-import { FeedRecorder } from '../inputs/audio/recorder.js';
-import type { AudioSettings } from '../inputs/audio/settings.js';
+import { RkbxFollower, type RkbxState } from '../inputs/rkbx/follower.js';
+import { OscReceiver } from '../inputs/rkbx/receiver.js';
 import type { HassOutput, HassStatus } from '../outputs/hass/types.js';
 import type { BridgeStatus } from '../outputs/lr512/bridgeClient.js';
 import { Patch, type UniverseOutput } from '../outputs/patch.js';
@@ -107,13 +105,11 @@ export interface RigOptions {
   show?: string;
   /** Monotonic clock in milliseconds. Tests pass their own. */
   now?: () => number;
-  /** Where the sound the console hears is written to, as WAV files. Off without it. */
-  audioRecordDir?: string;
   /** Who sets the tempo at the start. Default `manual`. */
   tempoSource?: TempoSource;
-  /** Settings of the listening that differ from the defaults. */
-  audioSettings?: Partial<AudioSettings>;
-  /** For the one-line messages of the recorder. */
+  /** The UDP port to listen on for the OSC of rkbx_link. Without it nothing listens. */
+  rkbxPort?: number;
+  /** For the one-line messages about rekordbox. */
   log?: (message: string) => void;
 }
 
@@ -124,10 +120,10 @@ export class Rig extends EventEmitter {
   /** The one clock that makes the frames of the fixtures that animate. */
   readonly engine: Engine;
   private readonly output: UniverseOutput;
-  /** The microphone of the browser on the laptop. The listen page posts its sound to it. */
-  readonly mic: BrowserMicSource;
-  /** What is heard through the microphone, and what the tempo does with it. */
-  readonly audio: Follower;
+  /** The OSC that rkbx_link sends from the computer that runs rekordbox. */
+  private readonly oscReceiver: OscReceiver;
+  /** What rekordbox says, and what the tempo does with it. */
+  readonly rkbx: RkbxFollower;
   readonly fixtures: readonly RigFixture[];
   readonly playback: Playback;
   /** Runs a sequence of the show: the looks of the groups changing on the bars. */
@@ -139,7 +135,6 @@ export class Rig extends EventEmitter {
   /** The grand master. It starts at full every time, and the show file does not keep it. */
   private master = 1;
   private link: LinkStatus;
-  private readonly recorder: FeedRecorder | undefined;
 
   /** Throws when a fixture is unknown, named twice, or does not fit where it is put. */
   constructor(options: RigOptions) {
@@ -232,22 +227,25 @@ export class Rig extends EventEmitter {
       if (isAnimated(controller)) this.engine.add(controller);
     }
 
-    this.mic = new BrowserMicSource(options.now ? { now: options.now } : {});
-    this.mic.start();
-    this.audio = new Follower({
-      tempo: this.tempo,
-      source: this.mic,
-      ...(options.audioSettings ? { settings: options.audioSettings } : {}),
+    this.oscReceiver = new OscReceiver({
+      ...(options.rkbxPort === undefined ? {} : { port: options.rkbxPort }),
+      ...(options.now ? { now: options.now } : {}),
     });
-    this.audio.on('audio', (state: AudioState) => this.emit('audio', state));
-    if (options.tempoSource) this.tempo.update({ source: options.tempoSource });
-    if (options.audioRecordDir !== undefined) {
-      this.recorder = new FeedRecorder({
-        directory: options.audioRecordDir,
-        ...(options.log ? { log: options.log } : {}),
-      });
-      this.recorder.attach(this.mic);
+    this.rkbx = new RkbxFollower({ tempo: this.tempo, receiver: this.oscReceiver });
+    this.rkbx.on('rkbx', (state: RkbxState) => this.emit('rkbx', state));
+    if (options.rkbxPort !== undefined) {
+      // Lightdeck runs without rekordbox: a port that is taken is said once, and not fatal.
+      this.oscReceiver
+        .start()
+        .then(() => {
+          options.log?.(`rekordbox: listening for rkbx_link on UDP ${this.oscReceiver.port}`);
+          this.rkbx.refresh();
+        })
+        .catch((error: Error) =>
+          options.log?.(`rekordbox: cannot listen on UDP ${options.rkbxPort}: ${error.message}`),
+        );
     }
+    if (options.tempoSource) this.tempo.update({ source: options.tempoSource });
 
     for (const fixture of fixtures) {
       const { id, controller } = fixture;
@@ -376,10 +374,8 @@ export class Rig extends EventEmitter {
     this.sequencer.close();
     this.playback.close();
     for (const { controller } of this.fixtures) controller.close();
-    this.recorder?.detach();
-    this.audio.close();
-    this.mic.stop();
-    this.mic.removeAllListeners();
+    this.rkbx.close();
+    this.oscReceiver.stop();
     this.tempo.removeAllListeners();
     this.removeAllListeners();
   }

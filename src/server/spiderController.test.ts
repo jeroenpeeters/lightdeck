@@ -588,7 +588,7 @@ describe('SpiderController effects', () => {
     expect(controller.wantsFrames()).toBe(false);
     controller.update({ effect: { id: 'chase' } });
     expect(controller.wantsFrames()).toBe(true);
-    tempo.update({ source: 'audio' });
+    tempo.update({ source: 'rekordbox' });
     tempo.follow({ running: false });
     expect(controller.wantsFrames()).toBe(false);
     tempo.follow({ running: true });
@@ -949,7 +949,7 @@ describe('SpiderController effects', () => {
 
   it('is idle while the tempo does not run: the fixture shows what is set under the effect', () => {
     const reds = () => Array.from({ length: 8 }, (_, i) => ch(output, 7 + i * 4) ?? 0);
-    tempo.update({ source: 'audio', bpm: 120, sync: true });
+    tempo.update({ source: 'rekordbox', bpm: 120, sync: true });
     controller.update({
       levels: { dimmer: 1, red1: 0.5 },
       effect: { id: 'chase' },

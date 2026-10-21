@@ -625,6 +625,14 @@ legend {
   gap: 0.5rem;
   align-items: center;
 }
+/* No Tap key while Rekordbox sends the beat: the nudges and the lamps close up. */
+.tap-row[data-tap="false"] {
+  grid-template-columns: auto auto minmax(0, 1fr);
+}
+.tap[hidden],
+.hint[hidden] {
+  display: none;
+}
 .nudge {
   min-width: var(--touch);
   padding: 0 0.75rem;

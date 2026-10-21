@@ -15,7 +15,7 @@
 //
 //   const shell = await start();          null when the page cannot be shown
 //   const shell = await start({ page: 'deck' });        for a page about no fixture, such as
-//                                          the deck or the listen page
+//                                          the deck or the palettes
 //   const shell = await start({ page: 'tablet', bare: true });   a page that draws its own
 //                                          controls: the shell then shows no bar and no tempo
 //                                          desk, and a page asks for what it needs below
@@ -43,10 +43,9 @@
 //                                          that shows something of a fixture that is not its own
 //   shell.on('fixtures', (id) => ...)      the state of some fixture changed (every page hears it)
 //   shell.on('frame', ({ dmx, beat }) => ...)           what is being sent, while it animates
-//   shell.audio                            what lightdeck hears and the settings of the
-//                                          listening: { source, following, heard, bpm,
-//                                          confidence, settings }
-//   shell.on('audio', (audio) => ...)      what is heard, or its settings, changed
+//   shell.rkbx                             what rekordbox says through rkbx_link: { status,
+//                                          following, bpm, beats, port }
+//   shell.on('rkbx', (rkbx) => ...)        what rekordbox says changed
 //   shell.on('change', () => ...)          blackout, master or tempo changed
 //   shell.notes(() => [{ text, level, urgent }])        what the page has to say
 //   shell.refresh()                        show the notes again
@@ -112,14 +111,14 @@ const FRAME = `
     <div class="tempo-source">
       <fieldset class="source-keys" aria-label="Who sets the tempo">
         <button type="button" class="pick" id="source-manual" aria-pressed="true">By hand</button>
-        <button type="button" class="pick" id="source-audio" aria-pressed="false">Auto</button>
+        <button type="button" class="pick" id="source-rekordbox" aria-pressed="false">Rekordbox</button>
       </fieldset>
       <p class="heard" id="heard" data-state="off"></p>
     </div>
     <div class="sliders" id="tempo-sliders"></div>
     <div class="desk-tap">
-      <p class="hint">Your last tap is beat one of the bar.</p>
-      <div class="tap-row">
+      <p class="hint" id="tap-hint">Your last tap is beat one of the bar.</p>
+      <div class="tap-row" id="tap-row">
         <button type="button" class="key nudge" id="tempo-down" aria-label="Tempo down by one">−1</button>
         <button type="button" class="key tap" id="tap">Tap the beat</button>
         <button type="button" class="key nudge" id="tempo-up" aria-label="Tempo up by one">+1</button>
@@ -154,11 +153,6 @@ function alarm(text) {
 /** The part of what the server says about the tempo that this page keeps. */
 function readTempo(from) {
   return { bpm: from.bpm, rate: from.rate, source: from.source, running: from.running };
-}
-
-/** Where the listen page is, as it is written on the laptop. */
-function listenAddress() {
-  return `localhost${location.port ? `:${location.port}` : ''}/listen`;
 }
 
 export async function start({ page = 'fixture', bare = false } = {}) {
@@ -196,8 +190,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   const states = new Map(initial.fixtures.map((each) => [each.id, each.state]));
   const limits = initial.tempo;
   let tempo = readTempo(initial.tempo);
-  /** What lightdeck hears through the microphone, and what it does with it. */
-  let audio = initial.audio;
+  /** What rekordbox says through rkbx_link, and whether the tempo follows it. */
+  let rkbx = initial.rkbx;
   let blackout = initial.blackout;
   let master = initial.master;
   /** How many changes of the master by this page the event stream has yet to tell of. */
@@ -221,7 +215,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     playback: [],
     sequence: [],
     fixtures: [],
-    audio: [],
+    rkbx: [],
     status: [],
   };
   const tell = (name, message) => {
@@ -238,7 +232,6 @@ export async function start({ page = 'fixture', bare = false } = {}) {
       href: `/fixtures/${each.id}`,
       here: each.id === id,
     })),
-    { name: 'Listen', href: '/listen', here: page === 'listen' },
     { name: 'Simulator', href: '/simulator', here: false },
   ];
   for (const each of pages) {
@@ -267,7 +260,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   async function reload() {
     const fresh = await (await fetch('/api/state')).json();
     tempo = readTempo(fresh.tempo);
-    audio = fresh.audio;
+    rkbx = fresh.rkbx;
     setBeat(fresh.tempo.beat);
     blackout = fresh.blackout;
     master = fresh.master;
@@ -282,7 +275,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     tell('playback', playback);
     tell('sequence', sequence);
     render();
-    tell('audio', audio);
+    tell('rkbx', rkbx);
     tell('change');
   }
 
@@ -460,10 +453,10 @@ export async function start({ page = 'fixture', bare = false } = {}) {
       render();
       tell('change');
     });
-    on('audio', (message) => {
-      audio = message;
+    on('rkbx', (message) => {
+      rkbx = message;
       render();
-      tell('audio', audio);
+      tell('rkbx', rkbx);
     });
     on('blackout', (message) => {
       if (message.origin === clientId) return;
@@ -548,8 +541,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     if (taps.length > TAPS_KEPT) taps.shift();
 
     const patch = { sync: true };
-    // Auto has the tempo: a tap only says where beat one is.
-    if (taps.length >= 2 && tempo.source !== 'audio') {
+    // Rekordbox has the tempo: a tap only says where beat one is.
+    if (taps.length >= 2 && tempo.source === 'manual') {
       const interval = (now - taps[0]) / (taps.length - 1);
       patch.bpm = Math.min(limits.max, Math.max(limits.min, Math.round(60_000 / interval)));
     }
@@ -561,9 +554,9 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     setTempo(byHand({ bpm: Math.min(limits.max, Math.max(limits.min, bpm)) }));
   }
 
-  /** A tempo set by hand is the tempo, so it takes the tempo back from Auto. */
+  /** A tempo set by hand is the tempo, so it takes the tempo back from Rekordbox. */
   function byHand(patch) {
-    return tempo.source === 'audio' ? { ...patch, source: 'manual' } : patch;
+    return tempo.source === 'manual' ? patch : { ...patch, source: 'manual' };
   }
 
   function setMaster(level) {
@@ -595,8 +588,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   $('source-manual').addEventListener('click', () => {
     if (tempo.source !== 'manual') setTempo({ source: 'manual' });
   });
-  $('source-audio').addEventListener('click', () => {
-    if (tempo.source !== 'audio') setTempo({ source: 'audio' });
+  $('source-rekordbox').addEventListener('click', () => {
+    if (tempo.source !== 'rekordbox') setTempo({ source: 'rekordbox' });
   });
   $('tempo-down').addEventListener('click', () => nudgeTempo(-1));
   $('tempo-up').addEventListener('click', () => nudgeTempo(1));
@@ -699,63 +692,45 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     };
   }
 
-  /** Auto is on and nothing is listening: the tempo holds, and the operator has to do something. */
-  function audioNote() {
-    if (tempo.source !== 'audio' || page === 'listen') return '';
-    const where = listenAddress();
-    if (audio.source.status === 'lost') {
-      return `The microphone page stopped sending. The tempo runs on at ${Math.round(tempo.bpm)}. Open ${where} on the laptop and press Start listening.`;
+  /** Rekordbox has the tempo and something is missing: the tempo holds, and the operator has to do something. */
+  function rkbxNote() {
+    if (tempo.source !== 'rekordbox') return '';
+    const bpm = Math.round(tempo.bpm);
+    if (rkbx.port === undefined) {
+      return `Rekordbox has the tempo, but lightdeck is not listening for rkbx_link (the port is off or taken). The tempo stays at ${bpm}.`;
     }
-    if (audio.source.status === 'waiting') {
-      return `Auto is on, but no microphone page is sending. The tempo stays at ${Math.round(tempo.bpm)}. Open ${where} on the laptop and press Start listening.`;
+    if (rkbx.status === 'waiting') {
+      return `Rekordbox has the tempo, but nothing has come from rkbx_link yet. The tempo stays at ${bpm}. Start rkbx_link and set osc.destination to this laptop, port ${rkbx.port}.`;
+    }
+    if (!rkbx.beats && tempo.running) {
+      return `rkbx_link sends the bpm but no beats, so the beat is where it was. Turn on osc.msg.master/beat/trigger with 1 in its config.`;
     }
     return '';
   }
 
-  /** What is heard, in a line, and whether it is something to look at. */
-  function heardLine() {
-    const following = tempo.source === 'audio';
-    const bpm = audio.bpm === undefined ? '' : String(Math.round(audio.bpm));
-    if (audio.source.status === 'lost')
-      return { text: 'Microphone page not sending', state: following ? 'down' : 'off' };
-    if (audio.source.status === 'waiting') {
-      return {
-        text: following ? 'Waiting for the microphone page' : 'Listening is off',
-        state: following ? 'down' : 'off',
-      };
-    }
-    const quiet = !tempo.running;
-    switch (audio.heard) {
-      case 'beat':
-        return { text: `Beat · ${bpm} bpm`, state: following ? 'beat' : 'off' };
-      case 'music':
-        return {
-          text: bpm ? `Music, no beat · ${bpm} bpm held` : 'Music, no beat',
-          state: following ? 'music' : 'off',
-        };
-      case 'silent':
-        return {
-          text: quiet ? 'Silent · effects idle' : 'Silent',
-          state: following ? 'silent' : 'off',
-        };
-      default:
-        return { text: 'Listening…', state: 'off' };
-    }
+  /** What rekordbox says, in a line, and whether it is something to look at. */
+  function rkbxLine() {
+    if (tempo.source !== 'rekordbox') return { text: '', state: 'off' };
+    if (rkbx.port === undefined) return { text: 'Not listening for rkbx_link', state: 'down' };
+    if (rkbx.status === 'waiting') return { text: 'Waiting for rkbx_link', state: 'down' };
+    const bpm = rkbx.bpm === undefined ? '' : ` · ${rkbx.bpm.toFixed(1)} bpm`;
+    if (rkbx.beats) return { text: `Rekordbox${bpm}`, state: 'beat' };
+    if (!tempo.running) return { text: 'No beat from Rekordbox · effects idle', state: 'silent' };
+    return { text: `Rekordbox${bpm}, no beats`, state: 'music' };
   }
 
   function renderSource() {
     $('source-manual').setAttribute('aria-pressed', String(tempo.source === 'manual'));
-    $('source-audio').setAttribute('aria-pressed', String(tempo.source === 'audio'));
-    const { text, state } = heardLine();
-    const heard = $('heard');
-    heard.textContent =
-      tempo.source === 'manual' &&
-      state === 'off' &&
-      audio.heard !== 'none' &&
-      audio.source.status === 'live'
-        ? `Hears: ${text}`
-        : text;
-    heard.dataset.state = state;
+    $('source-rekordbox').setAttribute('aria-pressed', String(tempo.source === 'rekordbox'));
+    const { text, state } = rkbxLine();
+    const line = $('heard');
+    line.textContent = text;
+    line.dataset.state = state;
+    // Rekordbox sends the beat, so there is nothing to tap.
+    const tapping = tempo.source !== 'rekordbox';
+    $('tap').hidden = !tapping;
+    $('tap-hint').hidden = !tapping;
+    $('tap-row').dataset.tap = String(tapping);
     $('beats').dataset.idle = String(!tempo.running);
   }
 
@@ -785,8 +760,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     } else if (usesHass && status.hass === 'down') {
       text =
         'Lightdeck cannot reach Home Assistant, so the lamps keep what they have. It keeps trying; what you set is sent when it is back.';
-    } else if (audioNote()) {
-      text = audioNote();
+    } else if (rkbxNote()) {
+      text = rkbxNote();
     } else if (patch) {
       text = patch;
     } else {
@@ -852,8 +827,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
       return sequence;
     },
     stateOf: (fixtureId) => states.get(fixtureId),
-    get audio() {
-      return audio;
+    get rkbx() {
+      return rkbx;
     },
     on: (name, handler) => handlers[name].push(handler),
     notes: (say) => {

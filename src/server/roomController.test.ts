@@ -70,7 +70,7 @@ describe('RoomController', () => {
   const state = (): RoomState => room.getState();
   /** The tempo only stops when it is following the music, which it does while its source is audio. */
   const stopMusic = () => {
-    tempo.update({ source: 'audio' });
+    tempo.update({ source: 'rekordbox' });
     tempo.follow({ running: false });
   };
   const startMusic = () => tempo.follow({ running: true });

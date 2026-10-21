@@ -1,3 +1,8 @@
+> **Removed on 2026-10-21.** Jeroen took the listening out ("no complexity that is not needed"):
+> the tempo is now set by hand or follows rekordbox through rkbx_link over OSC
+> (`src/inputs/rkbx/`). This document describes what was built on 2026-10-02 and is kept as
+> history; the code is in git (`git log -- src/inputs/audio`).
+
 # Plan: the tempo follows the music
 
 Status: built on 2026-10-02, see "What was built" below for what differs from this plan and

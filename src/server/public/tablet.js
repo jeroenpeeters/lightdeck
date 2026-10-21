@@ -8,7 +8,7 @@
 //             all is connected and red when a link is down), the bpm with the beat lamps and a Tap key, the master and the keys of the master
 //             speed, and a small blackout key
 //   tempo     the Tap key of the top row. There is no slider: the tempo is
-//             tapped. A tap counts when the finger lands. In Auto the shell takes a tap as
+//             tapped. A tap counts when the finger lands. With Rekordbox the shell takes a tap as
 //             "this is beat one" only.
 //   sequences the sequences of the show, only their names: a press starts one (and stops the one
 //             that runs), a press on the one that runs stops it, and it is lit while it runs.

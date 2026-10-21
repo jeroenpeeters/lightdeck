@@ -190,7 +190,6 @@ describe('the service worker', () => {
       '/deck',
       '/deck.js',
       '/simulator',
-      '/listen',
       '/fixtures/spider',
       '/lib/three/three.module.min.js',
       '/sw.js',

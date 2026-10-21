@@ -157,40 +157,25 @@ describe('Rig', () => {
     });
   });
 
-  describe('listening', () => {
-    it('starts by hand, and with the listening as the source when asked', () => {
+  describe('rekordbox', () => {
+    it('starts by hand, and with rekordbox as the source when asked', () => {
       expect(rig.tempo.getState().source).toBe('manual');
-      expect(rig.audio.getState()).toMatchObject({ following: false, heard: 'none' });
-      const listening = new Rig({ output, fixtures: [SPIDER], tempoSource: 'audio' });
+      expect(rig.rkbx.getState()).toMatchObject({ following: false, status: 'waiting' });
+      const following = new Rig({ output, fixtures: [SPIDER], tempoSource: 'rekordbox' });
       try {
-        expect(listening.tempo.getState().source).toBe('audio');
-        expect(listening.audio.getState().following).toBe(true);
+        expect(following.tempo.getState().source).toBe('rekordbox');
+        expect(following.rkbx.getState().following).toBe(true);
       } finally {
-        listening.close();
+        following.close();
       }
     });
 
-    it('starts with the settings it was given', () => {
-      const own = new Rig({
-        output,
-        fixtures: [SPIDER],
-        audioSettings: { onSilence: 'hold', latencyMs: 25 },
-      });
-      try {
-        expect(own.audio.getState().settings).toMatchObject({ onSilence: 'hold', latencyMs: 25 });
-      } finally {
-        own.close();
-      }
-    });
-
-    it('tells what is heard when it changes', () => {
+    it('tells what rekordbox says when it changes', () => {
       const seen: unknown[] = [];
-      rig.on('audio', (state) => seen.push(state));
-      rig.audio.update({ silenceAfter: 4 });
+      rig.on('rkbx', (state) => seen.push(state));
+      rig.tempo.update({ source: 'rekordbox' });
       expect(seen).toHaveLength(1);
-      rig.tempo.update({ source: 'audio' });
-      expect(seen).toHaveLength(2);
-      expect(seen[1]).toMatchObject({ following: true });
+      expect(seen[0]).toMatchObject({ following: true });
     });
   });
 

@@ -24,7 +24,7 @@
     "laser": "tsx src/cli/laser.ts",
     "laser-survey": "tsx src/cli/laser-survey.ts",
     "lamp": "tsx --env-file-if-exists=.env src/cli/lamp.ts",
-    "beat-eval": "tsx src/cli/beat-eval.ts",
+    "rkbx-monitor": "tsx src/cli/rkbx-monitor.ts",
     "perf": "tsx tools/perf/perf.ts"
   },
   "devDependencies": {

@@ -14,9 +14,12 @@ export const MAX_BPM = 200;
 export const RATES: readonly number[] = SPEEDS;
 const DEFAULT_BPM = 126;
 
-/** Who sets the bpm and the place of the beat: the operator, or the listening. */
-export type TempoSource = 'manual' | 'audio';
-export const TEMPO_SOURCES: readonly TempoSource[] = ['manual', 'audio'];
+/**
+ * Who sets the bpm and the place of the beat: the operator, or rekordbox (the OSC that
+ * rkbx_link sends from the computer that runs it).
+ */
+export type TempoSource = 'manual' | 'rekordbox';
+export const TEMPO_SOURCES: readonly TempoSource[] = ['manual', 'rekordbox'];
 
 export interface TempoState {
   /** Tempo in beats per minute. */
@@ -39,7 +42,7 @@ export interface TempoPatch {
   source?: unknown;
 }
 
-/** What listening found, for `Tempo.follow`. */
+/** What rekordbox said, for `Tempo.follow`. */
 export interface TempoFollow {
   bpm?: number;
   /** A moment on `now()` at which a beat fell. */
@@ -68,7 +71,7 @@ export function readLead(value: unknown): number {
   return value;
 }
 
-/** The part of the way to the heard beat that the origin moves per beat that is heard. */
+/** The part of the way to the beat rekordbox sent that the origin moves per beat that comes. */
 const PHASE_GAIN = 0.25;
 /** An origin that moves less than this, in milliseconds, is not worth telling anyone. */
 const MIN_SHIFT_MS = 1;
@@ -201,7 +204,7 @@ export class Tempo extends EventEmitter {
   }
 
   /**
-   * What listening found. Ignored while the source is `manual`.
+   * What rekordbox said. Ignored while the source is `manual`.
    *
    * The beat we are on is kept when the bpm changes. `beatAt` is a moment at which a beat
    * really fell: the count at that moment should be a whole number, and the difference,
@@ -210,7 +213,7 @@ export class Tempo extends EventEmitter {
    * the beat that was one stays one.
    */
   follow(change: TempoFollow): void {
-    if (this.state.source !== 'audio') return;
+    if (this.state.source !== 'rekordbox') return;
     const next = { ...this.state };
     let moved = false;
 
@@ -240,6 +243,6 @@ export class Tempo extends EventEmitter {
     }
     if (!moved) return;
     this.state = next;
-    this.emit('tempo', this.getState(), 'audio');
+    this.emit('tempo', this.getState(), 'rekordbox');
   }
 }

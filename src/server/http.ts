@@ -8,8 +8,6 @@
  *                                     tap, the master, the looks of the spider and little else
  *   GET  /moods                       the other page for a tablet: the looks of a group by mood, with
  *                                     what goes with the mood in a tray under them (Jeroen, 2026-10-20)
- *   GET  /listen                      the listen page: the microphone of the laptop, which
- *                                     the browser only gives to localhost
  *   GET  /simulator                   the simulator: the fixtures drawn in 3D from the bytes
  *                                     being sent, with or without a bridge
  *   GET  /fixtures/<id>               the page of a fixture: the file
@@ -18,22 +16,15 @@
  *   GET  /api/state                   everything a browser needs to draw itself
  *   GET  /api/events                  server-sent events: `fixture`, `tempo`, `blackout`,
  *                                     `master`, `status`, `show`, `playback`, `sequence` (which
- *                                     sequence runs, and where), `audio` (what
- *                                     is heard, see `Follower`), `output` (the settings of
+ *                                     sequence runs, and where), `rkbx` (what rekordbox says,
+ *                                     see `RkbxFollower`), `output` (the settings of
  *                                     the output) and, while a
  *                                     fixture animates, `frame` with the bytes being sent
  *                                     and the beat
- *   POST /api/tempo                   `bpm`, `rate`, `sync`, `source` (`manual` or `audio`)
- *   POST /api/audio                   about 100 ms of sound from the listen page: raw 16-bit
- *                                     mono samples as the body, with the headers `x-rate`,
- *                                     `x-index` (where the first sample lies in the feed) and
- *                                     `x-feed` (the name of the feed). Answers 204
+ *   POST /api/tempo                   `bpm`, `rate`, `sync`, `source` (`manual` or `rekordbox`)
  *   POST /api/output                  how the output is made: `maxFps`, the most frames per
  *                                     second (default 25), and `leadMs`, how far ahead of
  *                                     the beat it is made. Answers with both
- *   POST /api/audio/settings          how the listening behaves: any of `onSilence`, `onNoBeat`,
- *                                     `silenceAfter`, ... see `AudioSettings`. Answers with
- *                                     all the settings
  *   POST /api/blackout                `blackout`: true or false, for every fixture
  *   POST /api/master                  `master`: the grand master, 0 to 1, for every fixture
  *   POST /api/fixtures/<id>/update    partial state change of one fixture
@@ -90,7 +81,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, join, relative, sep } from 'node:path';
 import { MAX_FLASH_HZ } from '../engine/effects.js';
-import type { AudioState } from '../inputs/audio/follower.js';
+import type { RkbxState } from '../inputs/rkbx/follower.js';
 import { PatchError, readObject } from './fixture.js';
 import type { PlaybackState, ShowSummary } from './playback.js';
 import type { LinkStatus, OutputSettings, Rig, RigFixture } from './rig.js';
@@ -111,8 +102,6 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 const MAX_BODY_BYTES = 64 * 1024;
-/** A block of sound is about 10 KB, so this is more than two seconds of it. */
-const MAX_AUDIO_BYTES = 256 * 1024;
 const KEEP_ALIVE_MS = 15_000;
 const FIXTURE_PAGE = /^\/fixtures\/([a-z0-9-]+)$/;
 const FIXTURE_POST = /^\/api\/fixtures\/([a-z0-9-]+)\/([a-z]+)$/;
@@ -121,7 +110,6 @@ const SCENE_POST = /^\/api\/groups\/([a-z0-9-]+)\/scenes\/([a-z0-9-]+)\/(store|r
 const LOOK_POST = /^\/api\/groups\/([a-z0-9-]+)\/looks\/([a-z0-9-]+)\/(store|rename|delete)$/;
 const PALETTE_POST = /^\/api\/palettes\/([a-z0-9-]+)\/(update|delete)$/;
 const DECK = '/deck';
-const LISTEN = '/listen';
 const PALETTES = '/palettes';
 const TABLET = '/tablet';
 const MOODS = '/moods';
@@ -201,12 +189,6 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
   return body as Record<string, unknown>;
 }
 
-/** A header as a number. Gives NaN when it is missing, which the source then refuses. */
-function headerNumber(req: IncomingMessage, name: string): number {
-  const value = req.headers[name];
-  return typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
-}
-
 /** What came with the request, without the name of the browser that sent it. */
 function split(body: Record<string, unknown>): { change: unknown; origin: string | undefined } {
   const { client, ...change } = body;
@@ -258,7 +240,7 @@ function describe({ rig, bridgeUrl }: HttpOptions) {
     blackout: rig.getBlackout(),
     master: rig.getMaster(),
     status: rig.getStatus(),
-    audio: rig.audio.getState(),
+    rkbx: rig.rkbx.getState(),
     output: rig.getOutput(),
     show: rig.playback.getShow(),
     playback: rig.playback.getState(),
@@ -297,7 +279,7 @@ export function createHttpServer(options: HttpOptions): Server {
   rig.on('show', (show: ShowSummary) => broadcast('show', show));
   rig.on('playback', (state: PlaybackState) => broadcast('playback', state));
   rig.on('sequence', (state: SequenceState) => broadcast('sequence', state));
-  rig.on('audio', (state: AudioState) => broadcast('audio', state));
+  rig.on('rkbx', (state: RkbxState) => broadcast('rkbx', state));
   rig.on('output', (settings: OutputSettings) => broadcast('output', settings));
 
   const keepAlive = setInterval(() => {
@@ -357,35 +339,15 @@ export function createHttpServer(options: HttpOptions): Server {
       res.write(message('show', rig.playback.getShow()));
       res.write(message('playback', rig.playback.getState()));
       res.write(message('sequence', rig.sequencer.getState()));
-      res.write(message('audio', rig.audio.getState()));
+      res.write(message('rkbx', rig.rkbx.getState()));
       res.write(message('output', rig.getOutput()));
       req.on('close', () => streams.delete(res));
-      return;
-    }
-
-    if (req.method === 'POST' && path === '/api/audio') {
-      const bytes = await readBytes(req, MAX_AUDIO_BYTES);
-      const feed = req.headers['x-feed'];
-      rig.mic.push({
-        bytes,
-        sampleRate: headerNumber(req, 'x-rate'),
-        index: headerNumber(req, 'x-index'),
-        feed: typeof feed === 'string' ? feed : '',
-      });
-      res.writeHead(204, { 'cache-control': 'no-store' });
-      res.end();
       return;
     }
 
     if (req.method === 'POST' && path === '/api/output') {
       const { change } = split(await readJson(req));
       sendJson(res, 200, { ok: true, output: rig.setOutput(change) });
-      return;
-    }
-
-    if (req.method === 'POST' && path === '/api/audio/settings') {
-      const { change } = split(await readJson(req));
-      sendJson(res, 200, { ok: true, settings: rig.audio.update(change) });
       return;
     }
 
@@ -543,7 +505,6 @@ export function createHttpServer(options: HttpOptions): Server {
         return;
       }
       if (path === DECK && sendFile(req, res, '/deck.html')) return;
-      if (path === LISTEN && sendFile(req, res, '/listen.html')) return;
       if (path === PALETTES && sendFile(req, res, '/palettes.html')) return;
       if (path === TABLET && sendFile(req, res, '/tablet.html')) return;
       if (path === MOODS && sendFile(req, res, '/moods.html')) return;

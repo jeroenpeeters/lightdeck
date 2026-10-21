@@ -20,9 +20,9 @@
  *                                       milliseconds, to make up for the path to the light
  *                                       (default 0)
  *   --tempo          TEMPO_SOURCE       who sets the tempo at the start: `manual` (default) or
- *                                       `audio`, which follows the music the listen page hears
- *   --audio-record  AUDIO_RECORD_DIR   a directory to write the sound that the listen page
- *                                       hears to, as WAV files (default: not written)
+ *                                       `rekordbox`, which follows the OSC of rkbx_link
+ *   --rkbx           RKBX_PORT          the UDP port to listen on for the OSC of rkbx_link
+ *                                       (default 4460), or "off" to listen on none
  *   --hass           HASS_URL           ws://<home-assistant>:8123/api/websocket, http://<home-assistant>:8123 will do. Needed when the
  *                                       rig file has fixtures
  *                    HASS_TOKEN         a long-lived access token of Home Assistant. Environment
@@ -78,7 +78,7 @@ const { values: args } = parseArgs({
     'max-fps': { type: 'string' },
     'lead-ms': { type: 'string' },
     tempo: { type: 'string' },
-    'audio-record': { type: 'string' },
+    rkbx: { type: 'string' },
     hass: { type: 'string' },
     'hass-simulate': { type: 'boolean' },
     rig: { type: 'string' },
@@ -102,10 +102,11 @@ const showFile = args.show ?? process.env.SHOW_FILE ?? 'show.yaml';
 const maxFps = decimal(args['max-fps'] ?? process.env.MAX_FPS ?? '25', 'max-fps');
 const leadMs = decimal(args['lead-ms'] ?? process.env.LEAD_MS ?? '0', 'lead-ms');
 const tempoSourceText = args.tempo ?? process.env.TEMPO_SOURCE ?? 'manual';
-if (tempoSourceText !== 'manual' && tempoSourceText !== 'audio') {
-  fail(`--tempo must be manual or audio, got "${tempoSourceText}"`);
+if (tempoSourceText !== 'manual' && tempoSourceText !== 'rekordbox') {
+  fail(`--tempo must be manual or rekordbox, got "${tempoSourceText}"`);
 }
-const audioRecordDir = args['audio-record'] ?? process.env.AUDIO_RECORD_DIR;
+const rkbxText = args.rkbx ?? process.env.RKBX_PORT ?? '4460';
+const rkbxPort = rkbxText === 'off' ? undefined : wholeNumber(rkbxText, 'rkbx port');
 const hassUrlText = args.hass ?? process.env.HASS_URL;
 let hassUrl: string | undefined;
 try {
@@ -217,8 +218,8 @@ try {
     maxFps,
     leadMs,
     tempoSource: tempoSourceText,
-    ...(audioRecordDir === undefined ? {} : { audioRecordDir }),
-    log: (message) => log(`audio: ${message}`),
+    ...(rkbxPort === undefined ? {} : { rkbxPort }),
+    log,
   });
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
