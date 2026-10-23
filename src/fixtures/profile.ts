@@ -13,9 +13,10 @@ export const UNIVERSE_SIZE = 512;
 /**
  * What a scene can be about. Every property of a fixture belongs to one of these, so that
  * scenes of different types put a fixture together without ever disagreeing:
- * lights (is it on, and what does it do), colour, and motion.
+ * lights (is it on, and what does it do), colour, motion, and zone (how far the motion effects
+ * reach: the window of tilt of each bar that an effect works inside).
  */
-export const SCENE_TYPES = ['lights', 'colour', 'motion'] as const;
+export const SCENE_TYPES = ['lights', 'colour', 'motion', 'zone'] as const;
 export type SceneType = (typeof SCENE_TYPES)[number];
 
 export const isSceneType = (value: unknown): value is SceneType =>

@@ -100,6 +100,19 @@
             <p class="hint" id="swing-hint"></p>
             <button type="button" class="key" id="swing-reset">Full swing</button>
           </fieldset>
+
+          <fieldset class="swing" id="zone">
+            <legend>Zone</legend>
+            <p class="hint">
+              How far the movement reaches. The movement is laid inside this window: its 0 is where
+              a bar starts and its 100 where it stops, so a narrow window is a small swing. It
+              takes the place of the swing limit while it is on. A tilt set by hand is not held to
+              it. Store it on the deck, in Program, as a Zone scene to press it later.
+            </p>
+            <div class="sliders" id="zone-sliders"></div>
+            <p class="hint" id="zone-hint"></p>
+            <button type="button" class="key" id="zone-reset">No zone</button>
+          </fieldset>
         </div>
 
         <div class="view view-fixture" role="tabpanel" id="view-fixture" aria-labelledby="tab-fixture" hidden>

@@ -357,6 +357,21 @@ groups:
         fixtures:
           spider:
             motion: { id: scissor, speed: 1 }
+      # Zones: how far the motion effects reach. An effect's 0 is the min of a bar and its 100 the max,
+      # so the swing happens inside the window. A bar turns the other way than its neighbour for the
+      # same tilt, so each has its own window. The numbers are what Jeroen measured
+      # (2026-10-21, percent of the tilt slider per bar; over heads was given as min 30 / max 27 and 23 / 26,
+      # the first pair turned round because min must be below max).
+      zone-floor:
+        label: Floor
+        type: zone
+        fixtures:
+          spider: { zone: { tilt: [ { min: 0, max: 0.2 }, { min: 0.4, max: 0.8 } ] } }
+      zone-over-heads:
+        label: Over heads
+        type: zone
+        fixtures:
+          spider: { zone: { tilt: [ { min: 0.27, max: 0.3 }, { min: 0.23, max: 0.26 } ] } }
     # What goes together, for the tablet (/moods): a look is in one, and while it is on the tablet
     # offers the rest of the mood to vary it with.
     moods:
@@ -365,16 +380,19 @@ groups:
         lights: [ glow, floor-glow, doors-open, breathe, wandering, spreading ]
         colour: [ pumpkin, ember, dusk, sunset-drift ]
         motion: [ slow-sway, slightly-down, floor, sway, drifting, adrift ]
+        zone: [ zone-floor, zone-over-heads ]
       midden:
         label: Midden
         lights: [ creeping-in, candles-low, heartbeat, bouncing, pumping, sparkling ]
         colour: [ mid-shift, halloween, witch, bloodmoon ]
         motion: [ swing, scissors, scissors-rest, stalking, drifting, sway ]
+        zone: [ zone-floor, zone-over-heads ]
       techno:
         label: Techno
         lights: [ crossfire, the-void, scanning, pairing, bursting, static-dark ]
         colour: [ techno-pulse, techno-bar, void, bloodmoon ]
         motion: [ guillotine, staring, scissors-fast, scissors-rest, adrift, over-heads ]
+        zone: [ zone-floor, zone-over-heads ]
     looks:
       glow:
         label: 1 Glow
@@ -690,51 +708,15 @@ groups:
         lights: [ pattern-12, pattern-26, pattern-40, mixed-18 ]
         motion: [ spin, spin-back, sweeping, twisting ]
     looks:
-      calm-12:
-        label: Calm 12
-        mood: calm
-        lights: pattern-12
-        motion: big-still
-      calm-26:
-        label: Calm 26
-        mood: calm
-        lights: pattern-26
-        motion: small-still
-      calm-40:
-        label: Calm 40
-        mood: calm
-        lights: pattern-40
-        motion: big-still
-      pattern-beat:
-        label: Pattern beat
-        mood: beat
-        lights: pattern-chase
-        motion: breathe
-      colour-beat:
-        label: Colour beat
-        mood: beat
-        lights: colour-chase
-        motion: big-still
-      dots-beat:
-        label: Dots beat
-        mood: beat
-        lights: dots-26
-        motion: breathe
-      spinner:
-        label: Spinner
-        mood: moving
-        lights: pattern-26
-        motion: spin
-      sweeper:
-        label: Sweeper
-        mood: moving
-        lights: pattern-12
-        motion: sweeping
-      twister:
-        label: Twister
-        mood: moving
-        lights: pattern-40
-        motion: twisting
+      calm-12: { label: Calm 12, mood: calm, lights: pattern-12, motion: big-still }
+      calm-26: { label: Calm 26, mood: calm, lights: pattern-26, motion: small-still }
+      calm-40: { label: Calm 40, mood: calm, lights: pattern-40, motion: big-still }
+      pattern-beat: { label: Pattern beat, mood: beat, lights: pattern-chase, motion: breathe }
+      colour-beat: { label: Colour beat, mood: beat, lights: colour-chase, motion: big-still }
+      dots-beat: { label: Dots beat, mood: beat, lights: dots-26, motion: breathe }
+      spinner: { label: Spinner, mood: moving, lights: pattern-26, motion: spin }
+      sweeper: { label: Sweeper, mood: moving, lights: pattern-12, motion: sweeping }
+      twister: { label: Twister, mood: moving, lights: pattern-40, motion: twisting }
   room:
     label: Room
     fixtures: [ room ]
@@ -907,5 +889,5 @@ sequences:
 limits:
   spider:
     tilt:
-      - { min: 0, max: 0.3 }
+      - { min: 0, max: 0.37 }
       - { min: 0.16, max: 0.8 }

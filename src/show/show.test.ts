@@ -377,18 +377,21 @@ describe('readShow', () => {
         group({ one: { colour: 'red' } }),
         'scene "one" of group "spider" cannot have "colour", only label, type and fixtures',
       ],
-      [group({ one: {} }), 'scene "one" of group "spider": a scene needs a type: lights or motion'],
+      [
+        group({ one: {} }),
+        'scene "one" of group "spider": a scene needs a type: lights, motion or zone',
+      ],
       [
         group({ one: { type: 'full' } }),
-        'scene "one" of group "spider": a scene needs a type: lights or motion',
+        'scene "one" of group "spider": a scene needs a type: lights, motion or zone',
       ],
       [
         group({ one: { type: 7, fixtures: {} } }),
-        'scene "one" of group "spider": a scene needs a type: lights or motion',
+        'scene "one" of group "spider": a scene needs a type: lights, motion or zone',
       ],
       [
         group({ one: { type: 'colour', fixtures: {} } }),
-        'scene "one" of group "spider": colours are palettes now, and not scenes: a scene is lights or motion',
+        'scene "one" of group "spider": colours are palettes now, and not scenes: a scene is lights, motion or zone',
       ],
       [
         group({ one: { fixtures: ['spider'] } }),
@@ -560,8 +563,9 @@ describe('readShow', () => {
           lights: ['pulse', 'chase'],
           colour: ['white'],
           motion: [],
+          zone: [],
         },
-        { id: 'moving', label: 'moving', lights: [], colour: [], motion: ['lean'] },
+        { id: 'moving', label: 'moving', lights: [], colour: [], motion: ['lean'], zone: [] },
       ]);
       expect(moods(undefined)).toEqual([]);
       expect(moods(null)).toEqual([]);
@@ -588,11 +592,11 @@ describe('readShow', () => {
         ],
         [
           { calm: { sound: 'loud' } },
-          'mood "calm" of group "spider" cannot have "sound", only label, lights, colour and motion',
+          'mood "calm" of group "spider" cannot have "sound", only label, lights, colour, motion and zone',
         ],
         [
           { calm: {} },
-          'mood "calm" of group "spider": a mood lists at least one scene of lights, palette or scene of motion',
+          'mood "calm" of group "spider": a mood lists at least one scene of lights, palette, scene of motion or scene of zone',
         ],
         [
           { calm: { lights: 'chase' } },
@@ -682,11 +686,11 @@ describe('readShow', () => {
         [{ drop: 'chase' }, 'look "drop" of group "spider" must have a label and what it sets'],
         [
           { drop: { sound: 'loud' } },
-          'look "drop" of group "spider" cannot have "sound", only label, mood, lights, colour and motion',
+          'look "drop" of group "spider" cannot have "sound", only label, mood, lights, colour, motion and zone',
         ],
         [
           { drop: {} },
-          'look "drop" of group "spider": a look sets a scene of lights, a palette or a scene of motion',
+          'look "drop" of group "spider": a look sets a scene of lights, a palette, a scene of motion or a scene of zone',
         ],
         [
           { drop: { lights: 'nope' } },

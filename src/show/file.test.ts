@@ -571,7 +571,7 @@ groups:
     writeFileSync(path, untyped);
     const show = open();
     expect(show.getProblem()).toBe(
-      'Scene "warm" of group "spider": a scene needs a type: lights or motion',
+      'Scene "warm" of group "spider": a scene needs a type: lights, motion or zone',
     );
     expect(() => show.edit(addScene('spider', 'one'))).toThrow(/has a mistake/);
     expect(readFileSync(path, 'utf8')).toBe(untyped);

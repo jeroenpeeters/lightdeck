@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Rgbw } from './colour.js';
 import {
+  BACKDROP,
   EFFECTS,
   type EffectContext,
   type EffectFrame,
@@ -15,6 +16,8 @@ import { type PaletteColour, paint } from './palette.js';
 const A: Rgbw = { red: 1, green: 0.5, blue: 0, white: 0 };
 /** The backdrop: dimmer than the main colour, as it is when a flash has to stand out of it. */
 const B: Rgbw = { red: 0, green: 0, blue: 0.25, white: 0 };
+/** The backdrop as a lens shows it: held back, so that the main colour pops out of it. */
+const BACK: Rgbw = { red: 0, green: 0, blue: 0.25 * BACKDROP, white: 0 };
 /** The accent. */
 const C: Rgbw = { red: 0, green: 0, blue: 0, white: 1 };
 const DARK: Rgbw = { red: 0, green: 0, blue: 0, white: 0 };
@@ -40,7 +43,11 @@ function look(
   colours: PaletteColour[] = [A, B],
   extra: Partial<EffectContext> = {},
 ): Rgbw[] {
-  const frame = render(id, beat, { slots: colours.length, ...extra });
+  const frame = render(id, beat, {
+    slots: colours.length,
+    filled: colours.map((colour) => colour !== null),
+    ...extra,
+  });
   return paint(frame.levels, { colours, mode: 'static', change: 'step', speed: 1 }, 0);
 }
 
@@ -171,6 +178,14 @@ describe.each(EFFECTS.map((e) => [e.id, e] as const))('%s', (_id, effect) => {
   });
 });
 
+describe('the backdrop', () => {
+  it('is held well under the main colour, so that the main colour pops out of it', () => {
+    expect(BACKDROP).toBeLessThanOrEqual(0.3);
+    const rest = look('kick', 1.99, [A, { red: 1, green: 0.5, blue: 0, white: 0 }])[0];
+    expect(rest?.red).toBeCloseTo(BACKDROP, 1);
+  });
+});
+
 describe('kick', () => {
   it('is brightest on the beat and fades until the next one', () => {
     const all = (beat: number) => light(look('kick', beat)[0]);
@@ -188,7 +203,8 @@ describe('kick', () => {
       expect(look('kick', beat)[0]).toEqual(A);
       const after = look('kick', beat + 0.99)[0];
       expect(after?.red).toBeLessThan(0.05);
-      expect(after?.blue).toBeGreaterThan(0.2);
+      expect(after?.blue).toBeGreaterThan(0.02);
+      expect(after?.blue).toBeLessThan(B.blue * BACKDROP + 0.001);
     }
   });
 
@@ -237,7 +253,7 @@ describe('chase', () => {
     expect(tail?.white).toBeGreaterThan(0.2);
     // Far from the head it is the backdrop again, as with two.
     expect(cells[6]?.white).toBeLessThan(0.1);
-    expect(cells[6]?.blue).toBeGreaterThan(0.2);
+    expect(cells[6]?.blue).toBeGreaterThan(0.02);
   });
 });
 
@@ -249,9 +265,9 @@ describe('bounce', () => {
 
   it('is a spot of the main colour over the second', () => {
     expect(look('bounce', 0)[0]).toEqual(A);
-    expect(look('bounce', 0)[7]).toEqual(B);
+    expect(look('bounce', 0)[7]).toEqual(BACK);
     expect(look('bounce', 7)[7]).toEqual(A);
-    expect(look('bounce', 7)[0]).toEqual(B);
+    expect(look('bounce', 7)[0]).toEqual(BACK);
   });
 });
 
@@ -259,10 +275,10 @@ describe('bar swap', () => {
   it('hits one bar per beat, in turn, in the main colour over the second', () => {
     const first = look('swap', 0.05);
     expect(first[0]?.red).toBeGreaterThan(0.5);
-    expect(first[4]).toEqual(B);
+    expect(first[4]).toEqual(BACK);
 
     const second = look('swap', 1.05);
-    expect(second[0]).toEqual(B);
+    expect(second[0]).toEqual(BACK);
     expect(second[4]?.red).toBeGreaterThan(0.5);
   });
 });
@@ -272,7 +288,7 @@ describe('wave', () => {
     expect(look('wave', 1)[0]).toEqual(A);
     const trough = look('wave', 3)[0];
     expect(trough?.red).toBeCloseTo(0);
-    expect(trough?.blue).toBeCloseTo(0.25);
+    expect(trough?.blue).toBeCloseTo(0.25 * BACKDROP);
   });
 });
 
@@ -323,7 +339,7 @@ describe('sparkle', () => {
       for (const cell of look('sparkle', beat + 0.01)) {
         slots++;
         if (cell.red > 0.5) flashes++;
-        else expect(cell).toEqual(B);
+        else expect(cell).toEqual(BACK);
       }
     }
     expect(flashes / slots).toBeGreaterThan(0.1);
@@ -336,7 +352,7 @@ describe('sparkle', () => {
     const cells = look('sparkle', 5.01, [blue, red]);
     expect(cells.some((cell) => cell.blue > 0.9)).toBe(true);
     for (const cell of cells) {
-      expect(cell.blue > 0.9 || (cell.red === 1 && cell.blue === 0)).toBe(true);
+      expect(cell.blue > 0.9 || (cell.red === BACKDROP && cell.blue === 0)).toBe(true);
     }
   });
 
@@ -387,7 +403,7 @@ describe('build-up', () => {
     const late = look('build', 27.01);
     expect(total(late)).toBeGreaterThan(total(early));
     expect(flashing(early)).toBeLessThan(flashing(late));
-    expect(early[0]).toEqual(B);
+    expect(early[0]).toEqual(BACK);
     expect(look('build', 0)[3]?.red).toBeGreaterThan(0);
 
     for (const cell of look('build', 31.02)) expect(cell.red).toBeGreaterThan(0.9);
@@ -420,7 +436,7 @@ describe('strobe burst', () => {
     }
     for (const beat of [12, 13, 14, 15]) {
       expect(look('burst', beat + 0.01)[0]).toEqual(A);
-      expect(look('burst', beat + 0.5)[0]).toEqual(B);
+      expect(look('burst', beat + 0.5)[0]).toEqual(BACK);
     }
   });
 });
@@ -430,7 +446,7 @@ describe('pump', () => {
     const cells = look('pump', 0);
     expect(cells[0]).toEqual(A);
     expect(cells[7]).toEqual(A);
-    expect(look('pump', 0.99)[0]?.blue).toBeGreaterThan(0.01);
+    expect(look('pump', 0.99)[0]?.blue).toBeGreaterThan(0.005);
     expect(look('pump', 0.99)[0]?.red).toBeGreaterThan(0.7);
   });
 });
@@ -540,8 +556,9 @@ describe('the techno effects', () => {
       }
     });
 
-    it('is one beam of the first colour with one colour, and the second is dark', () => {
-      expect(bright(at('cross', 2, [A]))).toEqual([2]);
+    it('is two beams of the first colour with one colour, or where the second colour is off', () => {
+      expect(bright(at('cross', 2, [A]))).toEqual([2, 5]);
+      expect(bright(at('cross', 2, [A, null]))).toEqual([2, 5]);
     });
   });
 
@@ -558,6 +575,15 @@ describe('the techno effects', () => {
   });
 
   describe('scan', () => {
+    it('is never silent without a second colour: it goes back in the first colour', () => {
+      // One colour, as the palette that changes on every beat shows it, and the red and off of the void.
+      for (const colours of [[A], [A, null]]) {
+        for (let beat = 0; beat < 32; beat++) {
+          expect(bright(at('scan', beat, colours)).length).toBe(1);
+        }
+      }
+    });
+
     it('goes along the lenses in the first colour and back in the second', () => {
       const out = Array.from({ length: 8 }, (_, beat) => bright(at('scan', beat)));
       expect(out).toEqual([[0], [1], [2], [3], [4], [5], [6], [7]]);
@@ -748,9 +774,10 @@ describe('strobe', () => {
     expect(look('strobe', 2.01)[5]).toEqual(A);
   });
 
-  it('flashes every other beat with one colour, and all lenses flash together', () => {
+  it('flashes on every beat without a second colour', () => {
     expect(peak(look('strobe', 0.01, [A])[0])).toBe(1);
-    expect(peak(look('strobe', 1.01, [A])[0])).toBe(0);
+    expect(peak(look('strobe', 1.01, [A])[0])).toBe(1);
+    expect(peak(look('strobe', 1.01, [A, null])[0])).toBe(1);
     const cells = look('strobe', 2.01);
     expect(new Set(cells.map((c) => JSON.stringify(c))).size).toBe(1);
   });

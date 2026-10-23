@@ -17,7 +17,7 @@ const FIXTURES: FixtureDefinition[] = [
 const NONE = { scene: null, changed: false };
 const NO_LOOK = { look: null, changed: false };
 /** What is on in a group when nothing is, by type, and no look. */
-const NOTHING = { lights: NONE, colour: NONE, motion: NONE, look: NO_LOOK };
+const NOTHING = { lights: NONE, colour: NONE, motion: NONE, zone: NONE, look: NO_LOOK };
 /** What is on in a group when only a scene of lights is. Most of what follows is about lights. */
 const lights = (scene: string, changed = false) => ({
   ...NOTHING,
@@ -158,6 +158,7 @@ describe('Playback', () => {
       lights: { scene: 'chase-on', changed: false },
       colour: { scene: 'rainbow', changed: false },
       motion: { scene: 'leaning', changed: false },
+      zone: NONE,
       look: NO_LOOK,
     });
   });
@@ -287,6 +288,7 @@ describe('Playback', () => {
         lights: { scene: 'chase', changed: false },
         colour: { scene: 'rainbow', changed: false },
         motion: { scene: 'low', changed: false },
+        zone: NONE,
         look: NO_LOOK,
       });
 
@@ -323,6 +325,7 @@ describe('Playback', () => {
         lights: { scene: 'chase', changed: false },
         colour: { scene: 'rainbow', changed: false },
         motion: { scene: 'low', changed: true },
+        zone: NONE,
         look: NO_LOOK,
       });
       expect(told).toHaveBeenCalledTimes(1);
@@ -441,6 +444,7 @@ describe('Playback', () => {
           lights: NONE,
           colour: { scene: 'rainbow', changed: false },
           motion: NONE,
+          zone: NONE,
           look: NO_LOOK,
         },
         laser: lights('open'),
@@ -821,10 +825,184 @@ describe('Playback', () => {
     for (const [act, message] of refused) expect(act).toThrow(new PatchError(message));
   });
 
+  describe('zones', () => {
+    const FLOOR = {
+      tilt: [
+        { min: 0.1, max: 0.3 },
+        { min: 0.5, max: 0.8 },
+      ],
+    };
+    const OVERHEAD = {
+      tilt: [
+        { min: 0.7, max: 0.95 },
+        { min: 0.1, max: 0.25 },
+      ],
+    };
+    const group = (id: string) => rig.playback.getShow().groups.find((each) => each.id === id);
+    const zoneOf = (id: string) => (state(id) as { zone?: unknown } | undefined)?.zone;
+
+    it('stores the zone of the spider as a scene of its own type, and sets it again', () => {
+      change('spider', { zone: FLOOR, levels: { dimmer: 1 }, effect: { id: 'chase' } });
+      expect(rig.playback.store('spider', 'zone', 'Floor')).toBe('floor');
+      expect(on().spider.zone).toEqual({ scene: 'floor', changed: false });
+      // Only the zone is kept: the lights and the effect are not in it.
+      const written = parse(readFileSync(path, 'utf8')).groups.spider.scenes.floor;
+      expect(written).toEqual({
+        label: 'Floor',
+        type: 'zone',
+        fixtures: { spider: { zone: FLOOR } },
+      });
+
+      change('spider', { zone: OVERHEAD });
+      expect(on().spider.zone).toEqual({ scene: 'floor', changed: true });
+      rig.playback.recall('spider', 'floor');
+      expect(state('spider')).toMatchObject({ zone: FLOOR, levels: { dimmer: 1 } });
+      expect(on().spider.zone).toEqual({ scene: 'floor', changed: false });
+    });
+
+    it('is a lane of its own: a scene of zone leaves the lights, colour and motion alone', () => {
+      change('spider', { zone: FLOOR, levels: { dimmer: 0.7 }, motion: { id: 'creep' } });
+      rig.playback.store('spider', 'zone', 'Floor');
+      rig.playback.store('spider', 'motion', 'Creep');
+      change('spider', { zone: OVERHEAD });
+      rig.playback.store('spider', 'zone', 'Overhead');
+
+      rig.playback.recall('spider', 'floor');
+      rig.playback.recall('spider', 'overhead');
+      expect(state('spider')).toMatchObject({
+        zone: OVERHEAD,
+        motion: { id: 'creep' },
+        levels: { dimmer: 0.7 },
+      });
+      expect(on().spider.motion.scene).toBe('creep');
+      expect(on().spider.zone.scene).toBe('overhead');
+    });
+
+    it('leaves the laser alone when a group with both has its zone set', () => {
+      change('laser', { raw: { mode: MANUAL, drawing: 191 } });
+      const laser = state('laser');
+      change('spider', { zone: FLOOR });
+      rig.playback.store('all', 'zone', 'Floor');
+      change('spider', { zone: null });
+      rig.playback.recall('all', 'floor');
+      expect(zoneOf('spider')).toEqual(FLOOR);
+      expect(state('laser')).toEqual(laser);
+    });
+
+    describe('in looks', () => {
+      beforeEach(() => {
+        change('spider', { zone: FLOOR, levels: { dimmer: 1 }, effect: { id: 'chase' } });
+        rig.playback.store('spider', 'lights', 'Chase');
+        rig.playback.store('spider', 'zone', 'Floor');
+        change('spider', { zone: OVERHEAD });
+        rig.playback.store('spider', 'zone', 'Overhead');
+        rig.close();
+        start();
+      });
+
+      it('stores the zone that is on in a look, and presses it again', () => {
+        rig.playback.recall('spider', 'chase');
+        rig.playback.recall('spider', 'floor');
+        rig.playback.storeLook('spider', 'Low');
+        expect(group('spider')?.looks[0]).toMatchObject({ lights: 'chase', zone: 'floor' });
+        expect(parse(readFileSync(path, 'utf8')).groups.spider.looks.low).toEqual({
+          label: 'Low',
+          lights: 'chase',
+          zone: 'floor',
+        });
+
+        rig.playback.recall('spider', 'overhead');
+        expect(on().spider.look).toEqual({ look: 'low', changed: true });
+        rig.playback.playLook('spider', 'low');
+        expect(zoneOf('spider')).toEqual(FLOOR);
+        expect(on().spider.look).toEqual({ look: 'low', changed: false });
+        expect(on().spider.zone).toEqual({ scene: 'floor', changed: false });
+      });
+
+      it('can be a look of a zone alone, and leaves the other lanes as they are', () => {
+        rig.playback.recall('spider', 'floor');
+        expect(rig.playback.storeLook('spider', 'Just low')).toBe('just-low');
+        expect(parse(readFileSync(path, 'utf8')).groups.spider.looks['just-low']).toEqual({
+          label: 'Just low',
+          zone: 'floor',
+        });
+        rig.playback.recall('spider', 'chase');
+        rig.playback.recall('spider', 'overhead');
+        rig.playback.playLook('spider', 'just-low');
+        expect(state('spider')).toMatchObject({ zone: FLOOR, effect: { id: 'chase' } });
+        expect(on().spider.lights.scene).toBe('chase');
+      });
+
+      it('does not delete a zone that a look or a mood uses', () => {
+        rig.playback.recall('spider', 'floor');
+        rig.playback.storeLook('spider', 'Low');
+        expect(() => rig.playback.remove('spider', 'floor')).toThrow(/used by the look "Low"/);
+        expect(() => rig.playback.remove('spider', 'overhead')).not.toThrow();
+      });
+    });
+
+    describe('written by hand', () => {
+      const WITH_ZONES = `groups:
+  spider:
+    fixtures: [spider]
+    scenes:
+      floor:
+        type: zone
+        fixtures:
+          spider: { zone: { tilt: [{ min: 0.1, max: 0.3 }, { min: 0.5, max: 0.8 }] } }
+      chase:
+        type: lights
+        fixtures:
+          spider: { levels: { dimmer: 1 }, effect: { id: chase } }
+    moods:
+      low:
+        label: Low
+        lights: [chase]
+        zone: [floor]
+    looks:
+      down:
+        mood: low
+        lights: chase
+        zone: floor
+`;
+      const open = (text = WITH_ZONES) => {
+        rig.close();
+        writeFileSync(path, text);
+        start();
+      };
+
+      it('reads zones in scenes, moods and looks, and tells the pages', () => {
+        open();
+        expect(rig.playback.getShow().problem).toBeNull();
+        expect(group('spider')?.moods[0]).toMatchObject({ lights: ['chase'], zone: ['floor'] });
+        expect(group('spider')?.looks[0]).toMatchObject({ lights: 'chase', zone: 'floor' });
+        rig.playback.playLook('spider', 'down');
+        expect(zoneOf('spider')).toEqual(FLOOR);
+        expect(() => rig.playback.remove('spider', 'floor')).toThrow(/used by the look/);
+      });
+
+      it('does not use a zone that is not windows of tilt, or a scene of the wrong type', () => {
+        const problem = (text: string) => {
+          open(text);
+          return rig.playback.getShow().problem ?? '';
+        };
+        expect(problem(WITH_ZONES.replace('min: 0.5, max: 0.8', 'min: 0.8, max: 0.5'))).toMatch(
+          /min below its max/,
+        );
+        expect(problem(WITH_ZONES.replace('zone: floor\n', 'zone: chase\n'))).toMatch(
+          /the scene "chase" is lights, and not zone/,
+        );
+        expect(problem(WITH_ZONES.replace('zone: [floor]', 'motion: [floor]'))).toMatch(
+          /the scene "floor" is zone, and not motion/,
+        );
+      });
+    });
+  });
+
   it('refuses a scene without a type, or with one it does not know, and writes nothing', () => {
     for (const type of [undefined, 'full', 'light', 3, null]) {
       expect(() => rig.playback.store('spider', type, 'Warm')).toThrow(
-        new PatchError('a scene needs a type: lights or motion'),
+        new PatchError('a scene needs a type: lights, motion or zone'),
       );
     }
     expect(existsSync(path)).toBe(false);
@@ -833,7 +1011,7 @@ describe('Playback', () => {
 
   it('says that colours are palettes when a scene of colour is asked for', () => {
     expect(() => rig.playback.store('spider', 'colour', 'Warm')).toThrow(
-      new PatchError('colours are palettes now, and not scenes: a scene is lights or motion'),
+      new PatchError('colours are palettes now, and not scenes: a scene is lights, motion or zone'),
     );
     expect(existsSync(path)).toBe(false);
   });
@@ -1022,7 +1200,7 @@ describe('Playback', () => {
       writeFileSync(path, STEP_ONE.replace('    type: lights\n', ''));
       start();
       expect(rig.playback.getShow().problem).toMatch(
-        /Scene "warm": a scene needs a type: lights or motion/,
+        /Scene "warm": a scene needs a type: lights, motion or zone/,
       );
       expect(rig.playback.getShow().groups.every((each) => each.scenes.length === 0)).toBe(true);
     });
@@ -1714,6 +1892,7 @@ describe('Playback', () => {
         lights: 'chase',
         colour: { palette: 'rainbow', speed: null },
         motion: 'low',
+        zone: null,
       });
       expect(on().spider.look).toEqual({ look: 'drop', changed: false });
       const written = parse(readFileSync(path, 'utf8')).groups.spider.looks;
@@ -1732,6 +1911,7 @@ describe('Playback', () => {
         lights: null,
         colour: { palette: 'rainbow', speed: 4 },
         motion: null,
+        zone: null,
       });
       expect(parse(readFileSync(path, 'utf8')).groups.spider.looks['just-colour']).toEqual({
         label: 'Just colour',
@@ -1771,6 +1951,7 @@ describe('Playback', () => {
         lights: { scene: 'chase', changed: false },
         colour: { scene: 'rainbow', changed: false },
         motion: { scene: 'low', changed: false },
+        zone: NONE,
         look: { look: 'drop', changed: false },
       });
       expect(told).toHaveBeenCalledTimes(1);
@@ -1985,7 +2166,14 @@ describe('Playback', () => {
         const spider = group('spider');
         expect(rig.playback.getShow().problem).toBeNull();
         expect(spider?.moods).toEqual([
-          { id: 'calm', label: 'Calm', lights: ['chase'], colour: ['rainbow'], motion: ['low'] },
+          {
+            id: 'calm',
+            label: 'Calm',
+            lights: ['chase'],
+            colour: ['rainbow'],
+            motion: ['low'],
+            zone: [],
+          },
         ]);
         expect(spider?.looks.map((each) => each.mood)).toEqual(['calm']);
       });
@@ -2058,6 +2246,7 @@ describe('Playback', () => {
             lights: 'chase',
             colour: { palette: 'rainbow', speed: null },
             motion: null,
+            zone: null,
           },
           {
             id: 'b',
@@ -2066,6 +2255,7 @@ describe('Playback', () => {
             lights: null,
             colour: { palette: 'white', speed: 0.5 },
             motion: 'low',
+            zone: null,
           },
         ]);
         rig.playback.playLook('spider', 'b');
@@ -2090,7 +2280,7 @@ describe('Playback', () => {
 
       it('does not use a look that sets nothing, or with a pace that is none', () => {
         expect(problem('      a:\n        label: Nothing\n')).toMatch(
-          /a look sets a scene of lights, a palette or a scene of motion/,
+          /a look sets a scene of lights, a palette, a scene of motion or a scene of zone/,
         );
         expect(problem('      a:\n        colour: { palette: white, speed: 3 }\n')).toMatch(
           /the speed of a palette must be one of/,
@@ -2099,7 +2289,7 @@ describe('Playback', () => {
           /"colour" cannot have "tint"/,
         );
         expect(problem('      a:\n        lights: chase\n        sound: loud\n')).toMatch(
-          /cannot have "sound", only label, mood, lights, colour and motion/,
+          /cannot have "sound", only label, mood, lights, colour, motion and zone/,
         );
         expect(problem('      Big:\n        lights: chase\n')).toMatch(/an id has small letters/);
       });

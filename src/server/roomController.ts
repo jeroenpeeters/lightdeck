@@ -351,6 +351,8 @@ export class RoomController extends EventEmitter implements FixtureController {
    */
   recall(type: SceneType, part: unknown, origin?: string): void {
     const look = this.apply(this.rest(), part ?? {}, 'the room in a scene', type);
+    // A zone is about the tilt of bars: the room has none, and no lamp is sent for it.
+    if (type === 'zone') return;
     if (type === 'lights') {
       this.state = { ...this.state, levels: look.levels, fade: look.fade, effect: look.effect };
     } else if (type === 'colour') {

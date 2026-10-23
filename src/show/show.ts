@@ -50,6 +50,7 @@
  *           lights: [chase, pulse]        # scenes of lights
  *           colour: [sunset, ice]         # palettes
  *           motion: [scissor-slow]        # scenes of motion
+ *           zone: [floor]                 # scenes of zone
  *       looks:
  *         drop:
  *           label: Drop
@@ -57,6 +58,8 @@
  *           lights: chase
  *           colour: { palette: sunset, speed: 0.25 }
  *           motion: scissor-slow
+ *           zone: floor                   # how far the motion effects reach: a scene of type zone,
+ *                                         # fixtures: { spider: { zone: { tilt: [{ min, max }, ...] } } }
  *
  *   sequences:                          # the looks of the groups, changing on the bars
  *     night:
@@ -86,9 +89,14 @@ import {
 import type { SceneType } from '../fixtures/profile.js';
 import { PatchError } from '../server/fixture.js';
 
-/** The types of scene that are stored in a group. Colour is a palette of the show. */
-export const STORED_TYPES = ['lights', 'motion'] as const;
+/**
+ * The types of scene that are stored in a group. Colour is a palette of the show. A scene of
+ * zone is the window of tilt of each bar that the motion effects work inside.
+ */
+export const STORED_TYPES = ['lights', 'motion', 'zone'] as const;
 export type StoredType = (typeof STORED_TYPES)[number];
+
+const typeList = `${STORED_TYPES.slice(0, -1).join(', ')} or ${STORED_TYPES.at(-1)}`;
 
 export const isStoredType = (value: unknown): value is StoredType =>
   STORED_TYPES.includes(value as StoredType);
@@ -112,8 +120,8 @@ export interface LookColour {
 }
 
 /**
- * A key that sets a scene of lights, a palette and a scene of motion together. A lane that a
- * look does not name is left as it is.
+ * A key that sets a scene of lights, a palette, a scene of motion and a scene of zone together.
+ * A lane that a look does not name is left as it is.
  */
 export interface Look {
   /** Names the look in the file and in the API. Its own within its group. */
@@ -127,6 +135,8 @@ export interface Look {
   colour?: LookColour;
   /** Id of a scene of the group of type motion. */
   motion?: string;
+  /** Id of a scene of the group of type zone. */
+  zone?: string;
 }
 
 /**
@@ -144,6 +154,8 @@ export interface Mood {
   colour: string[];
   /** Ids of scenes of the group of type motion. */
   motion: string[];
+  /** Ids of scenes of the group of type zone. */
+  zone: string[];
 }
 
 export interface Group {
@@ -257,13 +269,15 @@ export function readLabel(value: unknown, what = 'scene'): string {
   return label;
 }
 
-/** The type of a scene as it was given. Throws a `PatchError` when it is neither lights nor motion. */
+/** The type of a scene as it was given. Throws a `PatchError` when it is not lights, motion or zone. */
 export function readSceneType(value: unknown): StoredType {
   if (value === 'colour') {
-    throw new PatchError('colours are palettes now, and not scenes: a scene is lights or motion');
+    throw new PatchError(
+      'colours are palettes now, and not scenes: a scene is lights, motion or zone',
+    );
   }
   if (!isStoredType(value)) {
-    throw new PatchError(`a scene needs a type: ${STORED_TYPES.join(' or ')}`);
+    throw new PatchError(`a scene needs a type: ${typeList}`);
   }
   return value;
 }
@@ -503,10 +517,12 @@ function readMoods(listed: unknown, group: Group, palettes: readonly Palette[]):
     if (!ID.test(id)) throw new ShowError(`${where}: ${ID_RULE}`);
     if (!isObject(mood)) throw new ShowError(`${where} must have a label and what goes together`);
     const extra = Object.keys(mood).find(
-      (key) => !['label', 'lights', 'colour', 'motion'].includes(key),
+      (key) => !['label', 'lights', 'colour', 'motion', 'zone'].includes(key),
     );
     if (extra !== undefined) {
-      throw new ShowError(`${where} cannot have "${extra}", only label, lights, colour and motion`);
+      throw new ShowError(
+        `${where} cannot have "${extra}", only label, lights, colour, motion and zone`,
+      );
     }
     try {
       const read: Mood = {
@@ -520,10 +536,11 @@ function readMoods(listed: unknown, group: Group, palettes: readonly Palette[]):
           return each;
         }),
         motion: readMoodList(mood.motion, 'motion', (each) => sceneOfType(group, each, 'motion')),
+        zone: readMoodList(mood.zone, 'zone', (each) => sceneOfType(group, each, 'zone')),
       };
-      if (read.lights.length + read.colour.length + read.motion.length === 0) {
+      if (read.lights.length + read.colour.length + read.motion.length + read.zone.length === 0) {
         throw new PatchError(
-          'a mood lists at least one scene of lights, palette or scene of motion',
+          'a mood lists at least one scene of lights, palette, scene of motion or scene of zone',
         );
       }
       moods.push(read);
@@ -551,11 +568,11 @@ function readLooks(listed: unknown, group: Group, palettes: readonly Palette[]):
     }
     if (!isObject(look)) throw new ShowError(`${where} must have a label and what it sets`);
     const extra = Object.keys(look).find(
-      (key) => !['label', 'mood', 'lights', 'colour', 'motion'].includes(key),
+      (key) => !['label', 'mood', 'lights', 'colour', 'motion', 'zone'].includes(key),
     );
     if (extra !== undefined) {
       throw new ShowError(
-        `${where} cannot have "${extra}", only label, mood, lights, colour and motion`,
+        `${where} cannot have "${extra}", only label, mood, lights, colour, motion and zone`,
       );
     }
     try {
@@ -572,8 +589,11 @@ function readLooks(listed: unknown, group: Group, palettes: readonly Palette[]):
       if (look.lights !== undefined) read.lights = sceneOfType(group, look.lights, 'lights');
       if (look.colour !== undefined) read.colour = readLookColour(look.colour, palettes);
       if (look.motion !== undefined) read.motion = sceneOfType(group, look.motion, 'motion');
-      if (!read.lights && !read.colour && !read.motion) {
-        throw new PatchError('a look sets a scene of lights, a palette or a scene of motion');
+      if (look.zone !== undefined) read.zone = sceneOfType(group, look.zone, 'zone');
+      if (!read.lights && !read.colour && !read.motion && !read.zone) {
+        throw new PatchError(
+          'a look sets a scene of lights, a palette, a scene of motion or a scene of zone',
+        );
       }
       looks.push(read);
     } catch (error) {

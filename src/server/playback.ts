@@ -2,8 +2,9 @@
  * The playback: the palettes, the groups, their scenes and looks, and what the fixtures are
  * set to.
  *
- * There is one state per fixture. What a group does is three lanes, one per type: lights,
- * colour and motion. A scene of lights or of motion is stored in the group, and recalling it
+ * There is one state per fixture. What a group does is four lanes, one per type: lights,
+ * colour, motion and zone (how far the motion effects reach). A scene of lights, of motion or of
+ * zone is stored in the group, and recalling it
  * sets that type of properties on the fixtures of the group through their controllers, the way
  * their pages do, and leaves the other types as they are. The colour lane is not a scene: it is
  * one of the palettes of the show, which belong to no fixture, and setting one sets it on the
@@ -82,6 +83,8 @@ export interface MoodSummary {
   colour: string[];
   /** Ids of scenes of motion that go with the mood. */
   motion: string[];
+  /** Ids of scenes of zone that go with the mood. */
+  zone: string[];
 }
 
 export interface LookSummary {
@@ -95,6 +98,8 @@ export interface LookSummary {
   colour: { palette: string; speed: number | null } | null;
   /** Id of the scene of motion it sets, or null. */
   motion: string | null;
+  /** Id of the scene of zone it sets, or null. */
+  zone: string | null;
 }
 
 export interface PaletteSummary {
@@ -182,6 +187,7 @@ const nothingOnAtAll = (): Record<SceneType, On> => ({
   lights: nothingOn(),
   colour: nothingOn(),
   motion: nothingOn(),
+  zone: nothingOn(),
 });
 
 function readSpeed(value: unknown): number | null {
@@ -282,6 +288,7 @@ export class Playback {
           lights: [...mood.lights],
           colour: [...mood.colour],
           motion: [...mood.motion],
+          zone: [...mood.zone],
         })),
         looks: looks.map((look) => ({
           id: look.id,
@@ -292,6 +299,7 @@ export class Playback {
             ? { palette: look.colour.palette, speed: look.colour.speed ?? null }
             : null,
           motion: look.motion ?? null,
+          zone: look.zone ?? null,
         })),
       })),
       sequences: show.sequences.map(({ id, label, steps }) => ({
@@ -310,6 +318,7 @@ export class Playback {
         lights: { scene: on.lights.scene, changed: on.lights.changed },
         colour: { scene: on.colour.scene, changed: on.colour.changed },
         motion: { scene: on.motion.scene, changed: on.motion.changed },
+        zone: { scene: on.zone.scene, changed: on.zone.changed },
         look: this.lookState(group, on),
       };
     }
@@ -360,9 +369,10 @@ export class Playback {
    */
   playLook(group: unknown, look: unknown, origin?: string): void {
     const found = this.needGroup(group);
-    const { id, lights, colour, motion } = this.needLook(found, look);
+    const { id, lights, colour, motion, zone } = this.needLook(found, look);
     const lightsScene = lights === undefined ? undefined : this.needScene(found, lights);
     const motionScene = motion === undefined ? undefined : this.needScene(found, motion);
+    const zoneScene = zone === undefined ? undefined : this.needScene(found, zone);
     const takers = this.palettesIn(found.fixtures);
     const pace = colour ? readSpeed(colour.speed) : null;
     if (colour) this.needPalette(colour.palette);
@@ -372,6 +382,7 @@ export class Playback {
       this.checkSet(takers, 'colour', this.colourParts(takers, colour.palette, pace));
     }
     if (motionScene) this.checkSet(found.fixtures, 'motion', motionScene.fixtures);
+    if (zoneScene) this.checkSet(found.fixtures, 'zone', zoneScene.fixtures);
 
     if (lightsScene) {
       this.set('lights', found.fixtures, lightsScene.fixtures, origin);
@@ -384,6 +395,10 @@ export class Playback {
     if (motionScene) {
       this.set('motion', found.fixtures, motionScene.fixtures, origin);
       this.turnOn(found, 'motion', motionScene.id, null);
+    }
+    if (zoneScene) {
+      this.set('zone', found.fixtures, zoneScene.fixtures, origin);
+      this.turnOn(found, 'zone', zoneScene.id, null);
     }
     this.looksOn.set(found.id, id);
     this.tell();
@@ -438,13 +453,17 @@ export class Playback {
     this.file.edit((document, show) => {
       const found = this.needGroup(group, show);
       const { id, label } = this.needScene(found, scene);
-      const user = found.looks.find((each) => each.lights === id || each.motion === id);
+      const user = found.looks.find(
+        (each) => each.lights === id || each.motion === id || each.zone === id,
+      );
       if (user) {
         throw new PatchError(
           `the scene "${label}" is used by the look "${user.label}". Change or delete the look first`,
         );
       }
-      const mood = found.moods.find((each) => [...each.lights, ...each.motion].includes(id));
+      const mood = found.moods.find((each) =>
+        [...each.lights, ...each.motion, ...each.zone].includes(id),
+      );
       if (mood) {
         throw new PatchError(
           `the scene "${label}" is in the mood "${mood.label}". Take it out of the mood in the show file first`,
@@ -458,7 +477,7 @@ export class Playback {
 
   /**
    * Stores what is on in the group now as a look: the scene of lights, the palette with its
-   * speed and the scene of motion. A lane with nothing on is left out. Gives its id.
+   * speed, the scene of motion and the scene of zone. A lane with nothing on is left out. Gives its id.
    */
   storeLook(group: unknown, name: unknown): string {
     const label = readLabel(name, 'look');
@@ -726,6 +745,7 @@ export class Playback {
           : { palette: on.colour.scene, speed: on.colour.speed };
     }
     if (on.motion.scene !== null) lanes.motion = on.motion.scene;
+    if (on.zone.scene !== null) lanes.zone = on.zone.scene;
     if (Object.keys(lanes).length === 0) {
       throw new PatchError(
         `nothing is on in "${group.label}", so there is nothing to store as a look`,
@@ -850,7 +870,8 @@ export class Playback {
     const changed =
       differs(on.lights, look.lights) ||
       differs(on.colour, look.colour?.palette, look.colour?.speed ?? null) ||
-      differs(on.motion, look.motion);
+      differs(on.motion, look.motion) ||
+      differs(on.zone, look.zone);
     return { look: look.id, changed };
   }
 

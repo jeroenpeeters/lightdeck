@@ -271,6 +271,8 @@ export class LaserController extends EventEmitter implements DmxFixtureControlle
    */
   recall(type: SceneType, part: unknown, origin?: string): void {
     const look = this.apply(this.rest(), part ?? {}, 'the laser in a scene', type);
+    // A zone is about the tilt of bars: the laser has none, so there is nothing to set.
+    if (type === 'zone') return;
     const raw = { ...this.state.raw };
     for (const name of controlsOf(this.profile, type)) raw[name] = look.raw[name] ?? 0;
     this.state = {

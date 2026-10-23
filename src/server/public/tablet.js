@@ -72,6 +72,7 @@ const LANES = [
   { id: 'lights', name: 'Lights' },
   { id: 'colour', name: 'Colour' },
   { id: 'motion', name: 'Motion' },
+  { id: 'zone', name: 'Zone' },
 ];
 const NO_PALETTES = "This group's fixtures have colours of their own. Set them on their page.";
 
@@ -125,16 +126,18 @@ function renderKeys() {
   }
   renderRoom();
   // The panel at the bottom is about the spider group, and says so.
-  $('t-more-title').textContent = `${group.label}: lights, colour and motion`;
+  $('t-more-title').textContent = `${group.label}: lights, colour, motion and zone`;
   looks.none.textContent = 'No looks yet. Store them on the deck, in Program.';
   syncKeys(looks, lookItems(group));
   syncKeys(lanes.lights, sceneItems(group, 'lights'));
   syncKeys(lanes.colour, paletteItems(group));
   syncKeys(lanes.motion, sceneItems(group, 'motion'));
+  syncKeys(lanes.zone, sceneItems(group, 'zone'));
   lanes.lights.none.textContent = 'No lights scenes yet.';
   lanes.colour.none.textContent =
     group.palettes === false ? NO_PALETTES : 'No palettes yet. Make them on the Palettes page.';
   lanes.motion.none.textContent = 'No motion scenes yet.';
+  lanes.zone.none.textContent = 'No zone scenes yet.';
   $('t-off').setAttribute('aria-label', `${group.label} lights off`);
 }
 

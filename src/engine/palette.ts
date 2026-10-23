@@ -164,6 +164,17 @@ export function paletteData(palette: PaletteFields): Record<string, unknown> {
 }
 
 /**
+ * From this many changes per second a fade between colours is a smear, and the cheap lenses make a
+ * mess of it: a fast effect or a fast cycle changes hard (Jeroen, 2026-10-21).
+ */
+export const FAST_CHANGES_PER_SECOND = 3;
+
+/** Whether something that changes once per beat at `speed` is fast, at `bpm`. */
+export function isFast(bpm: number, speed: number): boolean {
+  return (bpm / 60) * speed >= FAST_CHANGES_PER_SECOND;
+}
+
+/**
  * The colour of a slot (0-based) after `step` steps of the cycle, as a fraction. Null is off:
  * a slot beyond the list, an entry that is off, and a fade that has gone all the way to off.
  */

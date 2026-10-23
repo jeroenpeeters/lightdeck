@@ -15,7 +15,8 @@
  * Most of them show the second colour as a backdrop, a wash under the hits. The techno effects
  * (`cross`, `ticktock`, `scan`, `pairs`, `stab`) do not: they use the two colours as two colours
  * that take turns, light only one or two lenses at a time, and leave every other lens dark. With
- * one colour the turns of the second colour are dark, so it is a beam that blinks.
+ * one colour the turns of the second colour are the first colour again (a palette that shows one
+ * slot has no second colour), and with a second colour that is off they are dark.
  *
  * Moving the bars is not in here: that is a motion effect (`motionEffects.ts`). The two are
  * apart, so any of one goes with any of the other.
@@ -43,6 +44,11 @@ export interface EffectContext {
   bars: readonly (readonly number[])[];
   /** How many entries the palette has, which is how many slots there are. */
   slots: number;
+  /**
+   * Per slot, whether the palette has a colour there (an entry that is off has none). Left out
+   * it is taken that every slot has one.
+   */
+  filled?: readonly boolean[];
 }
 
 export interface EffectFrame {
@@ -86,8 +92,17 @@ export function limitSpeed(bpm: number, wanted: number): number {
   return speed;
 }
 
-/** The main colour at `main` and the backdrop for the rest. */
-const over = (main: number): number[] => [main, 1 - main];
+/**
+ * How bright the backdrop is where the main colour is not: a share of the backdrop colour, so the
+ * main colour pops out of it (Jeroen, 2026-10-21: backdrop and effect colour were equally bright).
+ */
+export const BACKDROP = 0.1;
+
+/** What is left of the backdrop where the main colour is at `main`. */
+const backdrop = (main: number): number => BACKDROP * (1 - main);
+
+/** The main colour at `main` and the backdrop, held back, for the rest. */
+const over = (main: number): number[] => [main, backdrop(main)];
 
 function fill(cells: number, levels: (index: number) => number[]): number[][] {
   return Array.from({ length: cells }, (_, i) => levels(i));
@@ -111,7 +126,7 @@ const kick: Effect = {
     const downbeat = mod(Math.floor(beat), 4) === 0;
     const level = hit(beat, downbeat ? 3.5 : 5);
     const accent = downbeat && slots >= 3;
-    return { levels: fill(cells, () => (accent ? [0, 1 - level, level] : over(level))) };
+    return { levels: fill(cells, () => (accent ? [0, backdrop(level), level] : over(level))) };
   },
 };
 
@@ -127,7 +142,7 @@ const chase: Effect = {
       levels: fill(cells, (i) => {
         const behind = (head - i + cells) % cells;
         const level = Math.exp(-1.3 * behind);
-        return behind > 0 && slots >= 3 ? [0, 1 - level, level] : over(level);
+        return behind > 0 && slots >= 3 ? [0, backdrop(level), level] : over(level);
       }),
     };
   },
@@ -195,7 +210,7 @@ const sparkle: Effect = {
     return {
       levels: fill(cells, (i) => {
         if (noise(step, i) >= 0.22) return over(0);
-        return slots >= 3 && noise(step, i + 101) < 0.3 ? [0, 1 - level, level] : over(level);
+        return slots >= 3 && noise(step, i + 101) < 0.3 ? [0, backdrop(level), level] : over(level);
       }),
     };
   },
@@ -308,8 +323,18 @@ const STAB = 5;
 /** The levels of a lens that is dark. */
 const DARK: number[] = [];
 
-/** A lens that hits in slot 1 or in slot 2: `second` says which. */
-const lit = (level: number, second: boolean): number[] => (second ? [0, level] : [level]);
+/** Whether the palette has a second colour to take its turn: a slot that is there and is not off. */
+const hasSecond = ({ slots, filled }: EffectContext): boolean =>
+  slots >= 2 && (filled?.[1] ?? true);
+
+/**
+ * A lens that hits in slot 1 or in slot 2: `second` says which. Without a second colour (a palette
+ * that shows one slot, or has an entry that is off there) the turn of the second is the first colour
+ * again: otherwise half of the beats of a scan are dark (Jeroen, 2026-10-21, with the palette that
+ * changes on every beat and with the red and off of the void).
+ */
+const lit = (level: number, second: boolean, context: EffectContext): number[] =>
+  second && hasSecond(context) ? [0, level] : [level];
 
 /**
  * Cells with all dark but the ones named: `beams` maps a cell to its levels. A cell named twice
@@ -329,13 +354,14 @@ const cross: Effect = {
   description:
     'Two beams cross: the first colour steps from one end to the other, one lens per beat, while the second colour steps the other way. Every other lens is dark.',
   slots: 2,
-  render({ beat, cells }) {
+  render(context) {
+    const { beat, cells } = context;
     const step = mod(Math.floor(beat), cells);
     const level = hit(beat, STAB);
     return {
       levels: only(cells, [
-        [step, lit(level, false)],
-        [cells - 1 - step, lit(level, true)],
+        [step, lit(level, false, context)],
+        [cells - 1 - step, lit(level, true, context)],
       ]),
     };
   },
@@ -347,13 +373,14 @@ const ticktock: Effect = {
   description:
     'One beam on every beat, in turn: the first colour on the left half, the second on the right half, both stepping in from the outside. Every other lens is dark.',
   slots: 2,
-  render({ beat, cells }) {
+  render(context) {
+    const { beat, cells } = context;
     const whole = Math.floor(beat);
     const half = Math.max(1, Math.floor(cells / 2));
     const place = mod(Math.floor(whole / 2), half);
     const right = mod(whole, 2) === 1;
     const lens = right ? cells - 1 - place : place;
-    return { levels: only(cells, [[lens, lit(hit(beat, STAB), right)]]) };
+    return { levels: only(cells, [[lens, lit(hit(beat, STAB), right, context)]]) };
   },
 };
 
@@ -363,11 +390,12 @@ const scan: Effect = {
   description:
     'A single hard beam goes along the lenses, one per beat, in the first colour, and comes back in the second colour. Every other lens is dark.',
   slots: 2,
-  render({ beat, cells }) {
+  render(context) {
+    const { beat, cells } = context;
     const step = mod(Math.floor(beat), 2 * cells);
     const back = step >= cells;
     const lens = back ? 2 * cells - 1 - step : step;
-    return { levels: only(cells, [[lens, lit(hit(beat, STAB), back)]]) };
+    return { levels: only(cells, [[lens, lit(hit(beat, STAB), back, context)]]) };
   },
 };
 
@@ -377,14 +405,15 @@ const pairs: Effect = {
   description:
     'Two lenses, one on each side of the middle, hit together on the beat. The first colour is the pair on the outside, the second colour the pair on the inside, and they take turns. Every other lens is dark.',
   slots: 2,
-  render({ beat, cells }) {
+  render(context) {
+    const { beat, cells } = context;
     const whole = Math.floor(beat);
     const half = Math.max(1, Math.floor(cells / 2));
     const place = mod(Math.floor(whole / 2), half);
     const inside = mod(whole, 2) === 1;
     // Outside to inside on the beats of the first colour, and inside to outside on the others.
     const pair = inside ? half - 1 - place : place;
-    const shown = lit(hit(beat, STAB), inside);
+    const shown = lit(hit(beat, STAB), inside, context);
     return {
       levels: only(cells, [
         [pair, shown],
@@ -409,12 +438,13 @@ const stab: Effect = {
   description:
     'One lens stabs in the first colour, and again in the second colour on the next beat. After two beats it jumps to a lens far away, and goes round all of them. Every other lens is dark.',
   slots: 2,
-  render({ beat, cells }) {
+  render(context) {
+    const { beat, cells } = context;
     const whole = Math.floor(beat);
     const turn = Math.floor(whole / 2);
     // The jumps shift by one lens every time they have been round all the lenses once.
     const lens = mod(turn * jump(cells) + Math.floor(turn / cells), cells);
-    return { levels: only(cells, [[lens, lit(hit(beat, STAB), mod(whole, 2) === 1)]]) };
+    return { levels: only(cells, [[lens, lit(hit(beat, STAB), mod(whole, 2) === 1, context)]]) };
   },
 };
 
@@ -486,10 +516,11 @@ const strobe: Effect = {
   description:
     'All lenses flash hard on every beat, the first colour and the second colour in turn. Faster speeds flash more often, and never more than ten times per second.',
   slots: 2,
-  render({ beat, cells }) {
+  render(context) {
+    const { beat, cells } = context;
     const on = frac(beat) < FLASH;
     const second = mod(Math.floor(beat), 2) === 1;
-    return { levels: fill(cells, () => (on ? lit(1, second) : DARK)) };
+    return { levels: fill(cells, () => (on ? lit(1, second, context) : DARK)) };
   },
 };
 

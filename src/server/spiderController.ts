@@ -27,7 +27,14 @@ import { EventEmitter } from 'node:events';
 import { EffectClock } from '../engine/effectClock.js';
 import { EFFECTS, findEffect, type Rgbw, SPEEDS } from '../engine/effects.js';
 import { findMotionEffect, MOTION_EFFECTS } from '../engine/motionEffects.js';
-import { FALLBACK_PALETTE, PaletteBook, paint, shownSlots } from '../engine/palette.js';
+import {
+  colourAt,
+  FALLBACK_PALETTE,
+  isFast,
+  PaletteBook,
+  paint,
+  shownSlots,
+} from '../engine/palette.js';
 import {
   controlsOf,
   type FixtureProfile,
@@ -96,6 +103,12 @@ export interface SpiderState {
   /** The motion effect: the bars stay where the tilts are set while it is null. */
   motion: EffectSettings;
   colour: ColourSettings;
+  /**
+   * The zone: the window of tilt of each bar that the motion effect works inside (an effect's 0
+   * is the `min` of the bar and its 100 the `max`), or null: then the swing limits of the show
+   * are the window. Hand and scene tilts are not held to it.
+   */
+  zone: SpiderLimits | null;
 }
 
 export interface StatePatch {
@@ -104,10 +117,11 @@ export interface StatePatch {
   effect?: unknown;
   motion?: unknown;
   colour?: unknown;
+  zone?: unknown;
 }
 
 /** What of the state a change can set and a scene keeps. */
-type Look = Pick<SpiderState, 'levels' | 'raw' | 'effect' | 'motion' | 'colour'>;
+type Look = Pick<SpiderState, 'levels' | 'raw' | 'effect' | 'motion' | 'colour' | 'zone'>;
 
 export interface SpiderOptions {
   profile: FixtureProfile;
@@ -134,11 +148,12 @@ const RESET_CONTROL = 'reset';
 const MOTOR_SPEED_CONTROL = 'motorSpeed';
 const RESET_VALUE = 255;
 
-/** Which type of scene keeps which of the three effects. */
-const KEPT_BY: Record<'effect' | 'motion' | 'colour', SceneType> = {
+/** Which type of scene keeps which of the effects, the colour and the zone. */
+const KEPT_BY: Record<'effect' | 'motion' | 'colour' | 'zone', SceneType> = {
   effect: 'lights',
   motion: 'motion',
   colour: 'colour',
+  zone: 'zone',
 };
 const EFFECT_KEYS = ['id', 'speed'];
 const COLOUR_KEYS = ['palette', 'speed'];
@@ -225,6 +240,7 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       effect: { ...this.state.effect },
       motion: { ...this.state.motion },
       colour: { ...this.state.colour },
+      zone: this.state.zone === null ? null : { tilt: this.state.zone.tilt.map((t) => ({ ...t })) },
     };
   }
 
@@ -257,17 +273,25 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
    * left out is not limited. `null` is no limits at all. Throws a `PatchError`.
    */
   readLimits(value: unknown): SpiderLimits {
+    return this.readWindows(value, 'the limits of the spider', 'limit');
+  }
+
+  /**
+   * Windows of tilt per bar, as the limits of the show and the zones are written: `{ tilt: [{ min,
+   * max }, ...] }`. A bar that is left out has the whole of the tilt.
+   */
+  private readWindows(value: unknown, what: string, name: string): SpiderLimits {
     const bars = this.layout.bars.length;
     const free = (): TiltLimit => ({ min: 0, max: 1 });
     const limits: SpiderLimits = { tilt: Array.from({ length: bars }, free) };
     if (value === null || value === undefined) return limits;
-    const given = readObject(value, 'the limits of the spider', ['tilt']);
+    const given = readObject(value, what, ['tilt']);
     if (given.tilt === undefined) return limits;
     if (!Array.isArray(given.tilt) || given.tilt.length > bars) {
-      throw new PatchError(`"tilt" must list a limit for each of the ${bars} bars at most`);
+      throw new PatchError(`"tilt" must list a ${name} for each of the ${bars} bars at most`);
     }
     given.tilt.forEach((each: unknown, bar: number) => {
-      const where = `the tilt limit of bar ${bar + 1}`;
+      const where = `the tilt ${name} of bar ${bar + 1}`;
       const { min = 0, max = 1 } = readObject(each, where, ['min', 'max']);
       if (typeof min !== 'number' || typeof max !== 'number' || !(min >= 0 && max <= 1)) {
         throw new PatchError(`${where} must be a min and a max between 0 and 1`);
@@ -336,9 +360,12 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
     for (const [name, value] of Object.entries(this.state.raw)) {
       if (own.has(name) && name !== RESET_CONTROL && value !== rest.raw[name]) raw[name] = value;
     }
-    const { effect, motion, colour } = this.state;
+    const { effect, motion, colour, zone } = this.state;
     return {
       ...(Object.keys(levels).length > 0 ? { levels } : {}),
+      ...(type === 'zone' && zone !== null
+        ? { zone: { tilt: zone.tilt.map(({ min, max }) => ({ min, max })) } }
+        : {}),
       ...(Object.keys(raw).length > 0 ? { raw } : {}),
       ...(type === 'lights' && effect.id !== null ? { effect: { ...effect } } : {}),
       ...(type === 'motion' && motion.id !== null ? { motion: { ...motion } } : {}),
@@ -377,6 +404,7 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       effect: type === 'lights' ? look.effect : this.state.effect,
       motion: type === 'motion' ? look.motion : this.state.motion,
       colour: type === 'colour' ? look.colour : this.state.colour,
+      zone: type === 'zone' ? look.zone : this.state.zone,
     };
     this.emit('wants');
     this.push(origin);
@@ -390,7 +418,14 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       if (control.kind === 'function') raw[control.name] = control.idle;
       else levels[control.name] = 0;
     }
-    return { levels, raw, effect: restEffect(), motion: restEffect(), colour: restColour() };
+    return {
+      levels,
+      raw,
+      effect: restEffect(),
+      motion: restEffect(),
+      colour: restColour(),
+      zone: null,
+    };
   }
 
   /**
@@ -404,6 +439,7 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       'effect',
       'motion',
       'colour',
+      'zone',
     ]) as StatePatch;
     const levels = { ...base.levels };
     const raw = { ...base.raw };
@@ -412,7 +448,7 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       if (own && only && !own.has(name))
         throw new PatchError(`"${name}" is not part of a ${only} scene`);
     };
-    for (const key of ['effect', 'motion', 'colour'] as const) {
+    for (const key of ['effect', 'motion', 'colour', 'zone'] as const) {
       if (only !== undefined && patch[key] !== undefined && KEPT_BY[key] !== only) {
         throw new PatchError(`"${key}" is not part of a ${only} scene`);
       }
@@ -443,7 +479,15 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       effect: this.readEffect(base.effect, patch.effect, 'effect'),
       motion: this.readEffect(base.motion, patch.motion, 'motion'),
       colour: this.readColour(base.colour, patch.colour),
+      zone: this.readZone(base.zone, patch.zone),
     };
+  }
+
+  /** The zone with the change on top: `null` takes it away, an object sets the windows of the bars. */
+  private readZone(current: SpiderLimits | null, change: unknown): SpiderLimits | null {
+    if (change === undefined) return current;
+    if (change === null) return null;
+    return this.readWindows(change, 'the zone of the spider', 'zone window');
   }
 
   act(name: string, origin?: string): void {
@@ -579,22 +623,30 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
         key: light.id,
       });
       let step = 0;
+      let fast = isFast(bpm, read.speed);
       if (palette.mode === 'cycle' && palette.colours.length > 1) {
-        step = this.paletteClock.read({
+        const cycle = this.paletteClock.read({
           beat,
           bpm,
           wanted: (colour.speed ?? palette.speed) * rate,
           epoch,
           key: palette.id,
-        }).beat;
+        });
+        step = cycle.beat;
+        fast ||= isFast(bpm, cycle.speed);
       }
       const { levels } = light.render({
         beat: read.beat,
         cells: this.layout.cells,
         bars: this.layout.bars,
         slots: shownSlots(palette),
+        filled: Array.from(
+          { length: shownSlots(palette) },
+          (_, slot) => colourAt(palette, slot, Math.floor(step)) !== null,
+        ),
       });
-      frame.cells = paint(levels, palette, step);
+      // A fast effect or a fast cycle changes hard: no fade between the colours.
+      frame.cells = paint(levels, fast ? { ...palette, change: 'step' } : palette, step);
     }
 
     if (moving) {
@@ -609,11 +661,12 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
         beat: read.beat,
         bpm: bpm * read.speed,
         bars: this.layout.bars.length,
-        // The effect works inside the swing limits: mapped into them and not cut off by them.
+        // The effect works inside the zone when one is chosen, and inside the swing limits of
+        // the show when not: mapped into the window and not cut off by it.
         motion: {
           tilt: this.layout.tiltCurve,
           motorSpeed: this.layout.motorSpeedCurve,
-          limits: this.limits.tilt,
+          limits: (this.state.zone ?? this.limits).tilt,
         },
       });
       frame.tilt = moved.tilt;
@@ -637,11 +690,12 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       });
       if (frame.motorSpeed !== undefined) levels[MOTOR_SPEED_CONTROL] = clamp01(frame.motorSpeed);
     }
-    // Whatever sets a tilt, by hand, in a scene or by a motion effect, the bar stays within its limits.
-    // A motion effect already works inside them, so this cuts off only what is set by hand or in a scene.
+    // Whatever sets a tilt by hand or in a scene, the bar stays within the swing limits of the show.
+    // A motion effect works inside its window already (the zone, or those limits) and is not cut
+    // off here: a zone may lie outside the limits, and then it is the zone that is wanted.
     this.layout.tilt.forEach((name, bar) => {
       const limit = this.limits.tilt[bar];
-      if (limit && name in levels) {
+      if (limit && name in levels && frame?.tilt === undefined) {
         levels[name] = Math.min(limit.max, Math.max(limit.min, levels[name] ?? 0));
       }
     });

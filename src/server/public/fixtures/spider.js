@@ -9,7 +9,7 @@
 // says how much of each colour of the palette every lens gets, and knows no colour. The
 // palette (`state.colour.palette`, one of `shell.show.palettes`, which are made on the
 // Palettes page) says what the colours are. The movement (`state.motion`) tilts the bars.
-// The Effects view has the first two, the Movement view the third. The Colour view is the
+// The Effects view has the first two, the Movement view the third, with the zone (`state.zone`: how far it reaches) and the swing limit. The Colour view is the
 // colour of each lens by hand; a light effect sets the lenses while it runs.
 //
 // Tempo, blackout, the master and the master speed are not the spider's: they are in the
@@ -74,6 +74,8 @@ const rows = [];
 /** The swing limit per bar, in percent of the tilt, as the sliders have it. */
 let swing = [];
 const swingRows = [];
+/** The sliders of the zone, one pair per bar. */
+const zoneRows = [];
 let swingTimer;
 /** Until then the sliders keep what the operator set, whatever the show says. */
 let swingHeld = 0;
@@ -213,6 +215,7 @@ function build() {
   }
   rows.push(levelSlider($('motion-sliders'), 'motorSpeed', 'Motor speed'));
   buildSwing();
+  buildZone();
 
   // Built-in programs: the raw bytes, with the manual's meaning next to them.
   for (const control of fixture.controls) {
@@ -733,6 +736,63 @@ function renderSwing() {
   $('swing-reset').disabled = limited.length === 0;
 }
 
+// ---- the zone ----
+
+/** The zone of the state per bar, in percent. A bar without a window has the whole range. */
+function zoneOfState() {
+  const windows = state.zone?.tilt ?? [];
+  return bars.map((_, i) => ({
+    min: Math.round((windows[i]?.min ?? 0) * 100),
+    max: Math.round((windows[i]?.max ?? 1) * 100),
+  }));
+}
+
+/** Moves one end of the window of a bar. The zone is sent whole: every bar with its window. */
+function setZone(bar, edge, percentValue) {
+  const windows = zoneOfState();
+  const mine = windows[bar];
+  if (!mine) return;
+  if (edge === 'min') mine.min = Math.min(percentValue, mine.max - SWING_GAP);
+  else mine.max = Math.max(percentValue, mine.min + SWING_GAP);
+  const zone = { tilt: windows.map(({ min, max }) => ({ min: min / 100, max: max / 100 })) };
+  state.zone = zone;
+  shell.send({ zone });
+  render();
+}
+
+function buildZone() {
+  bars.forEach((bar, i) => {
+    for (const edge of ['min', 'max']) {
+      const row = slider({
+        id: `zone-${edge}-${i}`,
+        label: `${bar.name} ${edge === 'min' ? 'from' : 'to'}`,
+        min: edge === 'min' ? 0 : SWING_GAP,
+        max: edge === 'min' ? 100 - SWING_GAP : 100,
+        read: () => zoneOfState()[i]?.[edge] ?? (edge === 'min' ? 0 : 100),
+        write: (number) => setZone(i, edge, number),
+      });
+      $('zone-sliders').append(row);
+      zoneRows.push(row);
+    }
+  });
+  $('zone-reset').addEventListener('click', () => {
+    state.zone = null;
+    shell.send({ zone: null });
+    render();
+  });
+}
+
+function renderZone() {
+  for (const row of zoneRows) row.refresh();
+  const on = state.zone != null;
+  $('zone-hint').textContent = on
+    ? `${zoneOfState()
+        .map((each, i) => `${bars[i]?.name ?? ''} reaches from ${each.min} to ${each.max}`)
+        .join(', ')}.`
+    : 'No zone: the movement works inside the swing limit.';
+  $('zone-reset').disabled = !on;
+}
+
 /** What the spider has to say in the notice of the shell. */
 function notes() {
   const said = [];
@@ -753,6 +813,7 @@ function render() {
   renderEffects();
   renderMovement();
   renderSwing();
+  renderZone();
   for (const row of rows) row.refresh();
   $('reset').disabled = state.resetting;
   renderReadout($('readout'), dmx, fixture.controls);

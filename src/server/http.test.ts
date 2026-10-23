@@ -543,7 +543,7 @@ describe('HTTP server', () => {
 
   const NONE = { scene: null, changed: false };
   const NO_LOOK = { look: null, changed: false };
-  const NOTHING = { lights: NONE, colour: NONE, motion: NONE, look: NO_LOOK };
+  const NOTHING = { lights: NONE, colour: NONE, motion: NONE, zone: NONE, look: NO_LOOK };
   /** What is on in a group when only a scene of lights is. */
   const lights = (scene: string, changed = false) => ({ ...NOTHING, lights: { scene, changed } });
   const STARTING_PALETTES = [
@@ -741,6 +741,7 @@ describe('HTTP server', () => {
       lights: NONE,
       colour: { scene: 'rainbow', changed: false },
       motion: { scene: 'lean', changed: false },
+      zone: NONE,
       look: NO_LOOK,
     });
   });
@@ -837,16 +838,20 @@ describe('HTTP server', () => {
     await post('/api/groups/spider/scenes', { label: 'Warm', type: 'lights' });
     const refused: [string, unknown, string][] = [
       ['/api/groups/spider/scenes', { type: 'lights' }, 'a scene needs a name'],
-      ['/api/groups/spider/scenes', { label: 'Warm' }, 'a scene needs a type: lights or motion'],
+      [
+        '/api/groups/spider/scenes',
+        { label: 'Warm' },
+        'a scene needs a type: lights, motion or zone',
+      ],
       [
         '/api/groups/spider/scenes',
         { label: 'Warm', type: 'full' },
-        'a scene needs a type: lights or motion',
+        'a scene needs a type: lights, motion or zone',
       ],
       [
         '/api/groups/spider/scenes',
         { label: 'Warm', type: 'colour' },
-        'colours are palettes now, and not scenes: a scene is lights or motion',
+        'colours are palettes now, and not scenes: a scene is lights, motion or zone',
       ],
       [
         '/api/groups/strobe/scenes',
@@ -943,7 +948,7 @@ describe('HTTP server', () => {
       }
     };
     const none = '{"scene":null,"changed":false}';
-    const nothing = `{"lights":${none},"colour":${none},"motion":${none},"look":{"look":null,"changed":false}}`;
+    const nothing = `{"lights":${none},"colour":${none},"motion":${none},"zone":${none},"look":{"look":null,"changed":false}}`;
     await readUntil(
       `event: playback\ndata: {"groups":{"spider":${nothing},"spider-2":${nothing},"laser":${nothing},"all":${nothing}}}`,
     );
@@ -952,7 +957,7 @@ describe('HTTP server', () => {
     );
 
     await post('/api/groups/laser/scenes', { label: 'Warm', type: 'lights' });
-    const warm = `{"lights":{"scene":"warm","changed":false},"colour":${none},"motion":${none},"look":{"look":null,"changed":false}}`;
+    const warm = `{"lights":{"scene":"warm","changed":false},"colour":${none},"motion":${none},"zone":${none},"look":{"look":null,"changed":false}}`;
     await readUntil(
       `event: playback\ndata: {"groups":{"spider":${nothing},"spider-2":${nothing},"laser":${warm},"all":${nothing}}}`,
     );
@@ -1071,6 +1076,7 @@ describe('HTTP server', () => {
         lights: 'chase',
         colour: { palette: 'rainbow', speed: 0.5 },
         motion: 'low',
+        zone: null,
       },
     ]);
     expect(now.playback.groups.spider.look).toEqual({ look: 'drop', changed: false });

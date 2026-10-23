@@ -108,6 +108,8 @@ function namesOf(look, group) {
   }
   const motion = group.scenes.find((scene) => scene.id === look.motion);
   if (motion) parts.push(motion.label);
+  const zone = group.scenes.find((scene) => scene.id === look.zone);
+  if (zone) parts.push(zone.label);
   return parts.join(' · ');
 }
 

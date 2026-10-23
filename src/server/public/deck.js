@@ -2,18 +2,19 @@
 // build step.
 //
 // A group is a set of fixtures. Every group has a row here with a row of looks and a lane per
-// type: Lights, Colour and Motion.
+// type: Lights, Colour, Motion and Zone.
 //
-//   Lights, Motion   the scenes of the group, a key per scene. A scene is a part of what the
+//   Lights, Motion, Zone   the scenes of the group, a key per scene. A scene is a part of what the
 //                    fixtures of its group do, of that type only. The lane of the lights has
 //                    the key for off, which darkens the fixtures and leaves their colours and
-//                    their motion as they are.
+//                    their motion as they are. A zone says how far the motion effects reach: the
+//                    window of tilt of each bar, an effect's 0 to 100 laid inside it.
 //   Colour           the palettes of the show, a key per palette, the same in every group. A
 //                    palette belongs to no group and is made on the Palettes page. A group
 //                    whose fixtures have colours of their own (the laser) takes no palettes,
 //                    and its lane says so.
-//   Looks            a look of the group sets a scene of lights, a palette and a scene of
-//                    motion together; a lane it does not name is left alone.
+//   Looks            a look of the group sets a scene of lights, a palette, a scene of motion
+//                    and a scene of zone together; a lane it does not name is left alone.
 //
 // One thing per lane is on, so several are on at once, each for its own fixtures and its own
 // properties: a palette is pressed under a chase and the chase goes on in the new colours. A
@@ -39,7 +40,7 @@
 //
 // Storing takes the properties of the chosen type from the fixtures of the group as they are
 // now, so a scene is made on the pages of the fixtures and kept here. A look takes what is on
-// in the group now: the scene of lights, the palette and the scene of motion. The server
+// in the group now: the scene of lights, the palette, the scene of motion and the scene of zone. The server
 // refuses a look when nothing is on or a lane was changed by hand, and says so.
 //
 // The deck draws what the server says: the groups of the show, the palettes, which scene or
@@ -70,11 +71,12 @@ const TYPES = [
   { id: 'lights', name: 'Lights', hint: 'What is on, and what it does' },
   { id: 'colour', name: 'Colour', hint: 'The palette: the colours the effects use' },
   { id: 'motion', name: 'Motion', hint: 'How the bars and the beam move' },
+  { id: 'zone', name: 'Zone', hint: 'How far the motion effects reach: the window of each bar' },
 ];
 /** The looks come before the lanes of the types, in a lane of their own. */
-const LOOKS = { id: 'look', name: 'Looks', hint: 'Lights, colour and motion together' };
-/** What Program can store: a scene of lights, a scene of motion, or a look. No colour. */
-const STORABLE = [TYPES[0], TYPES[2], { ...LOOKS, name: 'Look' }];
+const LOOKS = { id: 'look', name: 'Looks', hint: 'Lights, colour, motion and zone together' };
+/** What Program can store: a scene of lights, of motion or of zone, or a look. No colour. */
+const STORABLE = [TYPES[0], TYPES[2], TYPES[3], { ...LOOKS, name: 'Look' }];
 const typeName = (id) => TYPES.find((type) => type.id === id)?.name ?? id;
 const NO_PALETTES = "This group's fixtures have colours of their own. Set them on their page.";
 
@@ -175,6 +177,8 @@ function namesOf(look, group) {
   }
   const motion = group.scenes.find((scene) => scene.id === look.motion);
   if (motion) parts.push(motion.label);
+  const zone = group.scenes.find((scene) => scene.id === look.zone);
+  if (zone) parts.push(zone.label);
   return parts.join(' · ');
 }
 
@@ -357,7 +361,7 @@ function block(title, ...parts) {
   return { made, head };
 }
 
-/** The keys that say what is stored: a scene of lights, a scene of motion, or a look. */
+/** The keys that say what is stored: a scene of lights, of motion or of zone, or a look. */
 function buildTypeKeys(row) {
   const fieldset = element('fieldset', 'choice type-choice');
   fieldset.append(element('legend', '', 'What to store'));
@@ -697,6 +701,7 @@ function renderKeys(row, group) {
   syncLane(row.lanes.lights, sceneItems(group, 'lights'));
   syncLane(row.lanes.colour, paletteItems(group));
   syncLane(row.lanes.motion, sceneItems(group, 'motion'));
+  syncLane(row.lanes.zone, sceneItems(group, 'zone'));
 
   const empty = {
     look: 'No looks yet.',
@@ -704,6 +709,7 @@ function renderKeys(row, group) {
     colour:
       group.palettes === false ? NO_PALETTES : 'No palettes yet. Make them on the Palettes page.',
     motion: 'No motion scenes yet.',
+    zone: 'No zone scenes yet. Set a zone on the spider page, then store it here.',
   };
   for (const { id, name } of [LOOKS, ...TYPES]) {
     const lane = row.lanes[id];
@@ -829,7 +835,7 @@ function render() {
 
   const { hint } = page;
   hint.textContent = programming
-    ? 'Program is on. Set the fixtures on their pages, then store what they do in a group: pick Lights or Motion and a scene keeps only that, or pick Look and the look keeps the scene of lights, the palette and the scene of motion that are on now. Colours are palettes, made on the Palettes page. A press on a scene or a look chooses it, to rename or delete it. The fixtures stay as they are, and Off waits. Press Program again for the show.'
+    ? 'Program is on. Set the fixtures on their pages, then store what they do in a group: pick Lights, Motion or Zone and a scene keeps only that, or pick Look and the look keeps the scene of lights, the palette, the scene of motion and the scene of zone that are on now. Colours are palettes, made on the Palettes page. A press on a scene or a look chooses it, to rename or delete it. The fixtures stay as they are, and Off waits. Press Program again for the show.'
     : 'There are no groups yet. Press Program to make one.';
   hint.hidden = !programming && show.groups.length > 0;
 

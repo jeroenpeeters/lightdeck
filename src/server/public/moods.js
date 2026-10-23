@@ -18,7 +18,7 @@
 //   looks      the looks of the chosen mood (`moods:` of the group in the show file; a look says which
 //              one it is in with `mood:`), or with All a column per mood, each with the colours of its palette
 //   tray       under the looks, always there: what goes with the mood of the look that is on, as
-//              colours, effects and movements, to vary the look with. A press sets that lane of the
+//              colours, effects, movements and zones, to vary the look with. A press sets that lane of the
 //              group and the look shows "Varied". Nothing opens over the looks for this
 //   All        a sheet over the looks with every scene and palette of the group, for what no mood has
 //   room       on the tab of the room, the dimmer of the lamps and a switch per rail in the tray
@@ -55,12 +55,12 @@ import {
 } from './tabletParts.js';
 import { $, element } from './ui.js';
 
-const LANES = ['colour', 'lights', 'motion'];
+const LANES = ['colour', 'lights', 'motion', 'zone'];
 /** What a lane is called for each kind of fixture. */
 const WORDS = {
-  spider: { colour: 'Colour', lights: 'Effect', motion: 'Movement' },
-  laser: { colour: 'Colour', lights: 'Pattern', motion: 'Movement' },
-  room: { colour: 'Colour', lights: 'Scenery', motion: 'Movement' },
+  spider: { colour: 'Colour', lights: 'Effect', motion: 'Movement', zone: 'Zone' },
+  laser: { colour: 'Colour', lights: 'Pattern', motion: 'Movement', zone: 'Zone' },
+  room: { colour: 'Colour', lights: 'Scenery', motion: 'Movement', zone: 'Zone' },
 };
 /** What a look says once a lane of it was changed: here that is what the tray is for. */
 const VARIED = 'Varied';
@@ -134,6 +134,7 @@ function lanesOf(group) {
     colour: group.palettes !== false,
     lights: true,
     motion: has('motion') || group.moods.some((mood) => mood.motion.length > 0),
+    zone: has('zone') || group.moods.some((mood) => mood.zone.length > 0),
   };
 }
 

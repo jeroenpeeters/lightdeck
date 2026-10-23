@@ -472,6 +472,14 @@ const PALETTES: Palette[] = [
     speed: 0.25,
   },
   {
+    id: 'void',
+    label: 'Void',
+    colours: [{ red: 1, green: 0, blue: 0, white: 0 }, null],
+    mode: 'static',
+    change: 'step',
+    speed: 0.25,
+  },
+  {
     id: 'ice',
     label: 'Ice',
     colours: [{ red: 0, green: 0.6, blue: 1, white: 0 }],
@@ -790,6 +798,112 @@ describe('SpiderController effects', () => {
     expect(ch(output, 1)).toBe(102);
   });
 
+  describe('the zone', () => {
+    const zone = {
+      tilt: [
+        { min: 0.1, max: 0.3 },
+        { min: 0.6, max: 0.9 },
+      ],
+    };
+    /** The highest and lowest first byte of both tilts while the effect runs for a while. */
+    const swing = () => {
+      const seen: number[][] = [[], []];
+      for (let i = 0; i < 160; i++) {
+        advance(100);
+        seen[0]?.push(ch(output, 1) ?? 0);
+        seen[1]?.push(ch(output, 3) ?? 0);
+      }
+      return seen.map((each) => [Math.min(...each), Math.max(...each)]);
+    };
+
+    it('is none at the start, and none is given back by recall of nothing', () => {
+      expect(controller.getState().zone).toBeNull();
+      expect(controller.snapshot('zone')).toEqual({});
+      controller.update({ zone });
+      controller.recall('zone', undefined);
+      expect(controller.getState().zone).toBeNull();
+    });
+
+    it('is the window a motion effect works inside: 0 is the min of the bar and 100 its max', () => {
+      controller.update({ zone, motion: { id: 'tiltwave' } });
+      const [one, two] = swing();
+      // The wave goes from 0.2 to 0.8 of the window (the first byte is the high byte of 16 bits).
+      const near = (got: number | undefined, tilt: number) =>
+        expect(Math.abs((got ?? 0) - tilt * 255)).toBeLessThanOrEqual(1);
+      near(one?.[0], 0.1 + 0.2 * 0.2);
+      near(one?.[1], 0.1 + 0.2 * 0.8);
+      near(two?.[0], 0.6 + 0.3 * 0.2);
+      near(two?.[1], 0.6 + 0.3 * 0.8);
+    });
+
+    it('takes the place of the swing limits for an effect, also where it lies outside them', () => {
+      controller.setLimits({
+        tilt: [
+          { min: 0.4, max: 0.5 },
+          { min: 0.4, max: 0.5 },
+        ],
+      });
+      controller.update({ zone, motion: { id: 'tiltwave' } });
+      const [one, two] = swing();
+      expect(one?.[1]).toBeLessThan(Math.round(0.4 * 255));
+      expect(two?.[0]).toBeGreaterThan(Math.round(0.5 * 255));
+      // Without a zone the effect is in the limits again.
+      controller.update({ zone: null });
+      const [back] = swing();
+      expect(back?.[0]).toBeGreaterThanOrEqual(Math.round(0.4 * 255) - 1);
+      expect(back?.[1]).toBeLessThanOrEqual(Math.round(0.5 * 255) + 1);
+    });
+
+    it('does not hold a tilt that is set by hand: the swing limits do', () => {
+      controller.setLimits({ tilt: [{ min: 0.4, max: 0.6 }] });
+      controller.update({ zone, levels: { tilt1: 1 } });
+      expect(ch(output, 1)).toBe(153);
+    });
+
+    it('is kept by a scene of zone and by no other, and a scene sets nothing else', () => {
+      controller.update({ zone, levels: { dimmer: 1, tilt1: 0.5 }, motion: { id: 'creep' } });
+      expect(controller.snapshot('zone')).toEqual({ zone });
+      for (const type of ['lights', 'colour', 'motion'] as const) {
+        expect(controller.snapshot(type)).not.toHaveProperty('zone');
+      }
+      expect(() => controller.check('lights', { zone })).toThrow(/not part of a lights scene/);
+      expect(() => controller.check('motion', { zone })).toThrow(/not part of a motion scene/);
+      expect(() => controller.check('zone', { motion: { id: 'creep' } })).toThrow(
+        /not part of a zone scene/,
+      );
+      expect(() => controller.check('zone', { levels: { tilt1: 0.2 } })).toThrow(PatchError);
+
+      controller.update({ zone: null });
+      controller.recall('zone', { zone });
+      expect(controller.getState()).toMatchObject({
+        zone,
+        motion: { id: 'creep' },
+        levels: { dimmer: 1, tilt1: 0.5 },
+      });
+    });
+
+    it('refuses a zone that is not windows of tilt, and changes nothing', () => {
+      controller.update({ zone });
+      for (const given of [
+        'floor',
+        { tilt: 3 },
+        { tilt: [{ min: 0.5, max: 0.5 }] },
+        { tilt: [{ min: -0.1, max: 0.5 }] },
+        {
+          tilt: [
+            { min: 0, max: 1 },
+            { min: 0, max: 1 },
+            { min: 0, max: 1 },
+          ],
+        },
+        { tilt: [], wide: true },
+      ]) {
+        expect(() => controller.update({ zone: given }), JSON.stringify(given)).toThrow(PatchError);
+      }
+      expect(controller.getState().zone).toEqual(zone);
+    });
+  });
+
   it('goes back to the tilts of the operator when the motion effect stops', () => {
     controller.update({ levels: { tilt1: 0.1, tilt2: 0.1 }, motion: { id: 'tiltwave' } });
     advance(1500);
@@ -994,7 +1108,9 @@ describe('SpiderController effects', () => {
       expect(ch(output, 10)).toBe(0);
       advance(400);
       expect(ch(output, 8)).toBeLessThan(40); // it has fallen back to white1
-      expect(ch(output, 10)).toBeGreaterThan(200);
+      // The second colour is a backdrop, held well under the main colour: a tenth of it.
+      expect(ch(output, 10)).toBeGreaterThan(15);
+      expect(ch(output, 10)).toBeLessThan(40);
     });
 
     it('with one colour falls back to dark, not to a dim first colour', () => {
@@ -1083,6 +1199,36 @@ describe('SpiderController effects', () => {
       expect(red).toBeLessThan(170);
       expect(blue).toBeGreaterThan(90);
       expect(blue).toBeLessThan(170);
+    });
+
+    it('changes hard instead of fading when the cycle is fast', () => {
+      tempo.update({ bpm: 120, sync: true });
+      controller.update({
+        levels: { dimmer: 1 },
+        effect: { id: 'solid' },
+        colour: { palette: 'fader', speed: 2 }, // four steps per second at 120 bpm
+      });
+      expect(lens(1)).toEqual([255, 0, 0, 0]);
+      advance(138); // a quarter of the way to the next step
+      expect(lens(1)).toEqual([255, 0, 0, 0]);
+      advance(138);
+      advance(100); // past the step
+      expect(lens(1)).toEqual([0, 0, 255, 0]);
+    });
+
+    it('lets the scan go back in the first colour when the second colour is off', () => {
+      tempo.update({ bpm: 120, sync: true });
+      controller.update({
+        levels: { dimmer: 1 },
+        effect: { id: 'scan' },
+        colour: { palette: 'void' },
+      });
+      // Eight beats along the lenses and eight back: a lens is lit on every one of them.
+      for (let beat = 0; beat < 16; beat++) {
+        const lit = [1, 2, 3, 4, 5, 6, 7, 8].filter((n) => lens(n)[0] === 255);
+        expect(lit.length, `beat ${beat}`).toBe(1);
+        advance(500);
+      }
     });
 
     it('does not move a palette that is static', () => {
