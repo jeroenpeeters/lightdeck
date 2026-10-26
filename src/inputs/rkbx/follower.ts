@@ -43,6 +43,20 @@ export const BEAT_ADDRESS = '/master/beat/trigger/1';
 export const TIME_ADDRESS = '/master/time';
 export const PHRASE_ADDRESS = '/master/phrase/current';
 export const TITLE_ADDRESS = '/master/track/title';
+export const ARTIST_ADDRESS = '/master/track/artist';
+
+/**
+ * The title and the artist of a track are two messages that rkbx_link sends only when they change,
+ * in no fixed order. A track is told of (`track`) when neither has changed for this long.
+ */
+const TRACK_SETTLE_MS = 800;
+
+/** The track on the master deck, as rekordbox names it. */
+export interface TrackInfo {
+  title: string;
+  /** Empty when rekordbox has no artist for the track or rkbx_link does not send it. */
+  artist: string;
+}
 
 /** A new bpm is only passed on when it differs by at least this, so the tempo does not shiver. */
 const MIN_BPM_STEP = 0.05;
@@ -139,8 +153,11 @@ export class RkbxFollower extends EventEmitter {
   /** The last phrase and when it came. It stands until another comes or the track changes. */
   private phrase: Phrase | undefined;
   private phraseAt: number | undefined;
-  /** The title of the track on the master deck. */
+  /** The title and the artist of the track on the master deck. */
   private title: string | undefined;
+  private artist = '';
+  /** When the title or the artist last changed and the track has not been told of yet. */
+  private trackChangedAt: number | undefined;
   private breakdownEnabled = false;
   /** The music has stopped: no beats, or a position that stands still. */
   private gone = false;
@@ -196,6 +213,11 @@ export class RkbxFollower extends EventEmitter {
     this.announce();
   }
 
+  /** The track on the master deck, once rkbx_link has said its title. */
+  getTrack(): TrackInfo | undefined {
+    return this.title === undefined ? undefined : { title: this.title, artist: this.artist };
+  }
+
   close(): void {
     clearInterval(this.timer);
     this.receiver.off('message', this.onMessage);
@@ -207,6 +229,7 @@ export class RkbxFollower extends EventEmitter {
   check(now: number): void {
     this.evaluate(now);
     this.announce();
+    this.settleTrack(now);
   }
 
   /** Tells the listeners again, as when the port has just been bound and the state shows it. */
@@ -242,6 +265,14 @@ export class RkbxFollower extends EventEmitter {
     this.follow({ running: !idle });
   }
 
+  /** Tells of the track when its title and artist have stopped changing. */
+  private settleTrack(now: number): void {
+    if (this.trackChangedAt === undefined || now - this.trackChangedAt < TRACK_SETTLE_MS) return;
+    this.trackChangedAt = undefined;
+    const track = this.getTrack();
+    if (track && track.title !== '') this.emit('track', track);
+  }
+
   /** The phrase came with this message (or just before it): it is the new track's. */
   private phrasePartOfUpdate(at: number): boolean {
     return this.phraseAt !== undefined && Math.abs(at - this.phraseAt) <= TRACK_CHANGE_MS;
@@ -259,6 +290,11 @@ export class RkbxFollower extends EventEmitter {
       if (typeof value !== 'string' || value === this.title) return;
       if (this.title !== undefined && !this.phrasePartOfUpdate(arrivedAt)) this.phrase = undefined;
       this.title = value;
+      this.trackChangedAt = arrivedAt;
+    } else if (message.address === ARTIST_ADDRESS) {
+      if (typeof value !== 'string' || value === this.artist) return;
+      this.artist = value;
+      this.trackChangedAt = arrivedAt;
     } else if (typeof value !== 'number' || !Number.isFinite(value)) {
       return;
     } else if (message.address === BPM_ADDRESS) {

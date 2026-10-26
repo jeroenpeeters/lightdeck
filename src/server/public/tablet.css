@@ -1,10 +1,15 @@
 /*
- * The tablet page: a few big controls for a tablet next to the DJ, in the dark. Everything is
- * large and spaced, touch targets are 3.5rem or more, and nothing takes its size from what it
- * says, so that no key moves under a finger when a state changes or a notice comes.
+ * The tablet page (Jeroen, 2026-10-20; the only page for a tablet since 2026-10-23): the parts of
+ * the evening, the looks of a group by mood with a tray under them to vary the look with, the lamps
+ * of the room, and the video wall. Everything is large and spaced, touch targets are 3.5rem or more,
+ * and nothing takes its size from what it says, so that no key moves under a finger when a state
+ * changes or a notice comes.
  *
- * The look of the keys, the chips and the lanes is that of the deck (deck.css), copied here
- * because the page does not load it.
+ * The first half is what the top row (menu, bpm and Tap, masters, blackout), the keys and the
+ * notices are made of; the second half (from "the layout") is the layout of the page and what is its
+ * own: the tabs of the groups, the columns of looks, the tray under them and the sheet with
+ * everything. The look of the keys, the chips and the lanes is that of the deck (deck.css), copied
+ * here because the page does not load it.
  */
 
 body {
@@ -18,88 +23,6 @@ body {
 button,
 a {
   touch-action: manipulation;
-}
-
-/* ---- the layout ---- */
-
-/*
- * Portrait: the sequences, the looks of the spider and
- * the lamps of the room, then the panel. The column is only a box in landscape, and here it
- * are not there: their panels are placed by the grid itself.
- */
-.tablet {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-areas:
-    "top top"
-    "seq seq"
-    "looks looks"
-    "room room"
-    "more more";
-  gap: var(--gap);
-  margin-top: max(0.75rem, env(safe-area-inset-top));
-}
-.t-right {
-  display: contents;
-}
-/*
- * Room for a notice at the end of the page, where it then lies under the last key. Only while
- * the panel is open: closed, the page fits the screen and a notice lies over the panel's key.
- */
-.tablet:has(.t-more-head[aria-expanded="true"]) {
-  padding-bottom: 4.5rem;
-}
-.t-top {
-  grid-area: top;
-}
-.t-seq {
-  grid-area: seq;
-}
-.t-looks {
-  grid-area: looks;
-}
-.t-room {
-  grid-area: room;
-}
-.t-more {
-  grid-area: more;
-}
-@media (max-width: 36rem) {
-  .tablet {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "top"
-      "seq"
-      "looks"
-      "room"
-      "more";
-  }
-}
-/*
- * Landscape: the sequences, the looks of the spider and the lamps of the room under them in a
- * column, then the panel below.
- */
-@media (orientation: landscape) and (min-width: 56rem) {
-  .tablet {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "top"
-      "right"
-      "more";
-    align-items: start;
-  }
-  .t-right {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap);
-    min-width: 0;
-    grid-area: right;
-  }
-  .t-seq,
-  .t-looks,
-  .t-room {
-    grid-area: auto;
-  }
 }
 
 /* ---- the top row ---- */
@@ -395,70 +318,13 @@ a {
 
 /* ---- the looks ---- */
 
-.t-looks > h2 {
-  margin-bottom: 0.75rem;
-}
 .t-none {
   color: var(--dim);
   font-weight: 400;
 }
-.t-look-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 0.5rem;
-}
-
-/* ---- the sequences ---- */
-
-.t-seq > h2 {
-  margin-bottom: 0.75rem;
-}
-.t-seq-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 0.5rem;
-}
-/* Only a name: a lower key than a look, the name in the middle of it, both ways. */
-.scene.seq {
-  height: 4.5rem;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  text-align: center;
-}
-.scene.seq .scene-sets {
-  display: none;
-}
-.scene.seq .scene-name {
-  font-size: var(--large);
-}
 
 /* ---- the room lights ---- */
 
-.t-room-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-.t-room-head > h2 {
-  margin: 0;
-}
-/* A key of its own size: Off does not take the size of what it says. */
-.t-room-off {
-  min-width: 8rem;
-  min-height: 3.5rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
-  font-size: var(--large);
-  font-weight: 600;
-}
-.t-room-off:active {
-  background: var(--key-down);
-}
 .t-room-dimmer {
   margin-bottom: 1rem;
 }
@@ -601,84 +467,6 @@ a {
   color: var(--signal);
 }
 
-/* ---- the panel: lights, colour and motion ---- */
-
-.t-more-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  width: 100%;
-  min-height: 3.5rem;
-  padding: 0 1.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  font-size: var(--large);
-  font-weight: 600;
-  line-height: 1.1;
-  text-align: left;
-}
-.t-more-head:active {
-  background: var(--key-down);
-}
-.t-chevron {
-  flex: none;
-  width: 0.9rem;
-  height: 0.9rem;
-  margin-top: -0.35rem;
-  border-right: 3px solid var(--dim);
-  border-bottom: 3px solid var(--dim);
-  transform: rotate(45deg);
-  transition: transform 150ms;
-}
-.t-more-head[aria-expanded="true"] .t-chevron {
-  margin-top: 0.35rem;
-  transform: rotate(-135deg);
-}
-.t-more-body {
-  margin-top: 0.25rem;
-}
-
-/*
- * A lane per type. The name is on the left, the keys in the middle, and at the end a place
- * that only the lights use, for Off. The columns are fixed, so the keys of the lanes line up.
- */
-.lane {
-  display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) 7rem;
-  gap: 0.5rem;
-  align-items: start;
-  margin-top: 1rem;
-}
-.lane-name {
-  padding-top: 0.2rem;
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.lane-scenes > .hint {
-  display: flex;
-  align-items: center;
-  min-height: 3.5rem;
-  margin: 0;
-}
-.scene-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 0.5rem;
-}
-@media (max-width: 52rem) {
-  .lane {
-    grid-template-columns: minmax(0, 1fr) 6rem;
-  }
-  .lane-name {
-    grid-column: 1 / -1;
-    padding-top: 0;
-  }
-}
-
 /* ---- notices: over the bottom of the screen, taking no room ---- */
 
 .notices-stack {
@@ -724,4 +512,383 @@ a {
   color: var(--dim);
   font-size: 2rem;
   line-height: 1;
+}
+
+/* ---- the layout ---- */
+
+/* One column: the top row, then the looks. */
+.tablet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "top"
+    "stage";
+  gap: var(--gap);
+  margin-top: max(0.75rem, env(safe-area-inset-top));
+}
+.tablet > .t-top {
+  grid-area: top;
+}
+.m-stage {
+  grid-area: stage;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+/* ---- the tabs: one per group ---- */
+
+.m-selectors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.m-tabs {
+  display: grid;
+  flex: 1 1 22rem;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.m-tabs[hidden] {
+  display: none;
+}
+.m-tab {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  min-width: 0;
+  height: 3.5rem;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--paper);
+  line-height: 1.1;
+  text-align: left;
+}
+.m-tab:active {
+  background: var(--key-down);
+}
+.m-tab-name {
+  font-size: var(--large);
+  font-weight: 600;
+}
+/* The look that is on in the group, always one line high, there or not. */
+.m-tab-look {
+  min-height: 1.15em;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: var(--small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.m-tab[aria-selected="true"] {
+  border-color: var(--signal);
+  box-shadow: inset 0 -4px 0 var(--signal);
+}
+
+/* ---- which moods are shown ---- */
+
+.m-moodbar {
+  display: flex;
+  flex: 1 1 20rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.m-moodbar[hidden] {
+  display: none;
+}
+.m-mood-key {
+  flex: 1 1 5rem;
+  min-height: 3.5rem;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--paper);
+  font-size: var(--base);
+  font-weight: 600;
+}
+.m-mood-key:active {
+  background: var(--key-down);
+}
+.m-mood-key[aria-pressed="true"] {
+  border-color: var(--signal);
+  color: var(--signal);
+  box-shadow: inset 0 -3px 0 var(--signal);
+}
+
+/* ---- the looks: a column per mood, or the looks of one mood in a grid ---- */
+
+.m-moods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1rem 0.75rem;
+  align-items: start;
+}
+.m-mood {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.m-mood-head {
+  margin: 0;
+  padding-bottom: 0.25rem;
+  border-bottom: 2px solid var(--line);
+  color: var(--dim);
+  font-size: var(--base);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+/* The column of the look that is on is lit. */
+.m-mood[data-on="true"] > .m-mood-head {
+  border-bottom-color: var(--signal);
+  color: var(--signal);
+}
+.m-mood-looks {
+  display: grid;
+  gap: 0.5rem;
+}
+/* One mood: its looks side by side, not one under the other. */
+.m-moods[data-single="true"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.m-moods[data-single="true"] .m-mood-looks {
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+}
+.m-mood .scene.look {
+  height: 5.75rem;
+}
+/* The colours of the palette of a look stand between its name and what it names: a bit larger. */
+.m-mood .chips {
+  height: 1.1rem;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: it sets other properties than the rule above */
+.m-mood .chip {
+  width: 1.8rem;
+  height: 1.1rem;
+}
+.m-mood .scene.look .scene-sets {
+  min-height: 1.15em;
+  -webkit-line-clamp: 1;
+}
+
+/* ---- the tray ---- */
+
+/*
+ * The tray stays at the foot of the screen while the looks scroll under it, so that what goes with
+ * a look is always at hand, and nothing opens over the looks to get at it.
+ */
+.m-tray {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid var(--signal);
+}
+.m-tray[hidden],
+.m-sheet[hidden] {
+  display: none;
+}
+.m-tray-head,
+.m-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.m-tray-head > h2,
+.m-sheet-head > h2 {
+  flex: none;
+  min-width: 8rem;
+  margin: 0;
+}
+/* Takes what is left of the head, one line, whatever it says. */
+.m-tray-hint {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: var(--small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.m-sheet-head > h2 {
+  flex: 1;
+}
+/* A key of its own size: Off and All do not take the size of what they say. */
+.m-key {
+  flex: none;
+  min-width: 6.5rem;
+  min-height: 3.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--paper);
+  font-size: var(--large);
+  font-weight: 600;
+}
+.m-key:active {
+  background: var(--key-down);
+}
+.m-key[aria-expanded="true"] {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+/* A lane: its name on the left and its keys beside it. The row keeps its height when it has none. */
+.m-lane {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+}
+.m-lane[hidden] {
+  display: none;
+}
+.m-lane-name {
+  padding-top: 0.2rem;
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.m-keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.5rem;
+  min-height: 3.5rem;
+}
+.m-keys .scene {
+  height: 3.5rem;
+  padding: 0.3rem 0.6rem;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: it sets other properties than the rule above */
+.m-keys .scene-name {
+  font-size: var(--base);
+  -webkit-line-clamp: 1;
+}
+/* A palette key has its colours and, for a palette that moves, a line about it: it is a little higher. */
+.m-lane[data-lane="colour"] .m-keys {
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  min-height: 5rem;
+}
+.m-lane[data-lane="colour"] .m-keys .scene {
+  height: 5rem;
+  padding: 0.4rem 0.75rem;
+}
+/* Nothing to say about a palette that stands still: the name and the colours get the room. */
+.m-lane[data-lane="colour"] .scene-sets:empty {
+  display: none;
+}
+/* The colours of a palette in the tray are what you choose by, so they are large. */
+.m-keys .chips {
+  height: 1.4rem;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: it sets other properties than the rule above */
+.m-keys .chip {
+  width: 2.2rem;
+  height: 1.4rem;
+}
+@media (max-width: 40rem) {
+  .m-lane {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The lamps of the room, on the tab of the room between the tabs and the looks: the dimmer and the rails side by side. */
+.m-room {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+}
+.m-room[hidden] {
+  display: none;
+}
+.m-room .t-room-dimmer,
+.m-room .t-rails {
+  margin-bottom: 0;
+}
+@media (max-width: 40rem) {
+  .m-room {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- the parts of the evening ---- */
+
+.m-phases {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem 0.75rem;
+  align-items: stretch;
+}
+.m-phases[hidden] {
+  display: none;
+}
+.m-phase-keys {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.m-phase-side {
+  display: flex;
+  gap: 0.5rem;
+}
+.m-phase-side .m-key {
+  min-width: 5.5rem;
+  min-height: 4.25rem;
+}
+.m-phase-side .m-key:disabled {
+  opacity: 0.4;
+}
+/* The key of a part: a name and under it where the part is. */
+.m-phases .scene.phase {
+  height: 4.25rem;
+  padding: 0.4rem 1rem;
+}
+.m-phases .scene.phase .scene-name {
+  font-size: var(--large);
+  -webkit-line-clamp: 1;
+}
+/* One line, whatever it says, and there when it says nothing: nothing under it moves. */
+.m-phase-status {
+  grid-column: 1 / -1;
+  min-height: 1.3em;
+  margin: 0;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: var(--base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- the sheet: everything, over the looks ---- */
+
+.m-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: auto;
+  border: 1px solid var(--signal);
+  background: var(--panel);
+}
+
+/* ---- the video wall tab ---- */
+
+/* The controls come from videowall.css; here they only have to fill the stage. */
+.m-wall[hidden] {
+  display: none;
 }

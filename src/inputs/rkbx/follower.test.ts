@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Tempo } from '../../server/tempo.js';
 import {
+  ARTIST_ADDRESS,
   BEAT_ADDRESS,
   BPM_ADDRESS,
   PHRASE_ADDRESS,
@@ -9,6 +10,7 @@ import {
   readPhrase,
   TIME_ADDRESS,
   TITLE_ADDRESS,
+  type TrackInfo,
 } from './follower.js';
 import { OscReceiver } from './receiver.js';
 
@@ -448,6 +450,56 @@ describe('RkbxFollower', () => {
       expect(seen.at(-1)?.breakdown.enabled).toBe(true);
       phrase('Down');
       expect(seen.at(-1)?.breakdown).toMatchObject({ phrase: 'Down', active: true });
+    });
+  });
+
+  describe('the track', () => {
+    const text = (address: string, value: string, at = clock) =>
+      receiver.emit('message', { address, args: [value] }, at);
+    const told: TrackInfo[] = [];
+
+    beforeEach(() => {
+      told.length = 0;
+      follower.on('track', (track: TrackInfo) => told.push(track));
+    });
+
+    it('tells of a track once its title and artist have stopped changing, in either order', () => {
+      text(ARTIST_ADDRESS, 'Charlotte de Witte');
+      text(TITLE_ADDRESS, 'Doppler');
+      follower.check(clock + 500);
+      expect(told).toEqual([]);
+      follower.check(clock + 900);
+      expect(told).toEqual([{ title: 'Doppler', artist: 'Charlotte de Witte' }]);
+      follower.check(clock + 5000);
+      expect(told).toHaveLength(1);
+    });
+
+    it('waits for an artist that comes after the title', () => {
+      text(TITLE_ADDRESS, 'Doppler');
+      follower.check(clock + 500);
+      text(ARTIST_ADDRESS, 'Charlotte de Witte', clock + 500);
+      follower.check(clock + 1200);
+      expect(told).toEqual([]);
+      follower.check(clock + 1400);
+      expect(told).toEqual([{ title: 'Doppler', artist: 'Charlotte de Witte' }]);
+    });
+
+    it('keeps the artist when the next track has the same one, which rkbx_link does not repeat', () => {
+      text(ARTIST_ADDRESS, 'Amelie Lens');
+      text(TITLE_ADDRESS, 'Hypnotized');
+      follower.check(clock + 900);
+      text(TITLE_ADDRESS, 'Exhale', clock + 2000);
+      follower.check(clock + 3000);
+      expect(told.at(-1)).toEqual({ title: 'Exhale', artist: 'Amelie Lens' });
+      expect(follower.getTrack()).toEqual({ title: 'Exhale', artist: 'Amelie Lens' });
+    });
+
+    it('does not tell of a title that did not change, and tells of a track without an artist', () => {
+      text(TITLE_ADDRESS, 'Untitled');
+      follower.check(clock + 900);
+      text(TITLE_ADDRESS, 'Untitled', clock + 1000);
+      follower.check(clock + 3000);
+      expect(told).toEqual([{ title: 'Untitled', artist: '' }]);
     });
   });
 

@@ -15,7 +15,8 @@
  * on DMX), `frame` (id, dmx, beat),
  * `tempo` (state, beat, origin), `blackout` (blackout, origin), `master` (level, origin),
  * `status` (status), `show` (summary), `playback` (state), `rkbx` (what rekordbox says),
- * `output` (how often and how far ahead of the beat the output is made).
+ * `output` (how often and how far ahead of the beat the output is made), `videowall` (the settings
+ * of the video wall and what is on it).
  */
 
 import { EventEmitter } from 'node:events';
@@ -37,6 +38,7 @@ import { Playback, type PlaybackState, type ShowSummary } from './playback.js';
 import type { LampDefinition, ZoneDefinition } from './roomController.js';
 import { Sequencer, type SequenceState } from './sequencer.js';
 import { readLead, Tempo, type TempoSource, type TempoState } from './tempo.js';
+import { VideoWall, type VideoWallState } from './videoWall.js';
 
 /** What every fixture is called, whatever it speaks. */
 interface FixtureNaming {
@@ -109,6 +111,10 @@ export interface RigOptions {
   tempoSource?: TempoSource;
   /** The UDP port to listen on for the OSC of rkbx_link. Without it nothing listens. */
   rkbxPort?: number;
+  /** The file with the settings of the video wall. Without it they are kept in memory only. */
+  videoWallFile?: string;
+  /** How the video wall is called. Tests pass their own. */
+  videoWallFetch?: typeof fetch;
   /** For the one-line messages about rekordbox. */
   log?: (message: string) => void;
 }
@@ -124,6 +130,8 @@ export class Rig extends EventEmitter {
   private readonly oscReceiver: OscReceiver;
   /** What rekordbox says, and what the tempo does with it. */
   readonly rkbx: RkbxFollower;
+  /** The track that is playing, sent to the text overlay of the video wall. */
+  readonly videoWall: VideoWall;
   readonly fixtures: readonly RigFixture[];
   readonly playback: Playback;
   /** Runs a sequence of the show: the looks of the groups changing on the bars. */
@@ -233,6 +241,13 @@ export class Rig extends EventEmitter {
     });
     this.rkbx = new RkbxFollower({ tempo: this.tempo, receiver: this.oscReceiver });
     this.rkbx.on('rkbx', (state: RkbxState) => this.emit('rkbx', state));
+    this.videoWall = new VideoWall({
+      source: this.rkbx,
+      ...(options.videoWallFile ? { file: options.videoWallFile } : {}),
+      ...(options.videoWallFetch ? { fetch: options.videoWallFetch } : {}),
+      ...(options.log ? { log: options.log } : {}),
+    });
+    this.videoWall.on('videowall', (state: VideoWallState) => this.emit('videowall', state));
     if (options.rkbxPort !== undefined) {
       // Lightdeck runs without rekordbox: a port that is taken is said once, and not fatal.
       this.oscReceiver
@@ -374,6 +389,7 @@ export class Rig extends EventEmitter {
     this.sequencer.close();
     this.playback.close();
     for (const { controller } of this.fixtures) controller.close();
+    this.videoWall.close();
     this.rkbx.close();
     this.oscReceiver.stop();
     this.tempo.removeAllListeners();

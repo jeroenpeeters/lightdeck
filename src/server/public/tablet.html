@@ -4,7 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0f1114" />
-    <!-- Installable: on the home screen it opens full screen, without the bar of the browser. -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/png" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
@@ -16,9 +15,16 @@
     <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/tablet.css" />
+    <!-- The settings of the video wall, which /videowall has too. -->
+    <link rel="stylesheet" href="/videowall.css" />
   </head>
   <body>
-    <!-- The shell keeps its bar and its tempo desk out of sight. The notice of the shell goes below. -->
+    <!--
+      The page for a tablet: the looks of a group stand in columns by mood, and under them a tray
+      holds what goes with the mood that is on, to vary the look with. The ids that start with t-
+      are those of tabletParts.js, which draws the tempo, masters, links and lamps of the room.
+      Next to the groups is a tab for the video wall.
+    -->
     <main class="tablet" id="console">
       <header class="t-top">
         <!-- A small menu with the keys that are seldom needed and the lamps of the links. Its key has one dot: green, or red when a link is down. -->
@@ -36,7 +42,6 @@
           </button>
           <div class="t-menu" id="t-menu" hidden>
             <a class="t-main" href="/deck">Main view</a>
-            <a class="t-main" href="/moods">Moods</a>
             <!-- Full screen without the bar of the browser. Hidden where the browser cannot, or when the app already is. -->
             <button type="button" class="t-main t-full" id="t-full" aria-pressed="false" hidden>
               Fullscreen
@@ -81,82 +86,99 @@
       </header>
 
 
-      <!-- The sequences on top, then the looks of the spider, then the lamps of the room. -->
-      <div class="t-right">
-      <!-- The sequences of the show: only the names. A press starts one, and a press on the one that runs stops it. -->
-      <section class="panel t-seq" id="t-seq" aria-labelledby="t-seq-title" hidden>
-        <h2 id="t-seq-title">Sequences</h2>
-        <p class="t-none" id="t-seq-none" hidden></p>
-        <div class="t-seq-grid" id="t-seq-grid"></div>
-      </section>
+      <section class="m-stage" aria-label="Looks">
+        <!--
+          The parts of the evening: a key per sequence of the show (Begin, Midden, Techno ...). A press
+          starts it, and the looks change by themselves on the bars. Next skips to the next step, Hold
+          stops the sequence and leaves the lights as they are.
+        -->
+        <section class="m-phases" id="m-phases" aria-label="Parts of the evening" hidden>
+          <div class="m-phase-keys" id="m-phase-keys"></div>
+          <div class="m-phase-side">
+            <button type="button" class="m-key" id="m-next">Next</button>
+            <button type="button" class="m-key" id="m-hold">Hold</button>
+          </div>
+          <p class="m-phase-status" id="m-phase-status"></p>
+        </section>
 
-      <section class="panel t-looks" aria-labelledby="t-looks-title">
-        <h2 id="t-looks-title">Spider looks</h2>
-        <p class="t-none" id="t-looks-none" hidden></p>
-        <div class="t-look-grid" id="t-looks"></div>
-      </section>
-
-      <!-- The lamps of the room: looks of the Room group, the dimmer of the room and its off key. -->
-      <section class="panel t-room" id="t-room" aria-labelledby="t-room-title" hidden>
-        <div class="t-room-head">
-          <h2 id="t-room-title">Room lights</h2>
-          <button type="button" class="t-room-off" id="t-room-off">Off</button>
+        <!--
+          What is shown below, in one row when it fits: a key per group that has looks (it says which look
+          is on), and which moods of the group are shown: one, or All of them side by side.
+        -->
+        <div class="m-selectors">
+          <nav class="m-tabs" id="m-tabs" aria-label="Groups"></nav>
+          <nav class="m-moodbar" id="m-moodbar" aria-label="Moods" hidden></nav>
         </div>
-        <div class="t-room-dimmer" id="t-room-dimmer"></div>
-        <!-- A switch per rail (zone): on or off, whatever the looks and the effects do. -->
-        <fieldset class="t-rails" id="t-rails" aria-label="Rails" hidden></fieldset>
-        <p class="t-none" id="t-room-looks-none" hidden></p>
-        <div class="t-look-grid" id="t-room-looks"></div>
-      </section>
-      </div>
 
-      <section class="panel t-more" aria-labelledby="t-more-title">
-        <button
-          type="button"
-          class="t-more-head"
-          id="t-more-head"
-          aria-expanded="false"
-          aria-controls="t-more-body"
-        >
-          <span id="t-more-title">Spider: lights, colour, motion and zone</span>
-          <span class="t-chevron" aria-hidden="true"></span>
-        </button>
-        <div class="t-more-body" id="t-more-body" hidden>
-          <section class="lane" data-lane="lights" aria-label="Lights">
-            <span class="lane-name">Lights</span>
-            <div class="lane-scenes">
-              <p class="hint" id="t-none-lights"></p>
-              <div class="scene-grid" id="t-grid-lights"></div>
-            </div>
-            <div class="lane-end">
-              <button type="button" class="scene off" id="t-off">Off</button>
-            </div>
-          </section>
-          <section class="lane" data-lane="colour" aria-label="Colour">
-            <span class="lane-name">Colour</span>
-            <div class="lane-scenes">
-              <p class="hint" id="t-none-colour"></p>
-              <div class="scene-grid" id="t-grid-colour"></div>
-            </div>
-            <div class="lane-end"></div>
-          </section>
-          <section class="lane" data-lane="motion" aria-label="Motion">
-            <span class="lane-name">Motion</span>
-            <div class="lane-scenes">
-              <p class="hint" id="t-none-motion"></p>
-              <div class="scene-grid" id="t-grid-motion"></div>
-            </div>
-            <div class="lane-end"></div>
-          </section>
-          <section class="lane" data-lane="zone" aria-label="Zone">
-            <span class="lane-name">Zone</span>
-            <div class="lane-scenes">
-              <p class="hint" id="t-none-zone"></p>
-              <div class="scene-grid" id="t-grid-zone"></div>
-            </div>
-            <div class="lane-end"></div>
-          </section>
+        <!--
+          The video wall (its tab is among the groups): what plays, the library of the player, the
+          text of the track and where it goes. The page fills it (videowallPanel.js).
+        -->
+        <section class="m-wall" id="m-wall" aria-label="Video wall" hidden></section>
+
+        <!-- The lamps of the room: their dimmer and a switch per rail. Only on the tab of the room. -->
+        <section class="m-room" id="t-room" aria-label="Room lights" hidden>
+          <div class="t-room-dimmer" id="t-room-dimmer"></div>
+          <fieldset class="t-rails" id="t-rails" aria-label="Rails" hidden></fieldset>
+        </section>
+
+        <!-- The looks of the group: those of one mood, or a column per mood. -->
+        <div class="m-looks" id="m-looks">
+          <p class="t-none" id="m-looks-none" hidden></p>
+          <div class="m-moods" id="m-moods"></div>
         </div>
+
+        <!-- What goes with the mood of the look that is on: always there, never over the looks. -->
+        <section class="panel m-tray" id="m-tray" aria-labelledby="m-tray-title">
+          <div class="m-tray-head">
+            <h2 id="m-tray-title">Vary</h2>
+            <p class="m-tray-hint" id="m-tray-hint"></p>
+            <button type="button" class="m-key" id="m-all" aria-expanded="false" aria-controls="m-sheet">
+              All
+            </button>
+            <button type="button" class="m-key" id="m-off">Off</button>
+          </div>
+          <section class="m-lane" data-lane="colour" id="m-lane-colour" aria-label="Colour">
+            <span class="m-lane-name" id="m-name-colour">Colour</span>
+            <div class="m-keys" id="m-keys-colour"></div>
+          </section>
+          <section class="m-lane" data-lane="lights" id="m-lane-lights" aria-label="Lights">
+            <span class="m-lane-name" id="m-name-lights">Effect</span>
+            <div class="m-keys" id="m-keys-lights"></div>
+          </section>
+          <section class="m-lane" data-lane="motion" id="m-lane-motion" aria-label="Motion">
+            <span class="m-lane-name" id="m-name-motion">Movement</span>
+            <div class="m-keys" id="m-keys-motion"></div>
+          </section>
+          <section class="m-lane" data-lane="zone" id="m-lane-zone" aria-label="Zone">
+            <span class="m-lane-name" id="m-name-zone">Zone</span>
+            <div class="m-keys" id="m-keys-zone"></div>
+          </section>
+        </section>
+
+        <!-- Everything of the group, for what no mood has. It lies over the looks, and is closed by its key. -->
+        <section class="panel m-sheet" id="m-sheet" aria-label="All of the group" hidden>
+          <div class="m-sheet-head">
+            <h2 id="m-sheet-title">All</h2>
+            <button type="button" class="m-key" id="m-close">Close</button>
+          </div>
+          <section class="m-lane" data-lane="colour" id="m-sheet-lane-colour">
+            <span class="m-lane-name" id="m-sheet-name-colour">Colour</span>
+            <div class="m-keys" id="m-sheet-keys-colour"></div>
+          </section>
+          <section class="m-lane" data-lane="lights" id="m-sheet-lane-lights">
+            <span class="m-lane-name" id="m-sheet-name-lights">Effect</span>
+            <div class="m-keys" id="m-sheet-keys-lights"></div>
+          </section>
+          <section class="m-lane" data-lane="motion" id="m-sheet-lane-motion">
+            <span class="m-lane-name" id="m-sheet-name-motion">Movement</span>
+            <div class="m-keys" id="m-sheet-keys-motion"></div>
+          </section>
+          <section class="m-lane" data-lane="zone" id="m-sheet-lane-zone">
+            <span class="m-lane-name" id="m-sheet-name-zone">Zone</span>
+            <div class="m-keys" id="m-sheet-keys-zone"></div>
+          </section>
+        </section>
       </section>
 
       <!-- Last, and over the bottom of the screen: a notice takes no room, so no key moves when it comes. -->

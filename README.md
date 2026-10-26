@@ -142,9 +142,13 @@ Go to `http://<computer-ip>:8080` on the tablet. The console has:
   it back with one press.
 - **Palettes**: the colours of the show, apart from the effects. A list of up to eight
   colours (or off), static or cycling.
-- **Tablet** (`/tablet`): a page with few, big controls for a tablet at the side of the dance
-  floor: tap the tempo, the master and its speed, the looks of the spider, the sequences (a key each: press to start or stop), the lamps of the room (its looks, a dimmer, Off and a switch per rail that no look changes), a panel with the spider's
-  lights, colour and motion, the blackout, and the state of the bridge, the LR512 and Home Assistant.
+- **Tablet** (`/tablet`): the page for a tablet at the side of the dance floor, with few, big
+  controls: tap the tempo, the master and its speed, the parts of the evening (sequences, with Next
+  and Hold), the looks of a group by mood with a tray under them to vary the look (colour, effect,
+  movement, zone), the lamps of the room (a dimmer, Off and a switch per rail), the blackout, the
+  state of the bridge, the LR512 and Home Assistant, and a tab for the video wall: play what the
+  player has (playlists, videos, effects, texts), blackout, and the text of the track.
+- **Video wall** (`/videowall`): the same video wall controls on a page of their own.
 - **A page per fixture**, to set it by hand and to start an effect. The page of the room has a
   fader and a colour per lamp, the zones, the switches, the dimmer of the room, the palettes
   and the scenery effects.

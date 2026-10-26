@@ -1,0 +1,296 @@
+/*
+ * What belongs to the video wall page: the switch, three lines that say what is going on, and the
+ * settings with a sketch of the wall.
+ *
+ * Nothing here takes its size from what it says: the three lines keep their height, the keys have
+ * a width of their own, and the sketch keeps its shape, so that no key moves when the text changes.
+ */
+
+.wall-hint {
+  max-width: 80ch;
+}
+.wall-hint code {
+  font-size: 0.95em;
+}
+.console > .wall-hint {
+  margin-bottom: var(--gap);
+}
+/* The panels of the controls, on the page of their own and in the tab of the tablet. */
+.wall-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.wall-switch {
+  display: block;
+  width: 100%;
+  max-width: 28rem;
+  min-height: 4rem;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  font-size: var(--large);
+  font-weight: 500;
+  text-align: left;
+}
+.wall-switch:active {
+  background: var(--key-down);
+}
+.wall-switch[aria-pressed="true"] {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.wall-lines {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.4rem 1rem;
+  margin: 1rem 0;
+}
+.wall-lines dt {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 400;
+}
+.wall-lines dd {
+  min-height: 1.35em;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wall-lines dd[data-bad="true"] {
+  color: var(--stop);
+}
+
+.wall-result {
+  min-height: 1.35em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim);
+  font-size: var(--small);
+}
+
+.wall-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.wall-actions .key {
+  width: 11rem;
+}
+
+.wall-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+}
+@media (min-width: 56rem) {
+  .wall-settings {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+.wall-form,
+.wall-where {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+.wall-row {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.wall-row > span:first-child,
+.wall-row > legend {
+  color: var(--dim);
+  font-size: var(--small);
+  font-weight: 400;
+}
+.wall-pin,
+.wall-duration {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.wall-pin .field {
+  flex: 1 1 10rem;
+}
+#wall-pin-clear,
+.wall-pin .key {
+  width: 9rem;
+}
+.wall-duration .field {
+  width: 6rem;
+}
+.wall-presets,
+.wall-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.wall-presets .pick {
+  min-width: 4.5rem;
+  padding: 0 0.5rem;
+}
+.wall-choice .pick {
+  width: 10rem;
+}
+.wall-colour {
+  width: 6rem;
+  height: var(--touch);
+  padding: 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ground);
+}
+
+.wall-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 5.5rem);
+  gap: 0.5rem;
+}
+.wall-grid .pick {
+  padding: 0;
+}
+
+.wall-preview {
+  container-type: size;
+  position: relative;
+  width: 100%;
+  max-width: 28rem;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #000;
+}
+.wall-preview-text {
+  position: absolute;
+  max-width: 96%;
+  padding: 0 2%;
+  font-size: calc(var(--wall-size, 6) * 1cqh);
+  font-weight: 600;
+  line-height: 1.1;
+  text-shadow: 0 0 0.15em rgba(0, 0, 0, 0.8);
+  white-space: pre-line;
+}
+
+/* ---- the player: what plays, the blackout and the library ---- */
+
+.wall-player-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 1rem 2rem;
+  margin-bottom: 1rem;
+}
+.wall-blackout {
+  width: 11rem;
+  min-height: 3.5rem;
+}
+.wall-blackout[aria-pressed="true"] {
+  border-color: var(--stop);
+  background: var(--stop);
+  color: var(--ink);
+  font-weight: 600;
+}
+.wall-player-controls .pick,
+.wall-library-head .pick {
+  min-width: 5rem;
+  min-height: 3.5rem;
+  padding: 0 0.75rem;
+}
+.wall-library-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.wall-refresh {
+  width: 8rem;
+  min-height: 3.5rem;
+}
+/* Keeps its height whether it says something or not, so the keys under it do not move. */
+.wall-library-note {
+  min-height: 1.5em;
+  margin: 0.75rem 0 0;
+}
+.wall-library-note[hidden] {
+  display: block;
+  visibility: hidden;
+}
+
+.wall-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+/* A preview at a fixed shape, the name in two lines at most and a line for the rest. */
+.wall-item {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--key);
+  color: var(--paper);
+  text-align: left;
+}
+.wall-item:active {
+  background: var(--key-down);
+}
+.wall-item[aria-pressed="true"] {
+  border-color: var(--signal);
+  box-shadow: inset 0 0 0 2px var(--signal);
+}
+.wall-item-picture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: calc(var(--radius) / 2);
+  background: #000;
+}
+.wall-item-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.wall-item-kind {
+  color: var(--dim);
+  font-size: var(--small);
+  text-transform: capitalize;
+}
+.wall-item-name {
+  display: -webkit-box;
+  height: 2.6em;
+  overflow: hidden;
+  font-size: var(--small);
+  font-weight: 600;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.wall-item-detail {
+  height: 1.3em;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: var(--small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

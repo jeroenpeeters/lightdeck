@@ -23,6 +23,9 @@
  *                                       `rekordbox`, which follows the OSC of rkbx_link
  *   --rkbx           RKBX_PORT          the UDP port to listen on for the OSC of rkbx_link
  *                                       (default 4460), or "off" to listen on none
+ *   --videowall      VIDEOWALL_FILE     the file with the settings of the video wall, which its page
+ *                                       writes (default videowall.json; it holds the PIN of the
+ *                                       player, so it is not in git)
  *   --hass           HASS_URL           ws://<home-assistant>:8123/api/websocket, http://<home-assistant>:8123 will do. Needed when the
  *                                       rig file has fixtures
  *                    HASS_TOKEN         a long-lived access token of Home Assistant. Environment
@@ -79,6 +82,7 @@ const { values: args } = parseArgs({
     'lead-ms': { type: 'string' },
     tempo: { type: 'string' },
     rkbx: { type: 'string' },
+    videowall: { type: 'string' },
     hass: { type: 'string' },
     'hass-simulate': { type: 'boolean' },
     rig: { type: 'string' },
@@ -117,6 +121,7 @@ try {
 const hassToken = process.env.HASS_TOKEN;
 const hassSimulated =
   args['hass-simulate'] === true || /^(1|true|yes)$/i.test(process.env.HASS_SIMULATE ?? '');
+const videoWallFile = args.videowall ?? process.env.VIDEOWALL_FILE ?? 'videowall.json';
 const rigFile = args.rig ?? process.env.RIG_FILE ?? 'rig.yaml';
 const port = wholeNumber(args.port ?? process.env.PORT ?? '8080', 'port');
 const host = args.host ?? process.env.HOST ?? '0.0.0.0';
@@ -219,6 +224,7 @@ try {
     leadMs,
     tempoSource: tempoSourceText,
     ...(rkbxPort === undefined ? {} : { rkbxPort }),
+    videoWallFile,
     log,
   });
 } catch (error) {

@@ -98,9 +98,8 @@ describe('the page of the tablet', () => {
   });
 
   it('registers the service worker, where the browser has one', () => {
-    // The pages share it: tablet.js and moods.js both call registerWorker of tabletParts.js.
+    // The page calls registerWorker of tabletParts.js.
     expect(read('tablet.js').toString()).toContain('registerWorker()');
-    expect(read('moods.js').toString()).toContain('registerWorker()');
     const script = read('tabletParts.js').toString();
     expect(script).toContain("'serviceWorker' in navigator");
     expect(script).toContain("register('/sw.js')");
@@ -160,16 +159,15 @@ describe('the service worker', () => {
     return respond.mock.calls.length === 0 ? undefined : await respond.mock.calls[0]?.[0];
   }
 
-  it('keeps only the pieces of the two pages for a tablet', async () => {
+  it('keeps only the pieces of the page for a tablet', async () => {
     for (const path of [
       '/tablet',
       '/tablet.js',
       '/tablet.css',
       '/tabletKit.js',
       '/tabletParts.js',
-      '/moods',
-      '/moods.js',
-      '/moods.css',
+      '/videowallPanel.js',
+      '/videowall.css',
       '/shell.js',
       '/ui.js',
       '/changes.js',
@@ -290,6 +288,12 @@ describe('serving the app', () => {
     expect(worker.headers.get('content-type')).toMatch(/^text\/javascript/);
     // A worker that is cached by the browser is a worker that cannot be updated.
     expect(worker.headers.get('cache-control')).toBe('no-cache');
+  });
+
+  it('sends an old bookmark of /moods to the tablet page', async () => {
+    const answer = await fetch(`${base}/moods`, { redirect: 'manual' });
+    expect(answer.status).toBe(302);
+    expect(answer.headers.get('location')).toBe('/tablet');
   });
 
   it('still serves the tablet page', async () => {

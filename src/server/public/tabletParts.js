@@ -1,7 +1,7 @@
-// The parts that the two pages for a tablet share (tablet.js and moods.js): the notice, the tempo,
-// the masters, the blackout, the link lamps, the sequences and the controls of the lamps of the
-// room. They draw into elements with the ids of `tablet.html`, so a page that wants them has those
-// ids. Plain browser JavaScript.
+// The parts of the tablet page (tablet.js) that are not its own: the notice, the tempo, the masters,
+// the blackout, the link lamps and the controls of the lamps of the room, and the keys of looks,
+// scenes and palettes. They draw into elements with the ids of `tablet.html`. Plain browser
+// JavaScript.
 //
 // A page calls `init(shell)` once, builds what it uses, and calls the `render` functions when the
 // shell says the state changed. A press is asked once through `ask`: when it does not reach
@@ -325,38 +325,6 @@ export function startBeat() {
   requestAnimationFrame(drawBeat);
 }
 
-// ---- the sequences ----
-
-const sequences = { grid: null, none: null, keys: new Map() };
-
-/** A key for each sequence of the show, with its name and nothing else. It is lit while it runs. */
-export function renderSequences() {
-  sequences.grid ??= $('t-seq-grid');
-  sequences.none ??= $('t-seq-none');
-  const list = shell.show.sequences ?? [];
-  $('t-seq').hidden = list.length === 0;
-  const running = shell.sequence?.running ?? null;
-  syncKeys(
-    sequences,
-    list.map((sequence) => ({
-      id: sequence.id,
-      make: () =>
-        makeKey('scene seq', () =>
-          ask(
-            '/api/sequence',
-            shell.sequence?.running === sequence.id ? { stop: true } : { start: sequence.id },
-          ),
-        ),
-      draw: (key) =>
-        drawKey(key, {
-          state: running === sequence.id ? 'set' : 'idle',
-          label: sequence.label,
-          sets: '',
-        }),
-    })),
-  );
-}
-
 // ---- the lamps of the room ----
 
 /**
@@ -419,13 +387,6 @@ let dimmerHold;
 let dimmerSent = 0;
 let dimmerLate;
 const DIMMER_GAP_MS = 120;
-/** The group the Off key of the room is for. */
-let roomOffGroup = null;
-
-export function setRoomOff(id) {
-  roomOffGroup = id;
-}
-
 export function refreshDimmer() {
   roomDimmer?.refresh();
 }
@@ -463,10 +424,6 @@ export function buildRoom() {
     },
   });
   $('t-room-dimmer').append(roomDimmer);
-  // The page may have no key of its own for it (the other page puts Off in its tray).
-  $('t-room-off')?.addEventListener('click', () => {
-    if (roomOffGroup) ask('/api/playback', { group: roomOffGroup, off: true });
-  });
 }
 
 // The app can be installed (manifest.webmanifest). The service worker (sw.js) keeps the page itself,

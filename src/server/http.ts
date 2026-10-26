@@ -4,10 +4,13 @@
  *   GET  /                            goes to the deck
  *   GET  /deck                        the deck: the groups of the show with their scenes
  *   GET  /palettes                    the palettes of the show: their colours, and how they move
- *   GET  /tablet                      a page for a tablet at the side of the dance floor: the
- *                                     tap, the master, the looks of the spider and little else
- *   GET  /moods                       the other page for a tablet: the looks of a group by mood, with
- *                                     what goes with the mood in a tray under them (Jeroen, 2026-10-20)
+ *   GET  /tablet                      the page for a tablet at the side of the dance floor: the
+ *                                     tap, the master, the parts of the evening, the looks of a group
+ *                                     by mood with what goes with the mood in a tray under them
+ *                                     (Jeroen, 2026-10-20), and a tab for the video wall. `/moods`
+ *                                     (the page it was before) goes there
+ *   GET  /videowall                   the settings of the text overlay of the video wall: whether the
+ *                                     track that plays is sent to it, where, how big, for how long
  *   GET  /simulator                   the simulator: the fixtures drawn in 3D from the bytes
  *                                     being sent, with or without a bridge
  *   GET  /fixtures/<id>               the page of a fixture: the file
@@ -25,6 +28,16 @@
  *   POST /api/rkbx                    `breakdown`: true or false, whether the effects are idle while
  *                                     rekordbox is in a breakdown phrase (Down or Bridge). Off at
  *                                     every start
+ *   POST /api/videowall               any of `enabled`, `url`, `pin` (never given back), `durationSeconds`
+ *                                     (0 is: until the next track), `vertical`, `horizontal`, `size`,
+ *                                     `color`, `lines` (`one` or `two`): the settings of the video wall,
+ *                                     kept in its own file. `POST /api/videowall/test` shows a sample,
+ *                                     `/send` the track that plays now, `/clear` takes the text away.
+ *                                     The wall's own playback (tablet): `GET /api/videowall/library`
+ *                                     (videos, effects, texts, playlists) and `/status`, `GET
+ *                                     /api/videowall/image?path=/media/...` (a preview picture, passed
+ *                                     on), `POST /api/videowall/play` and `/playlist` (`id`, and
+ *                                     `transition`) and `/blackout` (`value`)
  *   POST /api/output                  how the output is made: `maxFps`, the most frames per
  *                                     second (default 25), and `leadMs`, how far ahead of
  *                                     the beat it is made. Answers with both
@@ -90,6 +103,7 @@ import type { PlaybackState, ShowSummary } from './playback.js';
 import type { LinkStatus, OutputSettings, Rig, RigFixture } from './rig.js';
 import type { SequenceState } from './sequencer.js';
 import { MAX_BPM, MIN_BPM, RATES, type TempoState } from './tempo.js';
+import type { VideoWallState } from './videoWall.js';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -112,7 +126,9 @@ const GROUP_POST = /^\/api\/groups\/([a-z0-9-]+)\/(rename|delete|scenes|looks)$/
 const SCENE_POST = /^\/api\/groups\/([a-z0-9-]+)\/scenes\/([a-z0-9-]+)\/(store|rename|delete)$/;
 const LOOK_POST = /^\/api\/groups\/([a-z0-9-]+)\/looks\/([a-z0-9-]+)\/(store|rename|delete)$/;
 const PALETTE_POST = /^\/api\/palettes\/([a-z0-9-]+)\/(update|delete)$/;
+const VIDEOWALL_POST = /^\/api\/videowall\/(test|send|clear|play|playlist|blackout)$/;
 const DECK = '/deck';
+const VIDEOWALL = '/videowall';
 const PALETTES = '/palettes';
 const TABLET = '/tablet';
 const MOODS = '/moods';
@@ -244,6 +260,7 @@ function describe({ rig, bridgeUrl }: HttpOptions) {
     master: rig.getMaster(),
     status: rig.getStatus(),
     rkbx: rig.rkbx.getState(),
+    videowall: rig.videoWall.getState(),
     output: rig.getOutput(),
     show: rig.playback.getShow(),
     playback: rig.playback.getState(),
@@ -284,6 +301,7 @@ export function createHttpServer(options: HttpOptions): Server {
   rig.on('sequence', (state: SequenceState) => broadcast('sequence', state));
   rig.on('rkbx', (state: RkbxState) => broadcast('rkbx', state));
   rig.on('output', (settings: OutputSettings) => broadcast('output', settings));
+  rig.on('videowall', (state: VideoWallState) => broadcast('videowall', state));
 
   const keepAlive = setInterval(() => {
     for (const stream of streams) stream.write(': keep-alive\n\n');
@@ -344,6 +362,7 @@ export function createHttpServer(options: HttpOptions): Server {
       res.write(message('sequence', rig.sequencer.getState()));
       res.write(message('rkbx', rig.rkbx.getState()));
       res.write(message('output', rig.getOutput()));
+      res.write(message('videowall', rig.videoWall.getState()));
       req.on('close', () => streams.delete(res));
       return;
     }
@@ -351,6 +370,47 @@ export function createHttpServer(options: HttpOptions): Server {
     if (req.method === 'POST' && path === '/api/output') {
       const { change } = split(await readJson(req));
       sendJson(res, 200, { ok: true, output: rig.setOutput(change) });
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/videowall') {
+      const { change } = split(await readJson(req));
+      rig.videoWall.update(change);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === 'POST' && VIDEOWALL_POST.test(path)) {
+      const body = await readJson(req);
+      const action = path.slice('/api/videowall/'.length);
+      if (action === 'test') await rig.videoWall.test();
+      else if (action === 'send') await rig.videoWall.sendCurrent();
+      else if (action === 'clear') await rig.videoWall.clear();
+      else if (action === 'blackout') await rig.videoWall.blackout(body.value);
+      else if (action === 'play') await rig.videoWall.play(body.id, body.transition);
+      else await rig.videoWall.playPlaylist(body.id, body.transition);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === 'GET' && path === '/api/videowall/library') {
+      sendJson(res, 200, await rig.videoWall.library());
+      return;
+    }
+
+    if (req.method === 'GET' && path === '/api/videowall/status') {
+      sendJson(res, 200, await rig.videoWall.status());
+      return;
+    }
+
+    if (req.method === 'GET' && path === '/api/videowall/image') {
+      const picture = await rig.videoWall.image(url.searchParams.get('path') ?? '');
+      res.writeHead(200, {
+        'content-type': picture.type,
+        'content-length': picture.body.length,
+        'cache-control': 'private, max-age=3600',
+      });
+      res.end(picture.body);
       return;
     }
 
@@ -516,8 +576,14 @@ export function createHttpServer(options: HttpOptions): Server {
       }
       if (path === DECK && sendFile(req, res, '/deck.html')) return;
       if (path === PALETTES && sendFile(req, res, '/palettes.html')) return;
+      if (path === VIDEOWALL && sendFile(req, res, '/videowall.html')) return;
       if (path === TABLET && sendFile(req, res, '/tablet.html')) return;
-      if (path === MOODS && sendFile(req, res, '/moods.html')) return;
+      if (path === MOODS) {
+        // The page for moods is the tablet page now; an old bookmark goes there.
+        res.writeHead(302, { location: TABLET, 'cache-control': 'no-store' });
+        res.end();
+        return;
+      }
       if (path === INSTALL && sendFile(req, res, '/install.html')) return;
       if (path === SIMULATOR && sendFile(req, res, '/simulator.html')) return;
       const page = FIXTURE_PAGE.exec(path);

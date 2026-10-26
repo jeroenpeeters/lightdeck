@@ -15,7 +15,7 @@
 //
 //   const shell = await start();          null when the page cannot be shown
 //   const shell = await start({ page: 'deck' });        for a page about no fixture, such as
-//                                          the deck or the palettes
+//                                          the deck, the palettes or the video wall
 //   const shell = await start({ page: 'tablet', bare: true });   a page that draws its own
 //                                          controls: the shell then shows no bar and no tempo
 //                                          desk, and a page asks for what it needs below
@@ -47,6 +47,9 @@
 //                                          following, bpm, beats, port, breakdown: { enabled,
 //                                          phrase, active } }
 //   shell.on('rkbx', (rkbx) => ...)        what rekordbox says changed
+//   shell.videowall                        the video wall: { settings, track, preview, shown, last }, the settings
+//                                          without the PIN (`pinSet` says whether there is one)
+//   shell.on('videowall', (videowall) => ...)           the settings or what is on the wall changed
 //   shell.on('change', () => ...)          blackout, master or tempo changed
 //   shell.notes(() => [{ text, level, urgent }])        what the page has to say
 //   shell.refresh()                        show the notes again
@@ -194,6 +197,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   let tempo = readTempo(initial.tempo);
   /** What rekordbox says through rkbx_link, and whether the tempo follows it. */
   let rkbx = initial.rkbx;
+  /** The track that goes to the video wall, and what is on it. */
+  let videowall = initial.videowall;
   let blackout = initial.blackout;
   let master = initial.master;
   /** How many changes of the master by this page the event stream has yet to tell of. */
@@ -218,6 +223,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     sequence: [],
     fixtures: [],
     rkbx: [],
+    videowall: [],
     status: [],
   };
   const tell = (name, message) => {
@@ -228,7 +234,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     { name: 'Deck', href: '/deck', here: page === 'deck' },
     { name: 'Palettes', href: '/palettes', here: page === 'palettes' },
     { name: 'Tablet', href: '/tablet', here: page === 'tablet' },
-    { name: 'Moods', href: '/moods', here: page === 'moods' },
+    { name: 'Video wall', href: '/videowall', here: page === 'videowall' },
     ...initial.fixtures.map((each) => ({
       name: each.label,
       href: `/fixtures/${each.id}`,
@@ -263,6 +269,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     const fresh = await (await fetch('/api/state')).json();
     tempo = readTempo(fresh.tempo);
     rkbx = fresh.rkbx;
+    videowall = fresh.videowall;
     setBeat(fresh.tempo.beat);
     blackout = fresh.blackout;
     master = fresh.master;
@@ -278,6 +285,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     tell('sequence', sequence);
     render();
     tell('rkbx', rkbx);
+    tell('videowall', videowall);
     tell('change');
   }
 
@@ -460,6 +468,10 @@ export async function start({ page = 'fixture', bare = false } = {}) {
       rkbx = message;
       render();
       tell('rkbx', rkbx);
+    });
+    on('videowall', (message) => {
+      videowall = message;
+      tell('videowall', videowall);
     });
     on('blackout', (message) => {
       if (message.origin === clientId) return;
@@ -851,6 +863,9 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     stateOf: (fixtureId) => states.get(fixtureId),
     get rkbx() {
       return rkbx;
+    },
+    get videowall() {
+      return videowall;
     },
     on: (name, handler) => handlers[name].push(handler),
     notes: (say) => {
