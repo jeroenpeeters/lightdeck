@@ -18,10 +18,13 @@ the same console as slow scenery under the DMX fixtures.
 | Beat-synced effects, tap tempo, blackout | Work: twenty-two light effects and six motion effects for the spider, five effects for the laser |
 | Palettes: the colours of the show, apart from the effects | Built, not yet tested on the real fixtures |
 | Scenes and looks: store what the fixtures do, recall it | Built, not yet tested on the real fixtures |
-| Grand master, swing limits of the spider | Built, not yet tested on the real fixtures |
+| Grand master, swing limits and zones of the spider | Built, not yet tested on the real fixtures |
+| Tempo from rekordbox, through rkbx_link (OSC) | Built. Tried against a stand-in for rkbx_link and with real rkbx_link data arriving; has not driven the real fixtures |
+| Video wall (Dreamscape Player): the track text and playing its library from the tablet | Built. Jeroen has seen the artist and title on the wall; the playback controls were tried against a stand-in player only |
 | Simulator: the spiders and the lamps of the room in 3D (a rail per zone, every lamp moved along its rail), a living room, a smoke machine | Works in a desktop browser, never compared with the real spider |
 | Home Assistant lamps and switches: one fixture, "Room Lights", with zones, scenery effects and a dimmer | Built. Tried against the real Home Assistant for the login, the lamps and a soak of the first throttle, and against a stand-in; not yet soaked again, and not on a tablet. See [docs/hass-fixtures-plan.md](docs/hass-fixtures-plan.md) |
-| Sequences: the looks of the groups changing by themselves on the bars | Built, written in the show file by hand, started on the deck. Not yet tested on the real fixtures |
+| Sequences: the looks of the groups changing by themselves on the bars (the parts of the evening) | Built, written in the show file by hand, started on the deck or the tablet. Not yet tested on the real fixtures |
+| Tablet page (`/tablet`), as a browser page or as an Android app | Built, run in desktop Chrome only; the app builds and has not run on a tablet |
 | Crossfades, holds | Not built, see [docs/show-design.md](docs/show-design.md) |
 | Art-Net, sACN | Not built |
 | Running in a container | A `Dockerfile` is there, but this is not a supported way to run it yet |
@@ -58,6 +61,18 @@ mesh takes a few commands per second and not forty frames, so the lamps are the 
 lamp gets a new command only when its last one was answered, no more than 4 are on the way, and
 the newest one wins. Lightdeck starts without Home Assistant, and the DMX side never waits for
 it.
+
+The tempo is set by hand (slider, nudge, tap) or follows rekordbox. For that,
+[rkbx_link](https://github.com/grufkork/rkbx_link) runs on the computer with rekordbox and sends the bpm, a
+trigger on every beat and the position as OSC over UDP to lightdeck (default port 4460).
+With the tempo on Rekordbox the bpm follows it and the beats are placed by the triggers;
+when the beats stop, the effects idle. Set `osc.enabled`, `osc.source = 0.0.0.0:4450`,
+`osc.destination = <computer>:4460` and turn on the messages `master/beat/trigger`,
+`master/time` and, for the track text and Idle in breakdown, `master/track/title`,
+`master/track/artist` and `master/phrase`. `pnpm rkbx-monitor` shows what arrives.
+
+The track that plays can also go to a video wall (the Dreamscape Player), and its library is
+played from the tablet: see [The video wall](#the-video-wall).
 
 ## What you need
 
@@ -138,16 +153,17 @@ says "Home Assistant simulated" in amber.
 Go to `http://<computer-ip>:8080` on the tablet. The console has:
 
 - **Deck**: per group a lane of scenes of lights, a lane of palettes, a lane of scenes of
-  motion, and a row of looks. Set the fixtures on their pages, store that as a scene, and get
+  motion, a lane of zones (how far the motion effects reach), and a row of looks. Set the fixtures on their pages, store that as a scene, and get
   it back with one press.
 - **Palettes**: the colours of the show, apart from the effects. A list of up to eight
   colours (or off), static or cycling.
-- **Tablet** (`/tablet`): the page for a tablet at the side of the dance floor, with few, big
-  controls: tap the tempo, the master and its speed, the parts of the evening (sequences, with Next
-  and Hold), the looks of a group by mood with a tray under them to vary the look (colour, effect,
-  movement, zone), the lamps of the room (a dimmer, Off and a switch per rail), the blackout, the
-  state of the bridge, the LR512 and Home Assistant, and a tab for the video wall: play what the
-  player has (playlists, videos, effects, texts), blackout, and the text of the track.
+- **Tablet** (`/tablet`, the old `/moods` goes there): the page for a tablet at the side of the
+  dance floor, with few, big controls: tap the tempo, the master and its speed, the parts of the
+  evening (sequences, with Next and Hold), the looks of a group by mood with a tray under them to
+  vary the look (palette, effect, movement, zone), the lamps of the room (a dimmer, and a switch
+  per rail), the blackout, the state of the bridge, the LR512 and Home Assistant, and last a tab
+  Video wall: play what the player has (playlists, videos, effects, texts), its blackout, and the
+  text of the track.
 - **Video wall** (`/videowall`): the same video wall controls on a page of their own.
 - **A page per fixture**, to set it by hand and to start an effect. The page of the room has a
   fader and a colour per lamp, the zones, the switches, the dimmer of the room, the palettes
@@ -180,6 +196,7 @@ As a flag, or as an environment variable.
 | `--hass` | `HASS_URL` | none | Home Assistant: `http://<host>:8123` (or `ws://<host>:8123/api/websocket`). Needed when `rig.yaml` has lamps |
 | | `HASS_TOKEN` | none | A long-lived access token for Home Assistant. Environment or `.env` only, never a flag |
 | `--hass-simulate` | `HASS_SIMULATE` | off | Run the lamps against a simulated Home Assistant: no real lamp is touched, no URL or token needed |
+| `--videowall` | `VIDEOWALL_FILE` | `videowall.json` | The settings of the video wall, written by its page. It holds the PIN of the player, so it is in `.gitignore` |
 | `--rig` | `RIG_FILE` | `rig.yaml` | The rig file, with the lamps of the room. No file, no lamps |
 | `--max-fps` | `MAX_FPS` | `25` | The most DMX frames per second to send, 1 to 60 |
 | `--lead-ms` | `LEAD_MS` | `0` | How far ahead of the beat the output is made |
@@ -212,7 +229,7 @@ fixtures on it go dark.
 
 ## The show file
 
-Palettes, scenes, looks and the swing limits of the spider are kept in one YAML file, which the deck writes and which you
+Palettes, scenes, looks, moods, sequences and the swing limits of the spider are kept in one YAML file, which the deck writes and which you
 can edit by hand. Lightdeck watches the file. A file with a mistake never replaces the show
 that is running: the deck says what is wrong and keeps the show as it was.
 
@@ -250,9 +267,12 @@ groups:
 Colours are palettes, and no effect names a colour: a light effect says how much of the
 first, second and third colour of the palette every lens gets, a motion effect moves the
 bars, and any of them goes with any other. An empty colour is a dark lens. A scene is of
-the type `lights` or `motion` and keeps and sets only the properties of that type. A group
+the type `lights`, `motion` or `zone` and keeps and sets only the properties of that type
+(a zone is the window of tilt of each bar that the motion effects work inside). A group
 has one scene of each type on and one palette, so a palette can be pressed under a chase
-that is running. A look sets a scene of lights, a palette and a scene of motion together.
+that is running. A look sets a scene of lights, a palette, a scene of motion and a scene of
+zone together. A group can list `moods` (scenes and palettes that go together), a look says
+which mood it is in, and the tablet page shows the looks of a group by mood.
 A fixture that a scene does not name has those properties at rest, and off is the lights.
 The laser does not use the palettes: it has up to three colours of its own.
 
@@ -265,7 +285,8 @@ the palette over them about once a minute.
 
 A sequence changes the looks of the groups by itself, on the bars of the tempo. The spider can go
 through its looks while the room keeps its own. It is written in the show file, and started and
-stopped on the deck, where a panel of sequences shows the steps and where it is.
+stopped on the deck, where a panel of sequences shows the steps and where it is. The tablet page
+has a key per sequence, as the parts of the evening, with Next and Hold.
 
 ```yaml
 sequences:
@@ -282,6 +303,23 @@ A step lasts its bars and then the next one starts, and after the last one it st
 that a step does not name is left alone, and a group is only set when its look changes, so a look
 you press by hand stands until the next step that changes that group. Stopping leaves everything as
 it is. When the music stops, the sequence waits.
+
+## The video wall
+
+The video wall is the Dreamscape Player, a program on a Raspberry Pi. Lightdeck
+talks to its HTTP API (its OpenAPI is at `/api/openapi.json`) and keeps the settings in
+`videowall.json`, written by the page `/videowall`: the address, the PIN, and the track text.
+
+- **Track text.** When the track on the master deck of rekordbox changes, lightdeck shows
+  `Title - Artist` (or the artist under the title) with the text overlay of the player, and takes it
+  away after a set time. It calls the player only for a new track, and never retries a failed call.
+  It is off at the start. A title filter (a regular expression, by default one that cuts `(Original
+  Mix)`, `[Extended Mix]` and the like) cleans the title, and the page shows what ends up on the wall.
+- **Playing the library.** `/videowall` and the tab Video wall of the tablet page list the
+  playlists, videos, effects and texts of the player with a preview, play one with a press and a
+  transition, and have the blackout of the player.
+- Everything goes through lightdeck, so the tablet needs no access to the player and the PIN stays
+  in lightdeck, which never gives it back to a page.
 
 ## The rig file
 
@@ -337,12 +375,14 @@ without a build step. Tests are next to the code as `*.test.ts`.
 | `src/model/` | The normalized fixture model: attributes from 0 to 1 |
 | `src/fixtures/` | DMX fixture profiles, and the encoding into bytes |
 | `src/engine/` | The effects, as pure functions of the beat |
-| `src/outputs/` | The patch, the client for the bridge and the client for Home Assistant (`hass/`) |
+| `src/inputs/` | Rekordbox, through rkbx_link (`rkbx/`) |
+| `src/outputs/` | The patch, the client for the bridge, the client for Home Assistant (`hass/`) and the video wall (`videowall/`) |
 | `src/server/` | The rig, a controller per fixture, the playback, the HTTP API |
 | `src/server/public/` | The pages of the console |
 | `src/show/` | The show file |
-| `src/cli/`, `tools/` | Command-line tools |
+| `src/cli/`, `src/laserSurvey/`, `tools/` | Command-line tools |
 | `android-bridge/` | The Android app, with a build of its own |
+| `android-tablet/`, `android-camera/` | The tablet app (a full-screen window on `/tablet`) and the camera app for the laser survey |
 | `docs/` | Designs, plans and what was found out about the LR512 |
 
 [CLAUDE.md](CLAUDE.md) has the complete and current overview of the code, the decisions
