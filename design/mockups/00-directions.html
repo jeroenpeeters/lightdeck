@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1840">
+<title>Three directions</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#08090B}</style>
+</head>
+<body>
+<div class="app" style="width: 1840px; height: 1000px; padding: 48px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px">
+
+  <!-- A: Console -->
+  <section class="panel" style="display: flex; flex-direction: column; gap: 20px; padding: 28px; border-color: #FFB000">
+    <div class="row" style="justify-content: space-between">
+      <span class="lbl" style="color: #FFB000">Direction A</span>
+      <span class="tag on">Recommended</span>
+    </div>
+    <h2 style="margin: 0; font: 700 40px/1 var(--f-ui)">Console</h2>
+    <p class="t2" style="margin: 0; font-size: 17px; line-height: 1.45">Flat, dense, near-black. Keys are dark slabs with an LED bar on top. The bar and border carry the state. Colour comes only from the content, and a fixed executor bar shows the parts of the evening.</p>
+    <div style="display: grid; grid-template-columns: 96px 1fr; gap: 8px 16px; font-size: 15px">
+      <span class="lbl">Mood</span><span>Pro console, quiet, utilitarian</span>
+      <span class="lbl">Density</span><span>High: 10 looks, tray and parts at once</span>
+      <span class="lbl">Key</span><span>Dark slab, 4 px LED bar, palette strip</span>
+      <span class="lbl">State</span><span>Amber bar and outline, striped when varied</span>
+    </div>
+    <div class="col" style="gap: 8px; padding: 16px; background: #08090B; border-radius: 6px">
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <button class="key look is-on" style="min-height: 96px"><span class="nm">Pump</span><div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div><span class="meta">On</span></button>
+        <button class="key look is-varied" style="min-height: 96px"><span class="nm">Sparkle</span><div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div><span class="meta">Varied</span></button>
+        <button class="key look" style="min-height: 96px"><span class="nm">Rolling</span><div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div><span class="meta">Idle</span></button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+        <div class="part is-on" style="height: 56px"><span class="nm" style="font-size: 15px">Midden</span><div class="bars"><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i></div></div>
+        <div class="part" style="height: 56px"><span class="nm" style="font-size: 15px">Techno</span><div class="bars"><i></i><i></i><i></i><i></i><i></i></div></div>
+        <div class="part" style="height: 56px"><span class="nm" style="font-size: 15px">Begin</span><div class="bars"><i></i><i></i><i></i><i></i><i></i></div></div>
+        <div class="part" style="height: 56px"><span class="nm" style="font-size: 15px">The night</span><div class="bars"><i></i><i></i><i></i><i></i><i></i></div></div>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 3fr 1.4fr; grid-template-rows: 14px 90px 26px; gap: 4px; margin-top: auto">
+      <div style="grid-column: 1 / 4; background: #272C33; border-radius: 2px"></div>
+      <div style="background: #1E2228; border-radius: 2px"></div>
+      <div style="background: #171A1F; border-radius: 2px; box-shadow: inset 0 0 0 1px #3B414B"></div>
+      <div style="background: #1E2228; border-radius: 2px"></div>
+      <div style="grid-column: 1 / 4; background: #241B06; box-shadow: inset 0 0 0 1px #FFB000; border-radius: 2px"></div>
+    </div>
+    <span class="t3" style="font-size: 13px">Layout: top bar · group rail | looks | tray · executor bar</span>
+  </section>
+
+  <!-- B: Stage -->
+  <section class="panel" style="display: flex; flex-direction: column; gap: 20px; padding: 28px">
+    <span class="lbl">Direction B</span>
+    <h2 style="margin: 0; font: 700 40px/1 var(--f-ui)">Stage</h2>
+    <p class="t2" style="margin: 0; font-size: 17px; line-height: 1.45">As little as possible. Six huge look tiles filled with a darkened version of their palette, a thick white frame for the one that is on, and nothing else on the live page. Everything else is one swipe away.</p>
+    <div style="display: grid; grid-template-columns: 96px 1fr; gap: 8px 16px; font-size: 15px">
+      <span class="lbl">Mood</span><span>Calm, glanceable, theatrical</span>
+      <span class="lbl">Density</span><span>Low: six to eight tiles per screen</span>
+      <span class="lbl">Key</span><span>Big tile tinted by its own palette</span>
+      <span class="lbl">State</span><span>Thick white frame, the rest dims</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 16px; background: #08090B; border-radius: 6px">
+      <div style="height: 150px; border-radius: 8px; background: linear-gradient(135deg, #4a2412, #4d0000); box-shadow: inset 0 0 0 4px #F1F3F5; padding: 14px; display: flex; align-items: flex-end; font: 700 22px var(--f-ui)">Pump</div>
+      <div style="height: 150px; border-radius: 8px; background: linear-gradient(135deg, #124d0a, #2c0052); opacity: .55; padding: 14px; display: flex; align-items: flex-end; font: 700 22px var(--f-ui)">Sparkle</div>
+      <div style="height: 150px; border-radius: 8px; background: linear-gradient(135deg, #4a2412, #4d0000); opacity: .55; padding: 14px; display: flex; align-items: flex-end; font: 700 22px var(--f-ui)">Rolling</div>
+    </div>
+    <div class="col" style="gap: 6px; font-size: 15px">
+      <span><b style="color: #34D27B">+</b> Unmistakable from two metres away</span>
+      <span><b style="color: #FF4B4B">−</b> Tinted tiles are big bright areas in a dark room</span>
+      <span><b style="color: #FF4B4B">−</b> No room for the tray, parts or live feedback</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 14px 58px 58px; gap: 4px; margin-top: auto">
+      <div style="grid-column: 1 / 4; background: #272C33; border-radius: 2px"></div>
+      <div style="background: #3a2016; border-radius: 4px; box-shadow: inset 0 0 0 2px #F1F3F5"></div><div style="background: #1c2a18; border-radius: 4px"></div><div style="background: #2a1a2e; border-radius: 4px"></div>
+      <div style="background: #2e1414; border-radius: 4px"></div><div style="background: #1a1a2e; border-radius: 4px"></div><div style="background: #2e2214; border-radius: 4px"></div>
+    </div>
+    <span class="t3" style="font-size: 13px">Layout: thin top bar · six tiles · swipe for the rest</span>
+  </section>
+
+  <!-- C: Instrument -->
+  <section class="panel" style="display: flex; flex-direction: column; gap: 20px; padding: 28px">
+    <span class="lbl">Direction C</span>
+    <h2 style="margin: 0; font: 700 40px/1 var(--f-ui)">Instrument</h2>
+    <p class="t2" style="margin: 0; font-size: 17px; line-height: 1.45">A drawn piece of hardware: vertical fader banks, encoder rings for speed and zone, rubber-pad keys with an LED dot in the corner. It is familiar to anyone who has used a desk, but a touch screen gains little from the metaphor.</p>
+    <div style="display: grid; grid-template-columns: 96px 1fr; gap: 8px 16px; font-size: 15px">
+      <span class="lbl">Mood</span><span>Tactile, warm grey, physical</span>
+      <span class="lbl">Density</span><span>Medium, laid out in fixed banks</span>
+      <span class="lbl">Key</span><span>Rounded pad, LED dot, faint bevel</span>
+      <span class="lbl">State</span><span>LED dot lit; ring shows speed</span>
+    </div>
+    <div style="display: flex; gap: 14px; align-items: flex-end; padding: 16px; background: #08090B; border-radius: 6px">
+      <div class="col" style="gap: 8px">
+        <div style="display: grid; grid-template-columns: repeat(3, 76px); gap: 8px">
+          <div style="height: 64px; border-radius: 10px; background: #22262c; box-shadow: inset 0 1px 0 #3a4048, 0 2px 0 #000; padding: 8px; position: relative; font: 600 14px var(--f-ui)">Pump<i style="position: absolute; right: 8px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: #FFB000; box-shadow: 0 0 8px #FFB000"></i></div>
+          <div style="height: 64px; border-radius: 10px; background: #22262c; box-shadow: inset 0 1px 0 #3a4048, 0 2px 0 #000; padding: 8px; position: relative; font: 600 14px var(--f-ui)">Sparkle<i style="position: absolute; right: 8px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: #3a3f47"></i></div>
+          <div style="height: 64px; border-radius: 10px; background: #22262c; box-shadow: inset 0 1px 0 #3a4048, 0 2px 0 #000; padding: 8px; position: relative; font: 600 14px var(--f-ui)">Rolling<i style="position: absolute; right: 8px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: #3a3f47"></i></div>
+        </div>
+        <div class="row" style="gap: 14px">
+          <div style="width: 56px; height: 56px; border-radius: 50%; border: 4px solid #2a2f37; border-top-color: #F1F3F5; border-right-color: #F1F3F5"></div>
+          <div style="width: 56px; height: 56px; border-radius: 50%; border: 4px solid #2a2f37; border-top-color: #F1F3F5"></div>
+        </div>
+      </div>
+      <div class="row" style="gap: 8px; align-items: flex-end">
+        <div style="width: 26px; height: 150px; background: #171A1F; border-radius: 4px; position: relative"><i style="position: absolute; left: -4px; right: -4px; bottom: 100px; height: 16px; background: #B6BCC5; border-radius: 3px"></i></div>
+        <div style="width: 26px; height: 150px; background: #171A1F; border-radius: 4px; position: relative"><i style="position: absolute; left: -4px; right: -4px; bottom: 60px; height: 16px; background: #B6BCC5; border-radius: 3px"></i></div>
+        <div style="width: 26px; height: 150px; background: #171A1F; border-radius: 4px; position: relative"><i style="position: absolute; left: -4px; right: -4px; bottom: 30px; height: 16px; background: #B6BCC5; border-radius: 3px"></i></div>
+      </div>
+    </div>
+    <div class="col" style="gap: 6px; font-size: 15px">
+      <span><b style="color: #34D27B">+</b> Faders and encoders feel physical</span>
+      <span><b style="color: #FF4B4B">−</b> A small LED dot is hard to read at arm's length</span>
+      <span><b style="color: #FF4B4B">−</b> The fixed banks bring back the limits you want to drop</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: 14px 120px; gap: 4px; margin-top: auto">
+      <div style="grid-column: 1 / 3; background: #272C33; border-radius: 2px"></div>
+      <div style="background: #1E2228; border-radius: 6px"></div>
+      <div style="background: repeating-linear-gradient(90deg, #1E2228 0 18px, #08090B 18px 24px); border-radius: 6px"></div>
+    </div>
+    <span class="t3" style="font-size: 13px">Layout: pads on the left · fader bank on the right</span>
+  </section>
+</div>
+</body>
+</html>

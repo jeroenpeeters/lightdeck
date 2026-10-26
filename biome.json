@@ -14,5 +14,12 @@
   "linter": {
     "enabled": true,
     "rules": { "preset": "recommended" }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/server/public/lightdeck.css"],
+      "formatter": { "enabled": false },
+      "linter": { "rules": { "style": { "noDescendingSpecificity": "off" } } }
+    }
+  ]
 }

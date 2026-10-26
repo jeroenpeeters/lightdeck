@@ -16,7 +16,7 @@ const CACHE = 'lightdeck-tablet-v1';
 
 /** The pieces of the tablet page, /tablet. Nothing else is kept. */
 const KEPT =
-  /^\/(tablet|tablet\.js|tablet\.css|tabletKit\.js|tabletParts\.js|videowallPanel\.js|videowall\.css|shell\.js|ui\.js|changes\.js|styles\.css|manifest\.webmanifest|fonts\/[^/]+|icons\/[^/]+)$/;
+  /^\/(tablet|tablet\.js|tablet\.css|tabletKit\.js|tabletParts\.js|tabletRail\.js|tabletLogic\.js|spiderPose\.js|videowallPanel\.js|videowall\.css|lightdeck\.css|plex\.css|shell\.js|ui\.js|changes\.js|manifest\.webmanifest|fonts\/[^/]+|icons\/[^/]+)$/;
 
 self.addEventListener('install', () => {
   self.skipWaiting();

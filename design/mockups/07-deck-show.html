@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Deck · Show</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#08090B} .dk{min-height:72px;padding:9px 10px} .dk .nm{font:600 16px/1.1 var(--f-ui)} .step{display:grid;grid-template-columns:28px 1fr 44px;align-items:center;height:48px;padding:0 10px;border-radius:4px;font:500 15px var(--f-ui)} .step .n{font:500 13px var(--f-num);color:#8A919C} .step .b{font:500 13px var(--f-num);color:#8A919C;text-align:right}</style>
+</head>
+<body>
+<div class="app" style="width: 1280px; height: 800px; display: grid; grid-template-rows: 64px 64px 1fr">
+
+  <div class="top">
+    <button class="menu" style="gap: 8px">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 4l-6 6 6 6"/></svg>
+      <span>Live</span><span class="dots"><i></i><i></i><i class="sim"></i></span>
+    </button>
+    <div class="tempo">
+      <div class="col" style="gap: 2px"><span class="bpm num">126</span><span class="src">By hand</span></div>
+      <div class="beats"><i class="one lit"></i><i></i><i></i><i></i></div>
+    </div>
+    <button class="key c" style="width: 96px; height: 48px">Tap</button>
+    <div class="fader" style="flex: 1; max-width: 340px"><div class="fill" style="width: 100%"></div><span class="fl">Master</span><span class="fv">100</span><div class="hand" style="left: calc(100% - 8px)"></div></div>
+    <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+    <div style="flex: 1"></div>
+    <button class="bo" style="width: 168px">Blackout</button>
+  </div>
+
+  <div class="row" style="justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #2A2F37">
+    <div class="row" style="gap: 14px"><h1 style="margin: 0; font: 700 28px var(--f-ui)">Deck</h1><span class="t2" style="font-size: 15px">4 groups · 62 scenes · 51 looks · show.yaml</span></div>
+    <div class="tabs" style="padding: 4px; background: #0F1114; border: 1px solid #2A2F37; border-radius: 6px">
+      <button class="tab is-sel" style="width: 120px">Show</button>
+      <button class="tab" style="width: 120px">Program</button>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 200px 1fr 320px; min-height: 0">
+    <nav class="snav" style="padding: 12px; border-right: 1px solid #2A2F37">
+      <span class="lbl" style="padding: 4px 4px 6px">Groups</span>
+      <button class="is-sel">Spider<span class="num t3" style="font-size: 13px">24</span></button>
+      <button>Laser<span class="num t3" style="font-size: 13px">9</span></button>
+      <button>Room<span class="num t3" style="font-size: 13px">12</span></button>
+      <button>All<span class="num t3" style="font-size: 13px">6</span></button>
+      <span class="lbl" style="padding: 16px 4px 6px">Lane</span>
+      <button class="is-sel" style="height: 48px">Looks</button>
+      <button style="height: 48px">Lights</button>
+      <button style="height: 48px">Colour</button>
+      <button style="height: 48px">Motion</button>
+      <button style="height: 48px">Zone</button>
+    </nav>
+
+    <main style="display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0">
+      <div class="row" style="justify-content: space-between">
+        <span class="lbl">Spider · looks · page 1 of 2</span>
+        <div class="row" style="gap: 6px"><button class="key c" style="width: 56px" aria-label="Previous page">‹</button><button class="key c" style="width: 56px" aria-label="Next page">›</button></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
+        <button class="key dk"><span class="nm"><span class="no num t3" style="font-size: 13px; margin-right: 5px">1</span>Glow</span><span class="lbl">Begin</span></button>
+        <button class="key dk"><span class="nm"><span class="num t3" style="font-size: 13px; margin-right: 5px">2</span>Floor glow</span><span class="lbl">Begin</span></button>
+        <button class="key dk"><span class="nm"><span class="num t3" style="font-size: 13px; margin-right: 5px">3</span>Doors open</span><span class="lbl">Begin</span></button>
+        <button class="key dk is-varied"><span class="nm"><span class="num" style="font-size: 13px; margin-right: 5px; color: #E8C77A">4</span>Creeping in</span><div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div></button>
+        <button class="key dk"><span class="nm"><span class="num t3" style="font-size: 13px; margin-right: 5px">5</span>Candles low</span><div class="strip"><span style="background: #FF4500"></span><span class="dark"></span></div></button>
+        <button class="key dk"><span class="nm"><span class="num t3" style="font-size: 13px; margin-right: 5px">6</span>Haunted</span><span class="lbl">Techno</span></button>
+        <button class="key dk"><span class="nm"><span class="num t3" style="font-size: 13px; margin-right: 5px">7</span>Crossfire</span><span class="lbl">Techno</span></button>
+        <button class="key dk"><span class="nm"><span class="num t3" style="font-size: 13px; margin-right: 5px">8</span>Lightning</span><div class="strip"><span style="background: #DCE2FF"></span><span style="background: #6A00FF"></span></div></button>
+        <button class="key dk"><span class="nm"><span class="num t3" style="font-size: 13px; margin-right: 5px">9</span>Storm</span><span class="lbl">The night</span></button>
+        <button class="key dk"><span class="nm"><span class="num t3" style="font-size: 13px; margin-right: 5px">10</span>The void</span><div class="strip"><span style="background: #FF0000"></span><span class="dark"></span></div></button>
+        <button class="key dk"><span class="nm">Breathe</span><span class="lbl">Begin</span></button>
+        <button class="key dk"><span class="nm">Aurora</span><span class="lbl">Begin</span></button>
+        <button class="key dk"><span class="nm">Wandering</span><span class="lbl">Begin</span></button>
+        <button class="key dk"><span class="nm">Glow dusk</span><div class="strip"><span style="background: #FF6600"></span><span style="background: #9B00FF"></span><span style="background: #FF2D6F"></span></div></button>
+        <button class="key dk"><span class="nm">Slow ember</span><div class="strip"><span style="background: #FF4500"></span><span class="dark"></span></div></button>
+        <button class="key dk is-next"><div class="hd"><span class="nm">Heartbeat</span><span class="tag next">6</span></div><div class="strip"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div></button>
+        <button class="key dk"><span class="nm">Bounce</span><div class="strip"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div></button>
+        <button class="key dk"><span class="nm">Pump</span><div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div></button>
+        <button class="key dk"><span class="nm">Sparkle</span><div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div></button>
+        <button class="key dk"><span class="nm">Rolling</span><div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div></button>
+        <button class="key dk"><span class="nm">Alternate</span><div class="strip"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div></button>
+        <button class="key dk"><span class="nm">Heartbeat red</span><div class="strip"><span style="background: #FF0000"></span><span style="background: #7A00FF"></span></div></button>
+        <button class="key dk"><span class="nm">Bounce witch</span><div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div></button>
+        <button class="key dk"><span class="nm">Doors dusk</span><span class="lbl">Begin</span></button>
+        <button class="key dk"><span class="nm">Floor drift</span><span class="lbl">Begin</span></button>
+      </div>
+      <button class="key c" style="margin-top: auto; height: 48px; color: #B6BCC5">Spider off</button>
+    </main>
+
+    <aside style="display: flex; flex-direction: column; gap: 10px; padding: 12px; background: #0F1114; border-left: 1px solid #2A2F37; min-height: 0">
+      <div class="sh"><h3>Sequence</h3><span class="t2" style="font-size: 13px">tap a step to jump</span></div>
+      <div class="tabs" style="flex-wrap: wrap; gap: 4px">
+        <button class="tab" style="padding: 0 10px">The night</button><button class="tab" style="padding: 0 10px">Begin</button><button class="tab is-sel" style="padding: 0 10px">Midden</button><button class="tab" style="padding: 0 10px">Techno</button>
+      </div>
+      <div class="col" style="gap: 2px">
+        <button class="step" style="background: #241B06; border: 1px solid #FFB000; color: #FFB000"><span class="n" style="color: #E8C77A">1</span><span style="text-align: left">4 Creeping in</span><span class="b" style="color: #E8C77A">19/24</span></button>
+        <button class="step" style="background: transparent; border: 1px dashed #F1F3F5"><span class="n">2</span><span style="text-align: left">Heartbeat</span><span class="b">24</span></button>
+        <button class="step" style="background: transparent; border: 1px solid transparent"><span class="n">3</span><span style="text-align: left">5 Candles low</span><span class="b">24</span></button>
+        <button class="step" style="background: transparent; border: 1px solid transparent"><span class="n">4</span><span style="text-align: left">Bounce</span><span class="b">24</span></button>
+        <button class="step" style="background: transparent; border: 1px solid transparent"><span class="n">5</span><span style="text-align: left">Pump</span><span class="b">24</span></button>
+        <button class="step" style="background: transparent; border: 1px solid transparent"><span class="n">6</span><span style="text-align: left">Rolling</span><span class="b">24</span></button>
+        <button class="step" style="background: transparent; border: 1px solid transparent"><span class="n">7</span><span style="text-align: left">Sparkle</span><span class="b">24</span></button>
+        <button class="step" style="background: transparent; border: 1px solid transparent"><span class="n">8</span><span style="text-align: left">Alternate</span><span class="b">24</span></button>
+        <button class="step" style="background: transparent; border: 1px solid transparent"><span class="n">9</span><span style="text-align: left">Heartbeat red</span><span class="b">24</span></button>
+        <button class="step" style="background: transparent; border: 1px solid transparent"><span class="n">10</span><span style="text-align: left">Bounce witch</span><span class="b">24</span></button>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

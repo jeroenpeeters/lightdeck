@@ -1,894 +1,793 @@
 /*
- * The tablet page (Jeroen, 2026-10-20; the only page for a tablet since 2026-10-23): the parts of
- * the evening, the looks of a group by mood with a tray under them to vary the look with, the lamps
- * of the room, and the video wall. Everything is large and spaced, touch targets are 3.5rem or more,
- * and nothing takes its size from what it says, so that no key moves under a finger when a state
- * changes or a notice comes.
+ * The tablet page (Jeroen, 2026-10-20; the only page for a tablet since 2026-10-23). Since 2026-10-26
+ * it has the design of the console (`design/`): lightdeck.css has the tokens and every key, chip, tab,
+ * tile, fader and part, and this file is only the layout of the page and what is its own: the top
+ * bar, the rail, the grid of looks, the tray, the foot with the parts, the notices, the menu, and the
+ * room and the video wall.
  *
- * The first half is what the top row (menu, bpm and Tap, masters, blackout), the keys and the
- * notices are made of; the second half (from "the layout") is the layout of the page and what is its
- * own: the tabs of the groups, the columns of looks, the tray under them and the sheet with
- * everything. The look of the keys, the chips and the lanes is that of the deck (deck.css), copied
- * here because the page does not load it.
+ * Landscape is a rail | looks | tray layout (1280x800 in the design). Below 56rem wide (a tablet
+ * upright, 800x1280 in the design) the rail becomes a row on top, the masters get a row of their own
+ * and the tray goes under the looks.
+ *
+ * A state only swaps classes: nothing here takes its size from what it says or from whether it is on,
+ * so that no key moves under a finger when a state changes or a notice comes.
  */
 
+.tag[hidden],
+.no[hidden],
+.sws[hidden],
+.t-cell[hidden],
+.t-lane[hidden],
+.t-lanes[hidden],
+.t-room[hidden],
+.t-rails[hidden],
+.t-menu[hidden],
+.t-main[hidden],
+.t-tray[hidden],
+.t-wall[hidden],
+.t-parts[hidden],
+.t-none[hidden],
+.t-main-link[hidden],
+.t-links .link[hidden],
+.notice[hidden],
+.dots i[hidden] {
+  display: none;
+}
+
+html,
 body {
-  padding-right: max(1rem, env(safe-area-inset-right));
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
-  padding-left: max(1rem, env(safe-area-inset-left));
+  height: 100%;
+}
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+  font-weight: 500;
 }
 button,
 a {
   touch-action: manipulation;
 }
-
-/* ---- the top row ---- */
-
-/* The menu, the masters and the blackout. The masters take what the other two leave. */
-.t-top {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
-  grid-template-areas: "menu bpm masters blackout";
-  gap: 1rem;
-  align-items: center;
-}
-.t-menu-wrap {
-  grid-area: menu;
-  position: relative;
-}
-.t-bpm-row {
-  grid-area: bpm;
-}
-.t-masters {
-  grid-area: masters;
-}
-.t-blackout {
-  grid-area: blackout;
-}
-/* Too narrow for all of it in a row (a tablet upright): the masters get a row of their own. */
-@media (max-width: 56rem) {
-  .t-top {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      "menu bpm blackout"
-      "masters masters masters";
-  }
-}
-
-/* One key for the menu, with a dot that says whether everything is connected. */
-.t-menu-key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  min-width: 7.5rem;
-  min-height: 3.5rem;
-  padding: 0 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
-  font-size: var(--base);
-  font-weight: 600;
-  touch-action: manipulation;
-}
-.t-menu-key:active,
-.t-menu-key[aria-expanded="true"] {
-  background: var(--key-down);
-}
-/* Green: all online. Red: a link is down. The menu says which. */
-.t-dot {
-  flex: none;
-  width: 1.1rem;
-  height: 1.1rem;
-  border-radius: 50%;
-  background: var(--line);
-}
-.t-dot[data-state="ok"] {
-  background: var(--go);
-}
-.t-dot[data-state="down"] {
-  background: var(--stop);
-}
-
-/* It lies over the page and takes no room, so nothing moves when it opens. */
-.t-menu {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  left: 0;
-  z-index: 5;
-  display: grid;
-  gap: 0.5rem;
-  min-width: 17rem;
-  padding: 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.6);
-}
-.t-menu[hidden] {
-  display: none;
-}
-.t-main {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 9rem;
-  min-height: 3.5rem;
-  padding: 0 1.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
-  font-size: var(--large);
-  font-weight: 600;
-  line-height: 1.1;
+a {
+  color: inherit;
   text-decoration: none;
 }
-.t-main:active {
-  background: var(--key-down);
-}
-/* The key is lit while the page is full screen. It keeps its size and its word. */
-.t-full[aria-pressed="true"] {
-  border-color: var(--signal);
-  color: var(--signal);
-}
-.t-main[hidden] {
-  display: none;
-}
-.t-links {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.6rem;
-  margin: 0.25rem 0 0.25rem 0.25rem;
-}
-.t-links .lamp {
-  width: 1rem;
-  height: 1rem;
-}
-.t-links .link-text {
-  font-size: var(--base);
-}
-/* Smaller than before and the same size whatever it says (Lift blackout is the longer word). */
-.t-blackout {
-  width: 9rem;
-  min-width: 0;
-  min-height: 3.5rem;
-  padding: 0 0.5rem;
-  font-size: var(--base);
-  touch-action: manipulation;
+:focus-visible {
+  outline: 2px solid var(--t1);
+  outline-offset: 2px;
 }
 
-/* ---- the tempo ---- */
-
-/* The bpm and the beat lamps are in the top row: small, they only have to be read. */
-.t-bpm-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.9rem;
+/* A press shows on the key without changing its size. */
+.key:active,
+.chip:active,
+.menu:active,
+.tab:active,
+.gtab:active,
+.part:active,
+.spd button:active,
+.bo:active,
+.t-main-link:active {
+  background: var(--s4);
+  box-shadow: inset 0 0 0 2px var(--t1);
 }
-.t-bpm {
-  display: grid;
-  margin: 0;
-  line-height: 1;
-}
-.t-bpm-name {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.t-bpm-value {
-  min-width: 3ch;
-  font-size: 2.25rem;
-  font-weight: 600;
-  line-height: 1.05;
-  font-variant-numeric: tabular-nums;
-}
-.t-beats {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.3rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.t-beats li {
-  width: 1rem;
-  height: 1.75rem;
-  border-radius: 2px;
-  background: var(--key);
-}
-/* Beat one of the bar is the tall segment. */
-.t-beats li:first-child {
-  height: 2.5rem;
-}
-.t-beats li[data-on="true"] {
-  background: var(--signal);
-}
-/* No beat to show while the effects are idle. */
-.t-beats[data-idle="true"] {
-  opacity: 0.4;
-}
-/* Tap is a key of the top row: a press counts when the finger lands (tabletParts.js). */
-.t-tap {
-  flex: none;
-  width: 6rem;
-  height: 3.5rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
-  font-size: var(--large);
-  font-weight: 600;
-  line-height: 1;
-  -webkit-user-select: none;
-  user-select: none;
-}
-.t-tap[hidden] {
-  display: none;
-}
-.t-tap:active {
-  background: var(--key-down);
-}
-
-/* ---- the masters, in the top row ---- */
-
-.t-masters {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  min-width: 0;
-}
-.grand-master {
-  flex: 1 1 10rem;
-  min-width: 0;
-}
-/* The name, the fader and the percent in one row. */
-.grand-master > .slider {
-  grid-template-columns: auto minmax(0, 1fr) 4ch;
-  column-gap: 0.75rem;
-  align-items: center;
-}
-.grand-master label {
-  grid-column: 1;
-  grid-row: 1;
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.grand-master output {
-  grid-column: 3;
-  grid-row: 1;
-  min-width: 4ch;
-  font-size: var(--large);
-}
-.grand-master input[type="range"] {
-  grid-column: 2;
-  grid-row: 1;
-  height: 3.5rem;
-}
-.grand-master input[type="range"]::-webkit-slider-runnable-track {
-  height: 0.6rem;
-}
-.grand-master input[type="range"]::-webkit-slider-thumb {
-  width: 2.25rem;
-  height: 3.25rem;
-  margin-top: -1.325rem;
-}
-.grand-master input[type="range"]::-moz-range-track,
-.grand-master input[type="range"]::-moz-range-progress {
-  height: 0.6rem;
-}
-.grand-master input[type="range"]::-moz-range-thumb {
-  width: 2.25rem;
-  height: 3.25rem;
-}
-/* Keys, not a fader: only halves and doubles keep an effect on the beat. Five of equal width. */
-.t-masters .master-speed {
-  flex: none;
-  display: grid;
-  grid-template-columns: repeat(5, 3.25rem);
-  gap: 0.35rem;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-/* The name is for a screen reader: the keys say what they are. */
-.t-masters .master-speed > legend {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-.t-masters .master-speed > .pick {
-  min-width: 0;
-  min-height: 3.5rem;
-  padding: 0;
-  font-size: var(--base);
-  font-weight: 600;
-}
-
-/* ---- the looks ---- */
-
-.t-none {
-  color: var(--dim);
-  font-weight: 400;
-}
-
-/* ---- the room lights ---- */
-
-.t-room-dimmer {
-  margin-bottom: 1rem;
-}
-/* A switch per rail: lit while the rail is on. Every one the same size, so none moves. */
-.t-rails {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-.t-rail {
-  min-height: 3.5rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
-  font-size: var(--large);
-  font-weight: 600;
-}
-.t-rail:active {
-  background: var(--key-down);
-}
-.t-rail[aria-pressed="true"] {
-  border-color: var(--signal);
-  background: var(--signal);
-  color: var(--ink);
-}
-
-/* ---- the keys of a look or a scene, as on the deck ---- */
-
-.scene {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-width: 0;
-  height: 6.5rem;
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  line-height: 1.15;
-  text-align: left;
-}
-.scene.look {
-  height: 7.5rem;
-}
-.scene:active {
-  background: var(--key-down);
-}
-.scene:disabled {
-  opacity: 0.4;
+.key:disabled,
+.part:disabled {
   cursor: default;
 }
-/* The name takes what is left, up to two lines, and the line under it stays at the bottom. */
-.scene-name {
-  display: -webkit-box;
-  flex: 1;
+.key.is-disabled:active {
+  background: transparent;
+  box-shadow: none;
+}
+.bo.is-on:active {
+  background: var(--danger);
+}
+
+/* ---- the page ---- */
+
+.tablet {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+/* ---- the top bar: always there ---- */
+
+.t-top {
+  position: relative;
+  z-index: 4;
+}
+.t-menu-wrap {
+  position: relative;
+  grid-area: menu;
+}
+.tempo {
+  grid-area: tempo;
+}
+.t-tap {
+  grid-area: tap;
+  width: 96px;
+  height: 48px;
+}
+.t-master {
+  grid-area: master;
+  flex: 1 1 0;
+  max-width: 340px;
+  min-width: 0;
+}
+.t-speed {
+  grid-area: spd;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.t-blackout {
+  grid-area: bo;
+  width: 168px;
+  margin-left: auto;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+.t-blackout.is-on {
+  font-size: var(--fs-m);
+}
+.bpm {
+  min-width: 3ch;
+}
+.src {
+  white-space: nowrap;
+}
+.beats i {
+  transition: none;
+}
+.fader {
+  touch-action: none;
+}
+.fader input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  touch-action: none;
+}
+.fader input:disabled {
+  cursor: default;
+}
+.fader .fl,
+.fader .fv {
+  pointer-events: none;
+}
+
+/* The menu lies over the page and takes no room. */
+.t-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 17rem;
+  padding: 8px;
+  background: var(--s3);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+}
+.menu[aria-expanded="true"] {
+  background: var(--s4);
+}
+.t-main-link {
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  color: var(--t1);
+  font: 600 var(--fs-m) var(--f-ui);
+  text-align: left;
+}
+.t-full[aria-pressed="true"] {
+  color: var(--on);
+}
+.t-links {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 8px 14px 4px;
+  border-top: 1px solid var(--line-2);
+  list-style: none;
+}
+.t-links .link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  color: var(--t2);
+  font: 500 var(--fs-s) var(--f-ui);
+}
+.t-links .lamp {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--t3);
+}
+.t-links .link[data-state="ok"] .lamp {
+  background: var(--ok);
+  box-shadow: none;
+}
+.t-links .link[data-state="down"] .lamp {
+  background: var(--danger);
+  box-shadow: none;
+}
+.t-links .link[data-state="down"] {
+  color: var(--danger);
+}
+
+/* ---- the body: rail | looks | tray ---- */
+
+.t-body {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) 344px;
   min-height: 0;
+}
+.t-body > * {
+  min-height: 0;
+}
+
+/* The rail: a tile per group, each with what it shows. */
+.t-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0 12px 12px;
   overflow: hidden;
-  font-size: 1.25rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
+}
+.t-rail .gtab {
+  flex: none;
+  min-width: 0;
+  height: var(--tile-h, 112px);
+}
+.gtab[data-kind="lenses"] {
+  --tile-h: 124px;
+}
+.gtab .nm {
+  white-space: nowrap;
+}
+.gtab .st.amber {
+  color: var(--on);
+}
+.gtab .st.red {
+  color: var(--danger);
+}
+.gtab.laser.armed .st {
+  color: var(--danger);
+}
+.t-laser-bar {
+  height: 12px;
+  border-radius: 2px;
+}
+.t-wall-bar {
+  height: 12px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #12324a, #3a1660);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.rails {
+  height: 28px;
+}
+.rails i {
+  min-width: 0;
+}
+
+/* The looks, and under them what every lane does. */
+.t-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+.t-moodrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+}
+.tab {
+  white-space: nowrap;
+}
+.t-looks {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  touch-action: pan-y;
+}
+.t-looks::-webkit-scrollbar {
+  display: none;
+}
+.t-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.t-grid-head {
+  grid-column: 1 / -1;
+  padding-top: 4px;
+}
+.t-none {
+  margin: 0;
+  color: var(--t2);
+  font: 500 var(--fs-m) var(--f-ui);
+}
+.look {
+  height: 104px;
+  min-width: 0;
+}
+.look .hd {
+  min-height: 24px;
+}
+.look .nm {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-/* One line, whatever it says, and there when it says nothing. */
-.scene-sets {
+.look .strip {
   flex: none;
-  min-height: 1.15em;
+}
+.tag[hidden] {
+  display: none;
+}
+
+.t-lanes {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 1px;
+  margin-top: auto;
   overflow: hidden;
-  color: var(--dim);
-  font-size: var(--small);
+  background: var(--line);
+}
+.t-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 60px;
+  padding: 10px 12px;
+  background: var(--s1);
+}
+.t-cell .lbl {
+  white-space: nowrap;
+}
+.t-cell-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.t-cell-val {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--t2);
+  font: 600 var(--fs-m) / 1.2 var(--f-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* What a look names is longer than what a scene says, so it may take two lines. */
-.scene.look .scene-sets {
-  display: -webkit-box;
-  min-height: 2.3em;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: normal;
+.t-cell-val.is-on {
+  color: var(--on);
 }
 
-/* The colours of a palette, small, between its name and the line under it. */
-.chips {
+/* The tray: what goes with the look, to vary it with. */
+.t-tray {
   display: flex;
-  flex: none;
-  gap: 0.25rem;
-  height: 1rem;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 12px 12px 14px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: var(--s1);
+  border-left: 1px solid var(--line);
+}
+.t-tray::-webkit-scrollbar {
+  display: none;
+}
+.t-tray-head h3 {
+  margin: 0;
+  color: var(--t3);
+  font: 600 var(--fs-xs) / 1 var(--f-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.t-tray-with {
+  min-width: 0;
   overflow: hidden;
+  font: 600 var(--fs-m) / 1.2 var(--f-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t-small {
+  width: 64px;
+}
+.t-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.t-note {
+  font-size: var(--fs-xs);
+}
+.t-chips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.t-lane[data-lane="colour"] .t-chips {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .chip {
-  flex: none;
-  width: 1.4rem;
-  height: 1rem;
-  border: 1px solid var(--paper);
-  border-radius: 2px;
+  min-width: 0;
 }
-/* An off slot is a dark chip with a dashed outline, so that it reads as a gap. */
-.chip[data-off="true"] {
+.chip .name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.chip.is-on.is-look {
+  border-style: solid;
+}
+.chip.is-look {
+  border-color: var(--t3);
   border-style: dashed;
-  border-color: var(--dim);
-  background: var(--ground);
 }
-.scene[data-state="set"] .chip,
-.scene[data-state="set"] .chip[data-off="true"] {
-  border-color: var(--ink);
+.chip.is-on {
+  border-color: var(--on);
 }
 
-.off {
-  width: 100%;
+/* ---- the lamps of the room ---- */
+
+.t-room {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-  font-size: var(--large);
-  font-weight: 600;
-  text-align: center;
+  gap: 12px;
+}
+.t-room-dimmer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.t-rails {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.t-rails .key {
+  width: 96px;
+  height: 48px;
 }
 
-/* The fixtures of the group are set to this scene. */
-.scene[data-state="set"] {
-  border-color: var(--signal);
-  background: var(--signal);
-  color: var(--ink);
+/* ---- the foot: the parts of the evening ---- */
+
+.t-parts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px 120px;
+  gap: 8px;
+  height: 128px;
+  padding: 12px;
+  background: var(--s1);
+  border-top: 1px solid var(--line);
 }
-.scene[data-state="set"] .scene-sets {
-  color: var(--ink);
+.t-part-keys {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
 }
-/* They were, and have been changed by hand since: the outline stays, the fill goes. */
-.scene[data-state="changed"] {
-  border-color: var(--signal);
-  box-shadow: inset 0 0 0 1px var(--signal);
+.part {
+  min-width: 0;
+  height: 104px;
+  color: var(--t1);
 }
-.scene[data-state="changed"] .scene-name,
-.scene[data-state="changed"] .scene-sets {
-  color: var(--signal);
+.part .info {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.part .info b {
+  color: var(--t1);
+}
+.part .place {
+  font-size: var(--fs-s);
+  color: var(--on-soft);
+  white-space: nowrap;
+}
+.part .narrow {
+  display: none;
+}
+.t-step {
+  gap: 6px;
 }
 
-/* ---- notices: over the bottom of the screen, taking no room ---- */
+/* ---- notices: over the foot of the screen, taking no room ---- */
 
 .notices-stack {
-  position: fixed;
-  right: max(1rem, env(safe-area-inset-right));
-  bottom: max(0.75rem, env(safe-area-inset-bottom));
-  left: max(1rem, env(safe-area-inset-left));
-  z-index: 3;
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(128px + 12px);
+  left: max(12px, env(safe-area-inset-left));
+  z-index: 6;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem;
+  gap: 8px;
   pointer-events: none;
 }
 .notices-stack > .notice {
-  margin-top: 0;
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--signal);
-  background: var(--key);
-  font-size: var(--base);
-}
-.notices-stack > .notice[data-level="alarm"] {
-  border-left-color: var(--stop);
-}
-/* A notice can be clicked away: it takes the touch, which the rest of the stack lets through. */
-.notices-stack > .notice[data-dismissible="true"] {
   position: relative;
-  display: flex;
-  align-items: center;
-  min-height: 3.5rem;
-  padding-right: 3.5rem;
+  height: auto;
+  min-height: 56px;
+  padding: 8px 56px 8px 16px;
+  border-left: 4px solid var(--on);
   pointer-events: auto;
   cursor: pointer;
 }
-.notices-stack > .notice[data-dismissible="true"][hidden] {
-  display: none;
+.notices-stack > .notice[data-level="alarm"] {
+  border-left-color: var(--danger);
 }
 .notices-stack > .notice[data-dismissible="true"]::after {
   content: "\00d7";
   position: absolute;
   top: 50%;
-  right: 1rem;
+  right: 16px;
   translate: 0 -50%;
-  color: var(--dim);
+  color: var(--t2);
   font-size: 2rem;
   line-height: 1;
 }
 
-/* ---- the layout ---- */
+/* ---- the video wall ---- */
 
-/* One column: the top row, then the looks. */
-.tablet {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "top"
-    "stage";
-  gap: var(--gap);
-  margin-top: max(0.75rem, env(safe-area-inset-top));
-}
-.tablet > .t-top {
-  grid-area: top;
-}
-.m-stage {
-  grid-area: stage;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
+/* The controls come from videowall.css, which was made with the names of the first design. */
+.t-wall {
+  --paper: var(--t1);
+  --dim: var(--t2);
+  --signal: var(--on);
+  --ink: var(--on-ink);
+  --key: var(--s2);
+  --key-down: var(--s4);
+  --panel: var(--s1);
+  --stop: var(--danger);
+  --go: var(--ok);
+  --focus: var(--edit);
+  --font: var(--f-ui);
+  --small: 0.9375rem;
+  --base: 1.0625rem;
+  --large: 1.375rem;
+  --touch: 3rem;
+  --radius: var(--r);
+  --gap: 0.75rem;
+  grid-column: 2 / 4;
   min-width: 0;
-}
-/* ---- the tabs: one per group ---- */
-
-.m-selectors {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-}
-.m-tabs {
-  display: grid;
-  flex: 1 1 22rem;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-}
-.m-tabs[hidden] {
-  display: none;
-}
-.m-tab {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.1rem;
-  min-width: 0;
-  height: 3.5rem;
-  padding: 0 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
-  line-height: 1.1;
-  text-align: left;
-}
-.m-tab:active {
-  background: var(--key-down);
-}
-.m-tab-name {
-  font-size: var(--large);
-  font-weight: 600;
-}
-/* The look that is on in the group, always one line high, there or not. */
-.m-tab-look {
-  min-height: 1.15em;
-  overflow: hidden;
-  color: var(--dim);
-  font-size: var(--small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.m-tab[aria-selected="true"] {
-  border-color: var(--signal);
-  box-shadow: inset 0 -4px 0 var(--signal);
-}
-
-/* ---- which moods are shown ---- */
-
-.m-moodbar {
-  display: flex;
-  flex: 1 1 20rem;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.m-moodbar[hidden] {
-  display: none;
-}
-.m-mood-key {
-  flex: 1 1 5rem;
-  min-height: 3.5rem;
-  padding: 0 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
+  padding: 12px;
+  overflow-y: auto;
   font-size: var(--base);
-  font-weight: 600;
 }
-.m-mood-key:active {
-  background: var(--key-down);
-}
-.m-mood-key[aria-pressed="true"] {
-  border-color: var(--signal);
-  color: var(--signal);
-  box-shadow: inset 0 -3px 0 var(--signal);
-}
-
-/* ---- the looks: a column per mood, or the looks of one mood in a grid ---- */
-
-.m-moods {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: 1rem 0.75rem;
-  align-items: start;
-}
-.m-mood {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-width: 0;
-}
-.m-mood-head {
-  margin: 0;
-  padding-bottom: 0.25rem;
-  border-bottom: 2px solid var(--line);
-  color: var(--dim);
-  font-size: var(--base);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-/* The column of the look that is on is lit. */
-.m-mood[data-on="true"] > .m-mood-head {
-  border-bottom-color: var(--signal);
-  color: var(--signal);
-}
-.m-mood-looks {
-  display: grid;
-  gap: 0.5rem;
-}
-/* One mood: its looks side by side, not one under the other. */
-.m-moods[data-single="true"] {
-  grid-template-columns: minmax(0, 1fr);
-}
-.m-moods[data-single="true"] .m-mood-looks {
-  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-}
-.m-mood .scene.look {
-  height: 5.75rem;
-}
-/* The colours of the palette of a look stand between its name and what it names: a bit larger. */
-.m-mood .chips {
-  height: 1.1rem;
-}
-/* biome-ignore lint/style/noDescendingSpecificity: it sets other properties than the rule above */
-.m-mood .chip {
-  width: 1.8rem;
-  height: 1.1rem;
-}
-.m-mood .scene.look .scene-sets {
-  min-height: 1.15em;
-  -webkit-line-clamp: 1;
-}
-
-/* ---- the tray ---- */
 
 /*
- * The tray stays at the foot of the screen while the looks scroll under it, so that what goes with
- * a look is always at hand, and nothing opens over the looks to get at it.
+ * What the controls of the video wall had from styles.css (the first design of the console), which this
+ * page no longer loads: headings, hints, the keys called pick, and the slider. Only below .t-wall, in the
+ * tokens of lightdeck.css, until the design of the video wall (mockup 05) is built.
  */
-.m-tray {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  border-top: 1px solid var(--signal);
-}
-.m-tray[hidden],
-.m-sheet[hidden] {
-  display: none;
-}
-.m-tray-head,
-.m-sheet-head {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-.m-tray-head > h2,
-.m-sheet-head > h2 {
-  flex: none;
-  min-width: 8rem;
+.t-wall h1,
+.t-wall h2,
+.t-wall h3,
+.t-wall legend {
   margin: 0;
-}
-/* Takes what is left of the head, one line, whatever it says. */
-.m-tray-hint {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--dim);
-  font-size: var(--small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.m-sheet-head > h2 {
-  flex: 1;
-}
-/* A key of its own size: Off and All do not take the size of what they say. */
-.m-key {
-  flex: none;
-  min-width: 6.5rem;
-  min-height: 3.5rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
-  font-size: var(--large);
-  font-weight: 600;
-}
-.m-key:active {
-  background: var(--key-down);
-}
-.m-key[aria-expanded="true"] {
-  border-color: var(--signal);
-  color: var(--signal);
-}
-
-/* A lane: its name on the left and its keys beside it. The row keeps its height when it has none. */
-.m-lane {
-  display: grid;
-  grid-template-columns: 5rem minmax(0, 1fr);
-  gap: 0.5rem;
-  align-items: start;
-}
-.m-lane[hidden] {
-  display: none;
-}
-.m-lane-name {
-  padding-top: 0.2rem;
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
+  padding: 0;
+  color: var(--t2);
+  font: 600 var(--fs-s) / 1.1 var(--f-ui);
   letter-spacing: 0.02em;
 }
-.m-keys {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
-  gap: 0.5rem;
-  min-height: 3.5rem;
+.t-wall .hint {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--t2);
+  font-size: var(--fs-s);
+  font-weight: 400;
 }
-.m-keys .scene {
-  height: 3.5rem;
-  padding: 0.3rem 0.6rem;
+.t-wall fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
-/* biome-ignore lint/style/noDescendingSpecificity: it sets other properties than the rule above */
-.m-keys .scene-name {
-  font-size: var(--base);
-  -webkit-line-clamp: 1;
+.t-wall .panel {
+  padding: 16px;
+  margin-bottom: 12px;
 }
-/* A palette key has its colours and, for a palette that moves, a line about it: it is a little higher. */
-.m-lane[data-lane="colour"] .m-keys {
-  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
-  min-height: 5rem;
+.t-wall .pick {
+  min-height: var(--k-s);
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--s2);
+  color: var(--t1);
+  font: 600 var(--fs-m) / 1.15 var(--f-ui);
 }
-.m-lane[data-lane="colour"] .m-keys .scene {
-  height: 5rem;
-  padding: 0.4rem 0.75rem;
+.t-wall .pick:active {
+  background: var(--s4);
 }
-/* Nothing to say about a palette that stands still: the name and the colours get the room. */
-.m-lane[data-lane="colour"] .scene-sets:empty {
-  display: none;
+.t-wall .pick[aria-pressed="true"] {
+  border-color: var(--on);
+  background: var(--on-tint);
+  color: var(--on);
+  box-shadow: inset 0 3px 0 var(--on);
 }
-/* The colours of a palette in the tray are what you choose by, so they are large. */
-.m-keys .chips {
-  height: 1.4rem;
-}
-/* biome-ignore lint/style/noDescendingSpecificity: it sets other properties than the rule above */
-.m-keys .chip {
-  width: 2.2rem;
-  height: 1.4rem;
-}
-@media (max-width: 40rem) {
-  .m-lane {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* The lamps of the room, on the tab of the room between the tabs and the looks: the dimmer and the rails side by side. */
-.m-room {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  gap: 0.75rem 1.5rem;
-  align-items: center;
-}
-.m-room[hidden] {
-  display: none;
-}
-.m-room .t-room-dimmer,
-.m-room .t-rails {
-  margin-bottom: 0;
-}
-@media (max-width: 40rem) {
-  .m-room {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* ---- the parts of the evening ---- */
-
-.m-phases {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.5rem 0.75rem;
-  align-items: stretch;
-}
-.m-phases[hidden] {
-  display: none;
-}
-.m-phase-keys {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-}
-.m-phase-side {
-  display: flex;
-  gap: 0.5rem;
-}
-.m-phase-side .m-key {
-  min-width: 5.5rem;
-  min-height: 4.25rem;
-}
-.m-phase-side .m-key:disabled {
+.t-wall .pick:disabled,
+.t-wall .key:disabled {
   opacity: 0.4;
 }
-/* The key of a part: a name and under it where the part is. */
-.m-phases .scene.phase {
-  height: 4.25rem;
-  padding: 0.4rem 1rem;
+.t-wall input {
+  font: inherit;
+  color: inherit;
 }
-.m-phases .scene.phase .scene-name {
-  font-size: var(--large);
-  -webkit-line-clamp: 1;
+.t-wall .slider {
+  --tone: var(--on);
+  --fill: 0%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 16px;
+  align-items: baseline;
 }
-/* One line, whatever it says, and there when it says nothing: nothing under it moves. */
-.m-phase-status {
+.t-wall .slider output {
+  min-width: 3ch;
+  font: 600 var(--fs-l) / 1.1 var(--f-num);
+  text-align: right;
+}
+.t-wall .slider input[type="range"] {
   grid-column: 1 / -1;
-  min-height: 1.3em;
+  width: 100%;
+  height: var(--k-s);
   margin: 0;
-  overflow: hidden;
-  color: var(--dim);
-  font-size: var(--base);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: transparent;
+  touch-action: pan-y;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.t-wall .slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--tone) var(--fill), var(--s4) var(--fill));
+}
+.t-wall .slider input[type="range"]::-webkit-slider-thumb {
+  width: 16px;
+  height: 36px;
+  margin-top: -14px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--t1);
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-/* ---- the sheet: everything, over the looks ---- */
+/* ---- upright: below 56rem the rail is a row on top and the tray is under the looks ---- */
 
-.m-sheet {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  overflow: auto;
-  border: 1px solid var(--signal);
-  background: var(--panel);
-}
-
-/* ---- the video wall tab ---- */
-
-/* The controls come from videowall.css; here they only have to fill the stage. */
-.m-wall[hidden] {
-  display: none;
+@media (max-width: 56rem) {
+  .t-top {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "menu tempo tap . bo"
+      "master master master master spd";
+    align-items: center;
+    height: auto;
+    padding: 8px 12px;
+    row-gap: 8px;
+  }
+  .t-master {
+    max-width: none;
+  }
+  .t-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .t-rail {
+    flex-direction: row;
+    padding: 12px 12px 0;
+  }
+  .t-rail .gtab {
+    flex: 1 1 0;
+    height: 96px;
+  }
+  .t-main {
+    padding: 12px 12px 0;
+  }
+  .t-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: 100px;
+  }
+  .look {
+    height: 100px;
+  }
+  .t-lanes {
+    display: none;
+  }
+  .t-tray {
+    margin-top: 12px;
+    gap: 10px;
+    padding: 12px;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+  .t-lane {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px 10px;
+  }
+  .t-note {
+    display: none;
+  }
+  .t-tray-head > .col {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .t-lane[data-lane="colour"] .t-chips {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .t-wall {
+    grid-column: 1;
+    grid-row: 2 / 4;
+  }
+  .t-parts {
+    grid-template-columns: minmax(0, 1fr) 104px;
+    grid-template-rows: 1fr 1fr;
+    height: 136px;
+  }
+  .t-part-keys {
+    grid-row: 1 / 3;
+  }
+  #m-next {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  #m-hold {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .part {
+    height: auto;
+  }
+  .part .place,
+  .part .wide {
+    display: none;
+  }
+  .part .narrow {
+    display: inline;
+  }
+  .t-step {
+    flex-direction: row;
+  }
+  .notices-stack {
+    bottom: calc(136px + 12px);
+  }
 }

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Palette editor</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#08090B}
+.pl{display:grid;grid-template-columns:1fr 92px;align-items:center;gap:4px 10px;height:48px;padding:0 12px;background:transparent;border:1px solid transparent;border-radius:4px;text-align:left}
+.pl .n{font:600 15px/1 var(--f-ui)}
+.pl .m{font:500 12px/1 var(--f-ui);color:#8A919C;text-align:right}
+.pl.sel{background:#1E2228;border-color:#F1F3F5}
+.slot{display:flex;flex-direction:column;gap:6px;align-items:stretch}
+.slot .c{height:72px;border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.slot .k{font:500 13px var(--f-num);color:#8A919C;text-align:center}
+.rg{display:grid;grid-template-columns:28px 1fr 56px;align-items:center;gap:10px}
+.rg b{font:700 15px var(--f-ui)}
+.rg .t{position:relative;height:48px;border-radius:4px;border:1px solid #2A2F37}
+.rg .t i{position:absolute;top:5px;bottom:5px;width:8px;margin-left:-4px;background:#F1F3F5;border-radius:2px;box-shadow:0 0 0 2px #08090B}
+.rg .v{font:600 18px var(--f-num);text-align:right}
+.rc{display:flex;align-items:center;gap:8px;height:48px;padding:0 10px;background:#171A1F;border:1px solid #2A2F37;border-radius:4px;font:600 14px var(--f-ui)}
+.rc i{width:18px;height:18px;border-radius:2px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+</style>
+</head>
+<body>
+<div class="app" style="width: 1280px; height: 800px; display: grid; grid-template-rows: 64px 64px 1fr">
+
+  <div class="top">
+    <button class="menu" style="gap: 8px">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 4l-6 6 6 6"/></svg>
+      <span>Live</span><span class="dots"><i></i><i></i><i class="sim"></i></span>
+    </button>
+    <div class="tempo">
+      <div class="col" style="gap: 2px"><span class="bpm num">126</span><span class="src">By hand</span></div>
+      <div class="beats"><i class="one lit"></i><i></i><i></i><i></i></div>
+    </div>
+    <button class="key c" style="width: 96px; height: 48px">Tap</button>
+    <div class="fader" style="flex: 1; max-width: 340px"><div class="fill" style="width: 100%"></div><span class="fl">Master</span><span class="fv">100</span><div class="hand" style="left: calc(100% - 8px)"></div></div>
+    <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+    <div style="flex: 1"></div>
+    <button class="bo" style="width: 168px">Blackout</button>
+  </div>
+
+  <div class="row" style="justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #2A2F37">
+    <div class="row" style="gap: 14px"><h1 style="margin: 0; font: 700 28px var(--f-ui)">Palettes</h1><span class="t2" style="font-size: 15px">14 palettes · show.yaml</span></div>
+    <button class="key c" style="width: 160px; color: #5AA8FF; border-color: #2f5480">+ New palette</button>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 320px 1fr 300px; min-height: 0">
+    <nav class="col" style="gap: 2px; padding: 10px; border-right: 1px solid #2A2F37; overflow: hidden">
+      <button class="pl"><span class="n">White</span><span class="m">Static</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #FFF3DC"></span></div></button>
+      <button class="pl"><span class="n">Rainbow</span><span class="m">Fade ÷4</span><div style="grid-column: 1 / 3; height: 6px; background: linear-gradient(90deg, #FF0000, #FFA500, #22FF00, #00FFFF, #0000FF, #FF00FF)"></div></button>
+      <button class="pl"><span class="n">Halloween</span><span class="m">Step ×1</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div></button>
+      <button class="pl"><span class="n">Pumpkin</span><span class="m">Static</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #FF6600"></span><span style="background: #7A00FF"></span></div></button>
+      <button class="pl"><span class="n">Witch</span><span class="m">Static</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div></button>
+      <button class="pl"><span class="n" style="color: #FFB000">Ember</span><span class="m" style="color: #E8C77A">On in Spider</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #FF4500"></span><span class="dark"></span></div></button>
+      <button class="pl"><span class="n">Blood moon</span><span class="m">Static</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #FF0000"></span><span style="background: #7A00FF"></span></div></button>
+      <button class="pl"><span class="n">Void</span><span class="m">Static</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #FF0000"></span><span class="dark"></span></div></button>
+      <button class="pl"><span class="n">Lightning</span><span class="m">Static</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #DCE2FF"></span><span style="background: #6A00FF"></span></div></button>
+      <button class="pl"><span class="n">Dusk</span><span class="m">Static</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #FF6600"></span><span style="background: #9B00FF"></span><span style="background: #FF2D6F"></span></div></button>
+      <button class="pl"><span class="n">Sunset drift</span><span class="m">Fade ÷4</span><div style="grid-column: 1 / 3; height: 6px; background: linear-gradient(90deg, #FF6600, #FF2D6F, #8A00FF)"></div></button>
+      <button class="pl sel"><span class="n">Mid shift</span><span class="m" style="color: #B6BCC5">Step ÷4</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div></button>
+      <button class="pl"><span class="n">Techno pulse</span><span class="m">Step ×1</span><div class="strip" style="grid-column: 1 / 3; height: 6px"><span style="background: #FF0000"></span><span style="background: #4A148C"></span><span style="background: #228B22"></span><span style="background: #7F3A14"></span><span style="background: #6B7280"></span></div></button>
+    </nav>
+
+    <main class="col" style="gap: 16px; padding: 14px 18px; min-width: 0">
+      <div class="row" style="justify-content: space-between">
+        <div class="row" style="gap: 12px"><h2 style="margin: 0; font: 700 24px var(--f-ui)">Mid shift</h2><span class="t2" style="font-size: 14px">in a look of Spider</span></div>
+        <div class="row" style="gap: 6px"><button class="key c" style="width: 96px">Rename</button><button class="key c" style="width: 104px">Duplicate</button><button class="key c" style="width: 88px; border-color: #FF4B4B; color: #FF4B4B">Delete…</button></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px">
+        <div class="slot"><div class="c" style="background: #FF6600"></div><span class="k">1 hits</span></div>
+        <div class="slot"><div class="c" style="background: #8A00FF; box-shadow: 0 0 0 2px #08090B, 0 0 0 4px #F1F3F5"></div><span class="k" style="color: #F1F3F5">2 backdrop</span></div>
+        <div class="slot"><div class="c" style="background: #FF2D6F"></div><span class="k">3 accent</span></div>
+        <div class="slot"><div class="c" style="background: #3CFF1E"></div><span class="k">4</span></div>
+        <button class="slot" style="padding: 0; background: transparent; border: 0"><div class="c" style="background: transparent; border: 1px dashed #3B414B; box-shadow: none; display: flex; align-items: center; justify-content: center; color: #8A919C; font: 600 22px var(--f-ui)">+</div><span class="k">5</span></button>
+        <div class="slot"><div class="c" style="background: transparent; border: 1px dashed #2A2F37; box-shadow: none"></div><span class="k">6</span></div>
+        <div class="slot"><div class="c" style="background: transparent; border: 1px dashed #2A2F37; box-shadow: none"></div><span class="k">7</span></div>
+        <div class="slot"><div class="c" style="background: transparent; border: 1px dashed #2A2F37; box-shadow: none"></div><span class="k">8</span></div>
+      </div>
+
+      <div class="panel col" style="gap: 8px; padding: 14px">
+        <div class="sh"><h3>Slot 2 · RGBW, as the lenses mix it</h3><button class="key c" style="width: 120px; min-height: 40px; font-size: 14px">Dark slot (off)</button></div>
+        <div class="rg"><b style="color: #FF6A6A">R</b><div class="t" style="background: linear-gradient(90deg, #000, #FF0000)"><i style="left: 54%"></i></div><span class="v num">138</span></div>
+        <div class="rg"><b style="color: #5BE37A">G</b><div class="t" style="background: linear-gradient(90deg, #000, #00FF00)"><i style="left: 2%"></i></div><span class="v num">0</span></div>
+        <div class="rg"><b style="color: #7FA8FF">B</b><div class="t" style="background: linear-gradient(90deg, #000, #0040FF)"><i style="left: 98%"></i></div><span class="v num">255</span></div>
+        <div class="rg"><b>W</b><div class="t" style="background: linear-gradient(90deg, #000, #FFF3DC)"><i style="left: 2%"></i></div><span class="v num">0</span></div>
+        <div class="row" style="gap: 6px; flex-wrap: wrap; margin-top: 4px">
+          <button class="rc"><i style="background: #FF9500"></i>Amber</button><button class="rc"><i style="background: #FF5A1F"></i>Copper</button><button class="rc"><i style="background: #F0A060"></i>Sepia</button><button class="rc"><i style="background: #FF2A00"></i>Fire</button><button class="rc"><i style="background: #0030FF"></i>Blue</button><button class="rc"><i style="background: #00C8FF"></i>Cyan</button><button class="rc"><i style="background: #FFF3DC"></i>White</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="col" style="gap: 14px; padding: 14px 12px; background: #0F1114; border-left: 1px solid #2A2F37">
+      <div class="col" style="gap: 6px">
+        <span class="lbl">Change</span>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px"><button class="key c">Static</button><button class="key c is-on">Step</button><button class="key c">Fade</button></div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <span class="lbl">Pace</span>
+        <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on" style="background: #1E2228; color: #F1F3F5; border-color: #F1F3F5; box-shadow: none">×1</button><button>×2</button><button>×4</button></div>
+        <span class="t2" style="font-size: 13px">Own pace: a step every 4 beats</span>
+      </div>
+      <div class="col" style="gap: 6px">
+        <span class="lbl">Shows at once</span>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px"><button class="key c">1</button><button class="key c is-on">2</button><button class="key c">3</button><button class="key c">4</button></div>
+      </div>
+      <div class="col" style="gap: 6px; margin-top: 6px">
+        <div class="sh"><span class="lbl">Try on the rig</span></div>
+        <div class="lenses big"><i style="background: #FF6600"></i><i style="background: #8A00FF"></i><i style="background: #FF6600"></i><i style="background: #8A00FF"></i><i style="background: #8A00FF"></i><i style="background: #FF6600"></i><i style="background: #8A00FF"></i><i style="background: #FF6600"></i></div>
+        <button class="key c">Preview on Spider</button>
+        <span class="t3" style="font-size: 13px">The Spider shows this palette until you leave the page. Its look turns Varied.</span>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

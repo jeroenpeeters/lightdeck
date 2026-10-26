@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=800">
+<title>Live · Spider · portrait</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#08090B}</style>
+</head>
+<body>
+<div class="app" style="width: 800px; height: 1280px; display: flex; flex-direction: column">
+
+  <div style="background: #0F1114; border-bottom: 1px solid #2A2F37">
+    <div class="top" style="border: 0">
+      <button class="menu" aria-label="Menu: links OK, Home Assistant simulated">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
+        <span class="dots"><i></i><i></i><i class="sim"></i></span>
+      </button>
+      <div class="tempo">
+        <div class="col" style="gap: 2px"><span class="bpm num">126</span><span class="src">By hand</span></div>
+        <div class="beats"><i class="one"></i><i></i><i></i><i class="lit"></i></div>
+      </div>
+      <button class="key c" style="width: 96px; height: 48px">Tap</button>
+      <div style="flex: 1"></div>
+      <button class="bo" style="width: 168px">Blackout</button>
+    </div>
+    <div class="row" style="gap: 12px; padding: 0 12px 8px">
+      <div class="fader" style="flex: 1"><div class="fill" style="width: 100%"></div><span class="fl">Master</span><span class="fv">100</span><div class="hand" style="left: calc(100% - 8px)"></div></div>
+      <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+    </div>
+  </div>
+
+  <nav style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 12px 12px 0">
+    <button class="gtab is-sel" style="height: 88px">
+      <span class="nm">Spider</span>
+      <div class="lenses"><i style="background: #FF0000"></i><i style="background: #7A00FF"></i><i style="background: #3a0000"></i><i style="background: #FF0000"></i><i style="background: #7A00FF"></i><i style="background: #FF0000"></i><i style="background: #24004a"></i><i style="background: #7A00FF"></i></div>
+      <span class="st amber">Creeping in ±</span>
+    </button>
+    <button class="gtab laser" style="height: 88px"><span class="nm">Laser</span><div class="hazard-dim" style="height: 12px; border-radius: 2px"></div><span class="st">Safe · closed</span></button>
+    <button class="gtab" style="height: 88px"><span class="nm">Room</span><div class="rails" style="height: 12px"><i style="height: 60%; background: #CC5A2C"></i><i style="height: 60%; background: #CC5A2C"></i><i style="height: 25%; background: #FF0000"></i></div><span class="st">Welcome · 100</span></button>
+    <button class="gtab" style="height: 88px"><span class="nm">Video wall</span><div style="height: 12px; border-radius: 2px; background: linear-gradient(90deg, #12324a, #3a1660); box-shadow: inset 0 0 0 1px #3B414B"></div><span class="st">Liquid Glass 0:07</span></button>
+  </nav>
+
+  <div class="row" style="justify-content: space-between; padding: 12px 12px 0">
+    <div class="tabs"><button class="tab">Begin<span class="ct">11</span></button><button class="tab is-sel">Midden<span class="ct">10</span></button><button class="tab">Techno<span class="ct">11</span></button><button class="tab">All</button></div>
+    <span class="lbl">Spider · looks</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 100px; gap: 8px; padding: 12px 12px 0">
+    <button class="key look is-varied"><div class="hd"><span class="nm"><span class="no">4</span>Creeping in</span><span class="tag var">Varied</span></div><div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div><span class="meta">Creeping in · Witch · Stalking</span></button>
+    <button class="key look"><div class="hd"><span class="nm"><span class="no">5</span>Candles low</span></div><div class="strip"><span style="background: #FF4500"></span><span class="dark"></span></div><span class="meta">Candles low · Ember · Drifting</span></button>
+    <button class="key look is-next"><div class="hd"><span class="nm">Heartbeat</span><span class="tag next">Next · 6</span></div><div class="strip"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div><span class="meta">Heartbeat · Mid shift · Swing</span></button>
+    <button class="key look"><div class="hd"><span class="nm">Bounce</span></div><div class="strip"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div><span class="meta">Bouncing · Mid shift · Scissors</span></button>
+    <button class="key look"><div class="hd"><span class="nm">Pump</span></div><div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div><span class="meta">Pumping · Halloween · Scissors</span></button>
+    <button class="key look"><div class="hd"><span class="nm">Sparkle</span></div><div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div><span class="meta">Sparkling · Witch · Stalking</span></button>
+    <button class="key look"><div class="hd"><span class="nm">Alternate</span></div><div class="strip"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div><span class="meta">Alternating · Mid shift · Drifting</span></button>
+    <button class="key look"><div class="hd"><span class="nm">Rolling</span></div><div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div><span class="meta">Rolling · Halloween · Swing</span></button>
+    <button class="key look"><div class="hd"><span class="nm">Heartbeat red</span></div><div class="strip"><span style="background: #FF0000"></span><span style="background: #7A00FF"></span></div><span class="meta">Heartbeat · Blood moon · Swing</span></button>
+    <button class="key look"><div class="hd"><span class="nm">Bounce witch</span></div><div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div><span class="meta">Bouncing · Witch · Scissors</span></button>
+  </div>
+
+  <aside style="flex: 1; display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding: 12px; background: #0F1114; border-top: 1px solid #2A2F37; min-height: 0">
+    <div class="sh">
+      <div class="row" style="gap: 10px"><h3>Vary</h3><span style="font: 600 16px/1 var(--f-ui)">with 4 Creeping in</span></div>
+      <div class="row" style="gap: 6px"><button class="key c" style="width: 64px">All</button><button class="key c" style="width: 64px">Off</button></div>
+    </div>
+    <div style="display: grid; grid-template-columns: 84px 1fr; gap: 8px 10px; align-items: center">
+      <span class="lbl">Colour</span>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+        <button class="chip">Mid shift<div class="strip"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div></button>
+        <button class="chip">Halloween<div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div></button>
+        <button class="chip is-look">Witch<div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div></button>
+        <button class="chip is-on">Blood moon<div class="strip"><span style="background: #FF0000"></span><span style="background: #7A00FF"></span></div></button>
+      </div>
+      <span class="lbl">Effect</span>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+        <button class="chip is-on is-look">Creeping in</button><button class="chip">Candles low</button><button class="chip">Heartbeat</button>
+        <button class="chip">Bouncing</button><button class="chip">Pumping</button><button class="chip">Sparkling</button>
+      </div>
+      <span class="lbl">Movement</span>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+        <button class="chip">Swing</button><button class="chip">Scissors</button><button class="chip">Scissors, rest</button>
+        <button class="chip is-on is-look">Stalking</button><button class="chip">Drifting</button><button class="chip">Sway</button>
+      </div>
+      <span class="lbl">Zone</span>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px"><button class="chip is-on is-look">No zone</button></div>
+    </div>
+  </aside>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) 104px; gap: 8px; height: 136px; padding: 12px; background: #0F1114; border-top: 1px solid #2A2F37">
+    <button class="part"><span class="nm">The night</span><span class="info">10 steps</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="part"><span class="nm">Begin</span><span class="info">11 steps</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="part is-on"><span class="nm">Midden</span><span class="info">1/10 · <b style="color: #F1F3F5">Heartbeat in 6</b></span><div class="bars"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="part"><span class="nm">Techno</span><span class="info">11 steps</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <div class="col" style="gap: 8px"><button class="key c" style="flex: 1">Next</button><button class="key c" style="flex: 1">Hold</button></div>
+  </div>
+</div>
+</body>
+</html>

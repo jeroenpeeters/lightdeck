@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Live · Video wall</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#08090B} .thumb{aspect-ratio:16/9;border-radius:3px;background:#050607;box-shadow:inset 0 0 0 1px #3B414B;display:flex;align-items:center;justify-content:center;font:500 13px var(--f-ui);color:#8A919C}</style>
+</head>
+<body>
+<div class="app" style="width: 1280px; height: 800px; display: grid; grid-template-rows: 64px 1fr 128px">
+
+  <div class="top">
+    <button class="menu" aria-label="Menu: links OK, Home Assistant simulated">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
+      <span class="dots"><i></i><i></i><i class="sim"></i></span>
+    </button>
+    <div class="tempo">
+      <div class="col" style="gap: 2px"><span class="bpm num">126</span><span class="src">By hand</span></div>
+      <div class="beats"><i class="one"></i><i></i><i class="lit"></i><i></i></div>
+    </div>
+    <button class="key c" style="width: 96px; height: 48px">Tap</button>
+    <div class="fader" style="flex: 1; max-width: 340px"><div class="fill" style="width: 100%"></div><span class="fl">Master</span><span class="fv">100</span><div class="hand" style="left: calc(100% - 8px)"></div></div>
+    <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+    <div style="flex: 1"></div>
+    <button class="bo" style="width: 168px">Blackout</button>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 128px 1fr 384px; min-height: 0">
+    <nav style="display: flex; flex-direction: column; gap: 8px; padding: 12px 0 12px 12px">
+      <button class="gtab" style="height: 112px">
+        <span class="nm">Spider</span>
+        <div class="lenses"><i style="background: #FF0000"></i><i style="background: #7A00FF"></i><i style="background: #3a0000"></i><i style="background: #FF0000"></i><i style="background: #7A00FF"></i><i style="background: #FF0000"></i><i style="background: #24004a"></i><i style="background: #7A00FF"></i></div>
+        <span class="st amber">Creeping in ±</span>
+      </button>
+      <button class="gtab laser" style="height: 112px"><span class="nm">Laser</span><div class="hazard-dim" style="height: 12px; border-radius: 2px"></div><span class="st">Safe · closed</span></button>
+      <button class="gtab" style="height: 112px"><span class="nm">Room</span><div class="rails"><i style="height: 60%; background: #CC5A2C"></i><i style="height: 60%; background: #CC5A2C"></i><i style="height: 25%; background: #FF0000"></i></div><span class="st">Welcome · 100</span></button>
+      <button class="gtab is-sel" style="height: 124px"><span class="nm">Video wall</span><div style="height: 12px; border-radius: 2px; background: linear-gradient(90deg, #12324a, #3a1660); box-shadow: inset 0 0 0 1px #3B414B"></div><span class="st amber">Liquid Glass 0:07</span></button>
+    </nav>
+
+    <main style="display: flex; flex-direction: column; gap: 12px; padding: 12px; min-width: 0">
+      <div class="row" style="justify-content: space-between">
+        <div class="tabs"><button class="tab is-sel">Playlists<span class="ct">1</span></button><button class="tab">Videos</button><button class="tab">Effects</button><button class="tab">Texts</button></div>
+        <button class="key c" style="width: 112px">Refresh</button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+        <button class="key is-on" style="padding: 8px; gap: 8px">
+          <div class="thumb" style="background: linear-gradient(135deg, #10283a, #2a1048)">Preview</div>
+          <div class="hd"><span style="font: 600 17px/1.15 var(--f-ui)">The Alchemist Shadows</span><span class="tag on">On</span></div>
+          <span class="sub">Playlist · 4 items</span>
+        </button>
+        <div class="key empty" style="padding: 8px; gap: 8px; justify-content: flex-start; align-items: stretch">
+          <div class="thumb">Preview from the player</div>
+          <span style="font: 600 15px var(--f-ui)">[Playlist]</span>
+          <span class="t3" style="font-size: 13px">Filled by Refresh</span>
+        </div>
+        <div class="key empty" style="padding: 8px; gap: 8px; justify-content: flex-start; align-items: stretch">
+          <div class="thumb">Preview from the player</div>
+          <span style="font: 600 15px var(--f-ui)">[Playlist]</span>
+          <span class="t3" style="font-size: 13px">Filled by Refresh</span>
+        </div>
+      </div>
+      <span class="t3" style="font-size: 14px; margin-top: auto">A press plays it on the wall with the transition chosen on the right. The text overlay settings live on the Video wall setup page.</span>
+    </main>
+
+    <aside style="display: flex; flex-direction: column; gap: 14px; padding: 12px 12px 12px 14px; background: #0F1114; border-left: 1px solid #2A2F37">
+      <div class="sh"><h3>On the wall</h3><span class="row" style="gap: 6px; font-size: 13px; color: #B6BCC5"><i style="width: 8px; height: 8px; border-radius: 50%; background: #34D27B"></i>Player connected</span></div>
+      <div style="position: relative; aspect-ratio: 16/9; border-radius: 4px; background: linear-gradient(135deg, #10283a, #2a1048); box-shadow: inset 0 0 0 1px #3B414B; overflow: hidden">
+        <span style="position: absolute; left: 10px; bottom: 8px; font: 600 14px var(--f-ui)">Track title - Artist</span>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="row" style="justify-content: space-between"><span style="font: 600 17px var(--f-ui)">Liquid Glass</span><span class="num t2" style="font-size: 14px">0:07 / 0:30</span></div>
+        <div style="height: 6px; background: #272C33; border-radius: 1px"><div style="width: 23%; height: 100%; background: #B6BCC5"></div></div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="sh"><h3>Transition for the next one</h3></div>
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px">
+          <button class="chip is-on" style="align-items: center; padding: 0">None</button><button class="chip" style="align-items: center; padding: 0">Fade</button><button class="chip" style="align-items: center; padding: 0">Zoom</button><button class="chip" style="align-items: center; padding: 0">Slide</button><button class="chip" style="align-items: center; padding: 0">Wipe</button>
+        </div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="sh"><h3>Track text</h3><span class="t2" style="font-size: 13px">Waiting for rekordbox</span></div>
+        <div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px">
+          <button class="key c is-on">Text on</button>
+          <button class="key c">Test</button>
+          <button class="key c">Clear</button>
+        </div>
+      </div>
+      <button class="key c" style="margin-top: auto; height: 56px; border: 2px solid #FF4B4B; color: #FF4B4B; background: transparent; letter-spacing: .06em">WALL BLACKOUT</button>
+    </aside>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) 120px 120px; gap: 8px; padding: 12px; background: #0F1114; border-top: 1px solid #2A2F37">
+    <button class="part"><span class="nm">The night</span><span class="info">10 steps · 32 bars each</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="part"><span class="nm">Begin</span><span class="info">11 steps · 32 bars each</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="part is-on">
+      <div class="row" style="justify-content: space-between"><span class="nm">Midden</span><span class="num" style="font-size: 14px; color: #E8C77A">1/10 · bar 19/24</span></div>
+      <span class="info">Now Creeping in → <b style="color: #F1F3F5">Heartbeat in 6</b></span>
+      <div class="bars"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i></div>
+    </button>
+    <button class="part"><span class="nm">Techno</span><span class="info">11 steps · 8–16 bars</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="key c">Next</button>
+    <button class="key c">Hold</button>
+  </div>
+</div>
+</body>
+</html>

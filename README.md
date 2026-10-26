@@ -158,7 +158,8 @@ Go to `http://<computer-ip>:8080` on the tablet. The console has:
 - **Palettes**: the colours of the show, apart from the effects. A list of up to eight
   colours (or off), static or cycling.
 - **Tablet** (`/tablet`, the old `/moods` goes there): the page for a tablet at the side of the
-  dance floor, with few, big controls: tap the tempo, the master and its speed, the parts of the
+  dance floor, built after the design in [design/](design/HANDOFF.md) (a lighting-console look,
+  dark, IBM Plex, a rail of the groups with what each shows right now), with few, big controls: tap the tempo, the master and its speed, the parts of the
   evening (sequences, with Next and Hold), the looks of a group by mood with a tray under them to
   vary the look (palette, effect, movement, zone), the lamps of the room (a dimmer, and a switch
   per rail), the blackout, the state of the bridge, the LR512 and Home Assistant, and last a tab
@@ -384,6 +385,7 @@ without a build step. Tests are next to the code as `*.test.ts`.
 | `android-bridge/` | The Android app, with a build of its own |
 | `android-tablet/`, `android-camera/` | The tablet app (a full-screen window on `/tablet`) and the camera app for the laser survey |
 | `docs/` | Designs, plans and what was found out about the LR512 |
+| `design/` | The design of the console (tokens, mockups, rules), made in Claude Design. Only the tablet page is built after it so far |
 
 [CLAUDE.md](CLAUDE.md) has the complete and current overview of the code, the decisions
 that were made and the assumptions that are not verified yet.
@@ -427,8 +429,8 @@ see also [NOTICE](NOTICE).
 
 Two things in the repository are not under that licence:
 
-- The Barlow fonts in `src/server/public/fonts/` are under the SIL Open Font License 1.1,
-  see the `LICENSE.txt` next to them.
+- The Barlow and IBM Plex fonts in `src/server/public/fonts/` are under the SIL Open Font License
+  1.1, see the `LICENSE.txt` and `PLEX-LICENSE.txt` next to them.
 - The fixture manuals in `docs/` (`spider-dmx-channels.pdf`, `alien-500mw-laser.html`)
   belong to the makers of the fixtures. They are there as the source of the channel
   tables.

@@ -42,6 +42,8 @@
 //   shell.stateOf(id)                      the state the server last told of ANY fixture, for a page
 //                                          that shows something of a fixture that is not its own
 //   shell.on('fixtures', (id) => ...)      the state of some fixture changed (every page hears it)
+//   shell.dmxOf(id)                        the bytes ANY DMX fixture was last sent, as an array
+//   shell.on('frames', (id) => ...)        a fixture that animates sent a frame (every page hears it)
 //   shell.on('frame', ({ dmx, beat }) => ...)           what is being sent, while it animates
 //   shell.rkbx                             what rekordbox says through rkbx_link: { status,
 //                                          following, bpm, beats, port, breakdown: { enabled,
@@ -193,6 +195,10 @@ export async function start({ page = 'fixture', bare = false } = {}) {
   let sequence = initial.sequence;
   /** By the id of a fixture, the state the server told of it last. */
   const states = new Map(initial.fixtures.map((each) => [each.id, each.state]));
+  // The bytes that ANY fixture is sent, as the last `fixture` or `frame` event said (DMX fixtures only).
+  const dmxs = new Map(
+    initial.fixtures.filter((each) => each.dmx).map((each) => [each.id, each.dmx]),
+  );
   const limits = initial.tempo;
   let tempo = readTempo(initial.tempo);
   /** What rekordbox says through rkbx_link, and whether the tempo follows it. */
@@ -222,6 +228,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     playback: [],
     sequence: [],
     fixtures: [],
+    frames: [],
     rkbx: [],
     videowall: [],
     status: [],
@@ -273,7 +280,10 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     setBeat(fresh.tempo.beat);
     blackout = fresh.blackout;
     master = fresh.master;
-    for (const each of fresh.fixtures) states.set(each.id, each.state);
+    for (const each of fresh.fixtures) {
+      states.set(each.id, each.state);
+      if (each.dmx) dmxs.set(each.id, each.dmx);
+    }
     tell('fixtures', null);
     const real = fresh.fixtures.find((each) => each.id === id);
     if (real) tell('fixture', { state: shownState(real.state), dmx: real.dmx, own: false });
@@ -444,6 +454,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     });
     on('fixture', (message) => {
       states.set(message.id, message.state);
+      if (message.dmx) dmxs.set(message.id, message.dmx);
       tell('fixtures', message.id);
       if (message.id !== id) return;
       onTheWay.heard(message.origin);
@@ -455,6 +466,8 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     });
     on('frame', (message) => {
       setBeat(message.beat);
+      dmxs.set(message.id, message.dmx);
+      tell('frames', message.id);
       if (message.id === id) tell('frame', { dmx: message.dmx, beat: message.beat });
     });
     on('tempo', (message) => {
@@ -861,6 +874,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
       return sequence;
     },
     stateOf: (fixtureId) => states.get(fixtureId),
+    dmxOf: (fixtureId) => dmxs.get(fixtureId),
     get rkbx() {
       return rkbx;
     },

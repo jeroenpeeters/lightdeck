@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Live · Laser armed</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#08090B}</style>
+</head>
+<body>
+<div class="app" style="width: 1280px; height: 800px; display: grid; grid-template-rows: 64px 1fr 128px">
+
+  <div class="top">
+    <button class="menu" aria-label="Menu: links OK, Home Assistant simulated">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
+      <span class="dots"><i></i><i></i><i class="sim"></i></span>
+    </button>
+    <div class="tempo">
+      <div class="col" style="gap: 2px"><span class="bpm num">126</span><span class="src">By hand</span></div>
+      <div class="beats"><i class="one lit"></i><i></i><i></i><i></i></div>
+    </div>
+    <button class="key c" style="width: 96px; height: 48px">Tap</button>
+    <div class="fader" style="flex: 1; max-width: 340px"><div class="fill" style="width: 100%"></div><span class="fl">Master</span><span class="fv">100</span><div class="hand" style="left: calc(100% - 8px)"></div></div>
+    <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+    <div style="flex: 1"></div>
+    <button class="bo" style="width: 168px">Blackout</button>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 128px 1fr 344px; min-height: 0">
+    <nav style="display: flex; flex-direction: column; gap: 8px; padding: 12px 0 12px 12px">
+      <button class="gtab" style="height: 112px">
+        <span class="nm">Spider</span>
+        <div class="lenses"><i style="background: #FF0000"></i><i style="background: #7A00FF"></i><i style="background: #3a0000"></i><i style="background: #FF0000"></i><i style="background: #7A00FF"></i><i style="background: #FF0000"></i><i style="background: #24004a"></i><i style="background: #7A00FF"></i></div>
+        <span class="st amber">Creeping in ±</span>
+      </button>
+      <button class="gtab laser armed is-sel" style="height: 124px; background: #2A0D0E">
+        <span class="nm" style="color: #FF4B4B">Laser</span>
+        <div class="hazard" style="height: 12px; border-radius: 2px"></div>
+        <span class="st" style="color: #FF4B4B; font-weight: 700">ARMED · Calm 26</span>
+      </button>
+      <button class="gtab" style="height: 112px"><span class="nm">Room</span><div class="rails"><i style="height: 60%; background: #CC5A2C"></i><i style="height: 60%; background: #CC5A2C"></i><i style="height: 25%; background: #FF0000"></i></div><span class="st">Welcome · 100</span></button>
+      <button class="gtab" style="height: 112px"><span class="nm">Video wall</span><div style="height: 12px; border-radius: 2px; background: linear-gradient(90deg, #12324a, #3a1660); box-shadow: inset 0 0 0 1px #3B414B"></div><span class="st">Liquid Glass 0:07</span></button>
+    </nav>
+
+    <!-- the laser area has its own hazard frame -->
+    <main style="position: relative; display: flex; flex-direction: column; gap: 12px; margin: 12px; padding: 14px; border-radius: 6px; background: #0c0607; box-shadow: inset 0 0 0 2px #FF4B4B; min-width: 0">
+      <div style="display: grid; grid-template-columns: 220px 1fr 156px; gap: 10px; align-items: stretch">
+        <div class="hazard" style="padding: 4px; border-radius: 6px">
+          <button class="armkey" style="width: 100%; height: 72px; background: #2A0D0E">Armed<span class="num" style="font: 600 14px var(--f-num); letter-spacing: 0; color: #F1F3F5">09:12 left</span></button>
+        </div>
+        <div class="col" style="gap: 6px">
+          <span class="lbl">Mode</span>
+          <div class="row" style="gap: 6px">
+            <button class="key c" style="flex: 1">Manual</button>
+            <button class="key c is-on" style="flex: 1">Auto</button>
+            <button class="key c" style="flex: 1">Sound</button>
+          </div>
+        </div>
+        <button class="key c" style="height: 80px; border: 2px solid #FF4B4B; color: #FF4B4B; background: transparent; font-size: 18px; letter-spacing: .04em">CLOSE<span class="sub" style="color: #B6BCC5">laser off</span></button>
+      </div>
+
+      <div class="row" style="justify-content: space-between">
+        <div class="tabs"><button class="tab is-sel">Calm<span class="ct">3</span></button><button class="tab">On the beat</button><button class="tab">Moving</button><button class="tab">All</button></div>
+        <span class="lbl" style="color: #FF4B4B">Laser · by hand only</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <button class="key look"><div class="hd"><span class="nm">Calm 12</span></div><span class="meta">Pattern 12 · Big, still</span></button>
+        <button class="key look is-on"><div class="hd"><span class="nm">Calm 26</span><span class="tag on">On</span></div><span class="meta">Pattern 26 · Small, still</span></button>
+        <button class="key look"><div class="hd"><span class="nm">Calm 40</span></div><span class="meta">Pattern 40 · Big, still</span></button>
+      </div>
+
+      <div class="panel" style="margin-top: auto; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #120708; border-color: #5a1d1f">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#FF4B4B" stroke-width="2" aria-hidden="true"><path d="M11 3l9 16H2z"/><path d="M11 9v4M11 16v.5"/></svg>
+        <span style="font-size: 15px; color: #B6BCC5">Looks of the laser only play while it is armed. No part, sequence or look of another group opens it. Blackout closes and disarms it.</span>
+      </div>
+    </main>
+
+    <aside style="display: flex; flex-direction: column; gap: 14px; padding: 12px 12px 12px 14px; background: #0F1114; border-left: 1px solid #2A2F37">
+      <div class="sh">
+        <div class="col" style="gap: 2px"><h3>Vary</h3><span style="font: 600 16px/1.2 var(--f-ui)">with Calm 26</span></div>
+        <div class="row" style="gap: 6px"><button class="key c" style="width: 64px">All</button><button class="key c" style="width: 64px">Off</button></div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="sh"><h3>Pattern</h3></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+          <button class="chip">12</button><button class="chip is-on is-look">26</button><button class="chip">40</button>
+        </div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="sh"><h3>Effect</h3></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+          <button class="chip">Pattern chase</button><button class="chip">Colour chase</button>
+        </div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="sh"><h3>Movement</h3></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+          <button class="chip">Pulse</button><button class="chip">Sweep</button><button class="chip">Twist</button>
+        </div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="sh"><h3>Speed of effect</h3></div>
+        <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+      </div>
+    </aside>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) 120px 120px; gap: 8px; padding: 12px; background: #0F1114; border-top: 1px solid #2A2F37">
+    <button class="part"><span class="nm">The night</span><span class="info">10 steps · 32 bars each</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="part"><span class="nm">Begin</span><span class="info">11 steps · 32 bars each</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="part is-on">
+      <div class="row" style="justify-content: space-between"><span class="nm">Midden</span><span class="num" style="font-size: 14px; color: #E8C77A">1/10 · bar 21/24</span></div>
+      <span class="info">Now Creeping in → <b style="color: #F1F3F5">Heartbeat in 4</b></span>
+      <div class="bars"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i></div>
+    </button>
+    <button class="part"><span class="nm">Techno</span><span class="info">11 steps · 8–16 bars</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="key c">Next</button>
+    <button class="key c">Hold</button>
+  </div>
+</div>
+</body>
+</html>

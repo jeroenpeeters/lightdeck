@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1600">
+<title>Navigation model</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#08090B} .nb{padding:10px 14px;background:#171A1F;border:1px solid #2A2F37;border-radius:4px;font:600 16px/1.2 var(--f-ui)} .nb small{display:block;margin-top:3px;font:500 13px/1.3 var(--f-ui);color:#B6BCC5}</style>
+</head>
+<body>
+<div class="app" style="width: 1600px; height: 1000px; padding: 48px; display: flex; flex-direction: column; gap: 28px">
+  <div class="row" style="justify-content: space-between; align-items: flex-end">
+    <h2 style="margin: 0; font: 700 36px/1 var(--f-ui)">Three layers, two places</h2>
+    <span class="t2" style="font-size: 16px">Live = what you press during the party · Setup = what you prepare</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; flex: 1">
+    <section class="panel col" style="gap: 12px; padding: 20px; border-color: #F1F3F5">
+      <span class="lbl" style="color: #F1F3F5">Always on screen · every page</span>
+      <div class="nb">Menu key<small>Carries the link lamps: one glance shows Bridge, LR512 and Home Assistant</small></div>
+      <div class="nb">BPM, source, beat lamps, Tap</div>
+      <div class="nb">Master fader and master speed</div>
+      <div class="nb" style="border-color: #FF4B4B; color: #FF4B4B">Blackout<small>Same place on every page, every orientation</small></div>
+      <div class="nb">Live key<small>On setup pages, in the menu key's place: back to the live page in one press</small></div>
+      <span class="lbl" style="margin-top: 12px">Also always on the live page</span>
+      <div class="nb">Executor bar: the parts of the evening<small>The night · Begin · Midden · Techno, with Next and Hold</small></div>
+      <div class="nb">Group rail with live mini output</div>
+    </section>
+
+    <section class="panel col" style="gap: 12px; padding: 20px">
+      <span class="lbl">One press away · on the live page</span>
+      <div class="nb">Group: Spider · Laser · Room · Video wall<small>The rail tab changes the middle and the tray, nothing else moves</small></div>
+      <div class="nb">Mood: Begin · Midden · Techno · All</div>
+      <div class="nb">Looks of the mood</div>
+      <div class="nb">Tray: what goes with the look<small>Colour · Effect · Movement · Zone (Room: Colour · Scenery; Laser: Pattern · Movement)</small></div>
+      <div class="nb" style="border-color: #FF4B4B">Laser arm<small>Hold for one second. It disarms after ten minutes or on blackout</small></div>
+      <div class="nb">Video wall: play, transition, wall blackout, track text on or off</div>
+    </section>
+
+    <section class="panel col" style="gap: 12px; padding: 20px">
+      <span class="lbl">Behind the menu · setup</span>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+        <div class="nb">Deck<small>Show / Program</small></div>
+        <div class="nb">Palettes</div>
+        <div class="nb">Spider<small>Effects · Colour · Movement · Zone · Fixture</small></div>
+        <div class="nb">Laser<small>Modes, channels</small></div>
+        <div class="nb">Room<small>Lamps per rail, scenery</small></div>
+        <div class="nb">Video wall<small>Player, track text</small></div>
+        <div class="nb">Simulator</div>
+        <div class="nb">Rig and links<small>Addresses, calibration</small></div>
+      </div>
+      <div class="nb" style="margin-top: 4px">Tempo source<small>By hand · Rekordbox · Idle in breakdown. It moves out of every page into the menu, and the top bar shows the current source under the BPM</small></div>
+    </section>
+  </div>
+
+  <div class="panel" style="display: grid; grid-template-columns: 1fr 64px 1fr 64px 1fr; align-items: center; padding: 20px">
+    <div class="nb" style="text-align: center; border-color: #F1F3F5">Live page<small>Rail tab picks the group</small></div>
+    <div style="text-align: center; font: 600 22px var(--f-num); color: #8A919C">⇄</div>
+    <div class="nb" style="text-align: center">Menu (full-screen sheet)<small>Menu key opens it · tap a page or Live</small></div>
+    <div style="text-align: center; font: 600 22px var(--f-num); color: #8A919C">⇄</div>
+    <div class="nb" style="text-align: center">Setup page<small>Top-left key reads “Live”: one press back</small></div>
+  </div>
+</div>
+</body>
+</html>

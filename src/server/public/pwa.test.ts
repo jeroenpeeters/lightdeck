@@ -97,6 +97,17 @@ describe('the page of the tablet', () => {
     expect(app).toContain('LightdeckTablet/1');
   });
 
+  it('has the design of the console, with its fonts from the app and nothing from elsewhere', () => {
+    expect(html).toContain('href="/plex.css"');
+    expect(html).toContain('href="/lightdeck.css"');
+    expect(html).not.toMatch(/(?:href|src)="https?:/);
+    const fonts = read('plex.css').toString();
+    for (const name of fonts.match(/\/fonts\/[a-z0-9-]+\.woff2/g) ?? []) {
+      expect(read(name.slice(1)).length, name).toBeGreaterThan(1000);
+    }
+    expect(fonts).not.toMatch(/https?:/);
+  });
+
   it('registers the service worker, where the browser has one', () => {
     // The page calls registerWorker of tabletParts.js.
     expect(read('tablet.js').toString()).toContain('registerWorker()');
@@ -166,14 +177,19 @@ describe('the service worker', () => {
       '/tablet.css',
       '/tabletKit.js',
       '/tabletParts.js',
+      '/tabletRail.js',
+      '/tabletLogic.js',
+      '/spiderPose.js',
       '/videowallPanel.js',
       '/videowall.css',
+      '/lightdeck.css',
+      '/plex.css',
       '/shell.js',
       '/ui.js',
       '/changes.js',
-      '/styles.css',
       '/manifest.webmanifest',
       '/fonts/barlow-500.woff2',
+      '/fonts/plex-condensed-500.woff2',
       '/icons/icon-192.png',
     ]) {
       expect(await ask(`http://lightdeck:8080${path}`), path).toBeInstanceOf(Response);

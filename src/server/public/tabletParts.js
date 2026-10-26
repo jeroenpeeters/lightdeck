@@ -1,24 +1,25 @@
 // The parts of the tablet page (tablet.js) that are not its own: the notice, the tempo, the masters,
-// the blackout, the link lamps and the controls of the lamps of the room, and the keys of looks,
-// scenes and palettes. They draw into elements with the ids of `tablet.html`. Plain browser
-// JavaScript.
+// the blackout, the link dots and the controls of the lamps of the room, and the keys of looks and
+// the chips of the tray (scenes and palettes). They draw into elements with the ids of `tablet.html`,
+// in the classes of lightdeck.css. Plain browser JavaScript.
 //
 // A page calls `init(shell)` once, builds what it uses, and calls the `render` functions when the
 // shell says the state changed. A press is asked once through `ask`: when it does not reach
 // lightdeck the page says so and the operator presses again.
 
 import { masterPercent } from './shell.js';
-import { drawKey, fillStrip, makeKey, makeStrip, movesOf, stateOf, syncKeys } from './tabletKit.js';
 import {
-  $,
-  element,
-  makeDismissible,
-  sentence,
-  setNotice,
-  slider,
-  speedKeys,
-  speedName,
-} from './ui.js';
+  drawChip,
+  drawLook,
+  fader,
+  makeChip,
+  makeLook,
+  movesOf,
+  speedPick,
+  stateOf,
+} from './tabletKit.js';
+import { chipMarks, splitNumber } from './tabletLogic.js';
+import { $, element, makeDismissible, sentence, setNotice, speedName } from './ui.js';
 
 const BEATS_PER_BAR = 4;
 
@@ -89,12 +90,6 @@ export function onLook(group) {
   return { item, changed: Boolean(item && on.changed) };
 }
 
-/** What a scene sets, where that says more than the group does already. */
-function setsOf(scene, group) {
-  if (scene.fixtures.length === 0) return scene.type === 'lights' ? 'Dark' : 'Nothing set';
-  return group.fixtures.length > 1 ? scene.fixtures.map(labelOf).join(', ') : '';
-}
-
 /** What a look names, in the words of the keys it points to: "Chase · Sunset · Scissor". */
 function namesOf(look, group) {
   const parts = [];
@@ -113,103 +108,103 @@ function namesOf(look, group) {
   return parts.join(' · ');
 }
 
-/**
- * Keys for the scenes of a type, or for those of `ids` in that order. A key is for a group and a
- * scene, so the id of the key says both and two groups can have keys in one grid in turn.
- */
-export function sceneItems(group, type, ids) {
-  const on = onIn(group, type);
-  const scenes = group.scenes.filter((scene) => scene.type === type);
-  const chosen = ids
-    ? ids.map((id) => scenes.find((scene) => scene.id === id)).filter((scene) => scene)
-    : scenes;
-  return chosen.map((scene) => ({
-    id: `${group.id}:${scene.id}`,
-    make: () => makeKey('scene', () => ask('/api/playback', { group: group.id, scene: scene.id })),
-    draw: (key) =>
-      drawKey(key, { state: stateOf(on, scene), label: scene.label, sets: setsOf(scene, group) }),
-  }));
+/** The id that the look that is on sets in a lane (a scene, or for the colour a palette), if any. */
+function ownOf(group, type) {
+  const look = onLook(group).item;
+  if (!look) return undefined;
+  return type === 'colour' ? look.colour?.palette : look[type];
 }
 
-/** Keys for the palettes of the show, or for those of `ids` in that order, with a strip of the colours. */
-export function paletteItems(group, ids) {
-  if (group.palettes === false) return [];
-  const on = onIn(group, 'colour');
-  const chosen = ids ? ids.map((id) => paletteOf(id)).filter((palette) => palette) : palettes();
-  return chosen.map((palette) => ({
-    id: `${group.id}:${palette.id}`,
-    make: () => {
-      const strip = makeStrip();
-      const key = makeKey(
-        'scene',
-        () => ask('/api/playback', { group: group.id, palette: palette.id }),
-        strip,
-      );
-      key.strip = strip;
-      return key;
-    },
-    draw: (key) => {
-      fillStrip(key.strip, palette.colours);
-      drawKey(key, {
-        state: stateOf(on, palette),
-        label: palette.label,
-        sets: movesOf(palette),
-        title: `${palette.label}: ${palette.colours.length === 1 ? '1 colour' : `${palette.colours.length} colours`}`,
+/**
+ * Chips for a lane of the tray: the scenes of a type, or the palettes, or those of `ids` in that order.
+ * A chip is on when the lane has it on and dashed when the look that is on sets it. A chip is for a
+ * group and a scene, so the id of the chip says both.
+ */
+export function chipItems(group, type, ids) {
+  const colour = type === 'colour';
+  if (colour && group.palettes === false) return [];
+  const on = onIn(group, type).item?.id;
+  const own = ownOf(group, type);
+  const all = colour ? palettes() : group.scenes.filter((scene) => scene.type === type);
+  const chosen = ids ? ids.map((id) => all.find((each) => each.id === id)).filter(Boolean) : all;
+  return chosen.map((item) => ({
+    id: `${group.id}:${item.id}`,
+    make: () =>
+      makeChip(
+        () => ask('/api/playback', { group: group.id, [colour ? 'palette' : 'scene']: item.id }),
+        { strip: colour },
+      ),
+    draw: (chip) => {
+      const marks = chipMarks(item.id, on, own);
+      drawChip(chip, {
+        label: item.label,
+        ...marks,
+        colours: colour ? item.colours : undefined,
+        title: colour ? `${item.label} · ${movesOf(item) || 'static'}` : item.label,
       });
     },
   }));
 }
 
 /**
- * Keys for looks (those of `chosen`, or all of the group's). With `strip` a look shows the colours of
- * its palette between its name and what it names, and `changedText` is what a look says once a lane
- * of it was changed.
+ * Keys for the looks of `chosen` (or all of the group's): the number and the name, a tag when varied
+ * or next, the colours of its palette and what it names. `next` is `{ look, bars }` for the look that
+ * the sequence that runs sets next in this group, or null.
  */
-export function lookItems(group, { chosen = group.looks, strip = false, changedText } = {}) {
+export function lookItems(group, { chosen = group.looks, next = null } = {}) {
   const on = onLook(group);
   return chosen.map((look) => ({
     id: `${group.id}:${look.id}`,
-    make: () => {
-      const colours = strip ? makeStrip() : undefined;
-      const key = makeKey(
-        'scene look',
-        () => ask('/api/playback', { group: group.id, look: look.id }),
-        ...(colours ? [colours] : []),
-      );
-      key.strip = colours;
-      return key;
-    },
+    make: () => makeLook(() => ask('/api/playback', { group: group.id, look: look.id })),
     draw: (key) => {
-      const sets = namesOf(look, group);
-      if (key.strip)
-        fillStrip(key.strip, look.colour ? paletteOf(look.colour.palette)?.colours : undefined);
-      drawKey(key, { state: stateOf(on, look), label: look.label, sets, title: sets }, changedText);
+      const meta = namesOf(look, group);
+      const { no, name } = splitNumber(look.label);
+      drawLook(key, {
+        state: stateOf(on, look),
+        number: no,
+        name,
+        colours: look.colour ? paletteOf(look.colour.palette)?.colours : undefined,
+        meta,
+        next: next?.look === look.id ? next : null,
+        title: meta,
+      });
     },
   }));
+}
+
+/** What a lane has on in the group, in words, and whether it is not what it was set to. */
+export function laneWords(group, type) {
+  const { item, changed } = onIn(group, type);
+  return {
+    text: item?.label ?? '',
+    changed,
+    colours: type === 'colour' ? item?.colours : undefined,
+  };
 }
 
 // ---- the top row ----
 
 /**
- * The lamps of the links stand in the menu, with their words, and the key of the menu has one dot
- * for all of them without words: green when nothing is wrong, red when a link is down. A link that
- * is not there (no bridge asked for) or made up (simulated) is not wrong.
+ * The links stand in the menu, with their words, and the key of the menu has a dot for each of them
+ * without words: green when it is fine, red when it is down, hollow when it is made up (simulated) or
+ * not asked for. A link that is not there (no bridge asked for) or made up is not wrong.
  */
 export function renderLinks() {
   const { bridge, device, hass } = shell.links;
   const links = [
-    ['t-link-bridge', bridge],
-    ['t-link-device', device],
+    ['t-link-bridge', 't-dot-bridge', bridge],
+    ['t-link-device', 't-dot-device', device],
   ];
   // Home Assistant has a lamp only when a fixture is driven by it.
   $('t-link-hass').hidden = hass === undefined;
-  if (hass) links.push(['t-link-hass', hass]);
-  for (const [id, link] of links) {
+  $('t-dot-hass').hidden = hass === undefined;
+  if (hass) links.push(['t-link-hass', 't-dot-hass', hass]);
+  for (const [id, dot, link] of links) {
     $(id).dataset.state = link.state;
     $(id).querySelector('.link-text').textContent = link.text;
+    $(dot).className = link.state === 'down' ? 'lost' : link.state === 'ok' ? '' : 'sim';
   }
-  const wrong = links.some(([, link]) => link.state === 'down');
-  $('t-dot').dataset.state = wrong ? 'down' : 'ok';
+  const wrong = links.some(([, , link]) => link.state === 'down');
   $('t-menu-key').setAttribute(
     'aria-label',
     wrong ? 'Menu, something is not connected' : 'Menu, everything is connected',
@@ -265,18 +260,18 @@ export function buildFullscreen() {
 
 // ---- the tempo, the masters and the blackout ----
 
-let fader;
+let master;
 let showSpeed = () => {};
 
 export function buildMaster() {
-  fader = slider({
+  master = fader({
     id: 't-master-level',
     label: 'Master',
     read: () => masterPercent(shell.master),
     write: (number) => shell.setMaster(number / 100),
   });
-  $('t-master').append(fader);
-  showSpeed = speedKeys($('t-speed'), shell.rates, shell.setRate);
+  $('t-master').append(master);
+  showSpeed = speedPick($('t-speed'), shell.rates.map(speedName), shell.rates, shell.setRate);
 }
 
 export function buildTempo() {
@@ -293,14 +288,19 @@ export function buildTempo() {
 
 /** The masters, the tempo and the blackout moved, here or on another screen. */
 export function renderChange() {
-  fader.refresh();
+  master.refresh();
   showSpeed(shell.tempo.rate);
   $('t-bpm').textContent = String(Math.round(shell.tempo.bpm));
-  // Rekordbox sends the beat, so there is nothing to tap.
-  $('t-tap').hidden = shell.tempo.source === 'rekordbox';
+  const rekordbox = shell.tempo.source === 'rekordbox';
+  $('t-src').textContent = rekordbox ? 'Rekordbox' : 'By hand';
+  // Rekordbox sends the beat, so there is nothing to tap. The key stays where it is, and rests.
+  const tap = $('t-tap');
+  tap.disabled = rekordbox;
+  tap.classList.toggle('is-disabled', rekordbox);
   const on = shell.blackout;
   const key = $('t-blackout');
   key.setAttribute('aria-pressed', String(on));
+  key.classList.toggle('is-on', on);
   key.textContent = on ? 'Lift blackout' : 'Blackout';
 }
 
@@ -314,9 +314,8 @@ function drawBeat() {
   if (index !== litBeat) {
     litBeat = index;
     [...$('t-beats').children].forEach((lamp, i) => {
-      lamp.dataset.on = String(i === index);
+      lamp.classList.toggle('lit', i === index);
     });
-    $('t-beats').dataset.idle = String(!running);
   }
   requestAnimationFrame(drawBeat);
 }
@@ -361,7 +360,7 @@ export function renderRails() {
   for (const zone of zones) {
     let key = rails.get(zone.id);
     if (!key) {
-      key = element('button', 't-rail', zone.label);
+      key = element('button', 'key c t-rail', zone.label);
       key.type = 'button';
       key.addEventListener('click', () => {
         const on = (shell.stateOf(fixture.id)?.zones?.[zone.id] ?? 1) > 0;
@@ -371,7 +370,9 @@ export function renderRails() {
       holder.append(key);
     }
     key.textContent = zone.label;
-    key.setAttribute('aria-pressed', String((current[zone.id] ?? 1) > 0));
+    const on = (current[zone.id] ?? 1) > 0;
+    key.classList.toggle('is-on', on);
+    key.setAttribute('aria-pressed', String(on));
   }
   for (const [id, key] of rails) {
     if (zones.some((zone) => zone.id === id)) continue;
@@ -406,7 +407,7 @@ function sendDimmer(percent) {
 }
 
 export function buildRoom() {
-  roomDimmer = slider({
+  roomDimmer = fader({
     id: 't-room-dimmer-level',
     label: 'Room dimmer',
     read: () =>
