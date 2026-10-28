@@ -6,7 +6,7 @@
 // `syncKeys` makes the keys of a grid the ones that are asked for, in that order, and moves none that
 // are already right.
 
-import { element } from './ui.js';
+import { element, fader, speedPick } from './ui.js';
 
 /** The state a key shows: on as it was set, on and changed by hand, or not on. */
 export function stateOf(on, item) {
@@ -151,63 +151,5 @@ export function syncKeys(lane, items) {
 
 // ---- the faders and the speed keys ----
 
-/**
- * A fader in the console style: a flat bar with a fill, a handle, its name and its value. The
- * pointer is taken by a range input that lies over it and cannot be seen, so touch, drag and the
- * keyboard work as they do for any slider. `read` and `write` connect it to the state, as for
- * `slider` of ui.js; `read` gives null when there is nothing to set. Call `refresh` to show the
- * state again.
- */
-export function fader({ id, label, min = 0, max = 100, read, write }) {
-  const bar = element('div', 'fader');
-  const fill = element('div', 'fill');
-  const hand = element('div', 'hand');
-  const name = element('span', 'fl', label);
-  const value = element('span', 'fv');
-  const input = element('input');
-  input.type = 'range';
-  input.id = id;
-  input.min = String(min);
-  input.max = String(max);
-  input.step = '1';
-  input.setAttribute('aria-label', label);
-  bar.append(fill, name, value, hand, input);
-
-  const show = (number) => {
-    const share = (number - min) / (max - min);
-    input.value = String(number);
-    value.textContent = String(number);
-    fill.style.width = `${share * 100}%`;
-    // The handle stays inside the bar at both ends (it has a margin of -4px, and is 8px wide).
-    hand.style.left = `calc(${share * 100}% + ${8 - share * 16}px)`;
-  };
-  input.addEventListener('input', () => {
-    const number = Number(input.value);
-    show(number);
-    write(number);
-  });
-  bar.refresh = () => {
-    const number = read();
-    input.disabled = number === null;
-    show(number ?? min);
-  };
-  return bar;
-}
-
-/** Keys to choose a speed from (÷4 ... ×4). Gives what shows the chosen one. */
-export function speedPick(holder, names, speeds, choose) {
-  const keys = speeds.map((speed, index) => {
-    const made = element('button', '', names[index]);
-    made.type = 'button';
-    made.addEventListener('click', () => choose(speed));
-    holder.append(made);
-    return { speed, made };
-  });
-  return (chosen) => {
-    for (const { speed, made } of keys) {
-      const on = speed === chosen;
-      made.classList.toggle('is-on', on);
-      made.setAttribute('aria-pressed', String(on));
-    }
-  };
-}
+// They are in ui.js, with the other components that every page uses; the tablet page imports them from here.
+export { fader, speedPick };

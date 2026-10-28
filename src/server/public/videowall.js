@@ -1,9 +1,10 @@
-// The video wall page: the controls of the video wall (videowallPanel.js, which the tablet page has
-// as a tab too) on a page of their own, with the shell around them. Plain browser JavaScript, no
-// build step.
+// The video wall page, a setup page: the controls of the video wall (videowallPanel.js, which the
+// tablet page has as a tab too, with the settings in its tab Text settings) under the top bar of the
+// shell, with the settings and the library in the main column and "On the wall" in the side panel.
+// Plain browser JavaScript, no build step.
 //
-// Its notice is kept at the bottom of the screen, with the one of the shell, so that no key moves
-// when it comes or goes.
+// Its notice lies over the foot of the screen, with the one of the shell, so that no key moves when
+// it comes or goes.
 
 import { start } from './shell.js';
 import { $, sentence, setNotice } from './ui.js';
@@ -16,8 +17,6 @@ async function main() {
   const shell = await start({ page: 'videowall' });
   if (!shell) return;
   document.title = 'Video wall · Lightdeck';
-  // The notice of the shell joins the one of the page, where it takes no room from the keys.
-  $('notices').prepend($('notice'));
 
   async function ask(url, body = {}) {
     failure = '';
@@ -27,11 +26,19 @@ async function main() {
     return answer;
   }
 
-  const wall = mountVideoWall($('wall'), { shell, ask });
+  /** The line under the title: whether the track goes to the wall, and where the player is. */
+  function drawWhere() {
+    const { settings } = shell.videowall;
+    $('where').textContent = `Track text ${settings.enabled ? 'on' : 'off'} · ${settings.url}`;
+  }
+
+  const wall = mountVideoWall($('wall'), { shell, ask, side: $('wall-side') });
   wall.activate();
+  drawWhere();
   shell.on('videowall', () => {
     failure = '';
     setNotice($('wall-notice'), failure);
+    drawWhere();
   });
 }
 

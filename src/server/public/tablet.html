@@ -17,8 +17,9 @@
     <!-- The design of the console (design/): the fonts, the tokens and keys, and the layout of this page. -->
     <link rel="stylesheet" href="/plex.css" />
     <link rel="stylesheet" href="/lightdeck.css" />
+    <link rel="stylesheet" href="/chrome.css" />
     <link rel="stylesheet" href="/tablet.css" />
-    <!-- The settings of the video wall, which /videowall has too. -->
+    <!-- The styles of the video wall controls (videowallPanel.js), which /videowall has too. -->
     <link rel="stylesheet" href="/videowall.css" />
   </head>
   <body>
@@ -26,59 +27,14 @@
       The page for a tablet, as the design of the console has it (design/mockups/01 and 02): a top bar
       that is always there, a rail of the groups with what each shows right now, the looks of a mood
       with a strip of what every lane does, a tray to vary the look with, and at the foot the parts of
-      the evening. The ids that start with t- are those of tabletParts.js, which draws the tempo, the
-      masters, the links and the lamps of the room, and tabletRail.js draws the rail.
+      the evening. The ids that start with t- are those of tabletParts.js, which draws the lamps of the
+      room, and tabletRail.js draws the rail.
     -->
-    <div class="app tablet" id="console">
-      <header class="top t-top">
-        <!-- A small menu with the keys that are seldom needed. Its key has a dot for each link. -->
-        <div class="t-menu-wrap">
-          <button
-            type="button"
-            class="menu"
-            id="t-menu-key"
-            aria-expanded="false"
-            aria-controls="t-menu"
-            aria-label="Menu"
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" /></svg>
-            <span class="dots" aria-hidden="true">
-              <i id="t-dot-bridge"></i><i id="t-dot-device"></i><i id="t-dot-hass" hidden></i>
-            </span>
-          </button>
-          <div class="t-menu" id="t-menu" hidden>
-            <a class="t-main-link" href="/deck">Main view</a>
-            <!-- Full screen without the bar of the browser. Hidden where the browser cannot, or when the app already is. -->
-            <button type="button" class="t-main-link t-full" id="t-full" aria-pressed="false" hidden>
-              Fullscreen
-            </button>
-            <ul class="t-links" aria-label="Connection">
-              <li class="link" id="t-link-bridge" data-state="unknown">
-                <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
-              </li>
-              <li class="link" id="t-link-device" data-state="unknown">
-                <span class="lamp" aria-hidden="true"></span><span class="link-text">LR512</span>
-              </li>
-              <li class="link" id="t-link-hass" data-state="unknown" hidden>
-                <span class="lamp" aria-hidden="true"></span><span class="link-text">Home Assistant</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-        <div class="tempo">
-          <div class="col" style="gap: 2px">
-            <span class="bpm num" id="t-bpm"></span>
-            <span class="src" id="t-src"></span>
-          </div>
-          <div class="beats" id="t-beats" aria-hidden="true"><i class="one"></i><i></i><i></i><i></i></div>
-        </div>
-        <button type="button" class="key c t-tap" id="t-tap">Tap</button>
-        <div class="t-master" id="t-master"></div>
-        <fieldset class="spd t-speed" id="t-speed" aria-label="Master speed"></fieldset>
-        <button type="button" class="bo t-blackout" id="t-blackout" aria-pressed="false">
-          Blackout
-        </button>
-      </header>
+    <div class="app page tablet" id="console">
+      <!--
+        The top bar and the menu sheet are put here first by the page (topbar.js and menu.js): the same
+        top bar as every setup page has, with a Menu key in place of the Live key.
+      -->
 
       <div class="t-body" id="t-body">
         <!-- The groups, each with what it shows right now. -->

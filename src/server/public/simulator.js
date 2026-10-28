@@ -1,5 +1,7 @@
 // The simulator: the spiders drawn in 3D from the bytes lightdeck sends them, with a
-// bridge or without one. It is a page of its own and does not use the shell. It reads the
+// bridge or without one. It is a page of its own: it takes the shell only for the top bar of the
+// console (a Live key back to the tablet page, the tempo, the masters and Blackout, mounted by
+// `start()` below) and for its notice, and keeps its own picture of the state. It reads the
 // fixtures from /api/state and then the `fixture` and `frame` events of /api/events, which
 // carry the bytes of each fixture as they go out (the master and the blackout are in them
 // already), and works out what the fixture would show from those bytes alone. So what is
@@ -38,6 +40,11 @@
 // The fixtures can be moved and turned by hand, with the gizmo of three.js, and mounted with
 // the lights down, up, forward or back. Where they stand is kept per fixture in this browser
 // (localStorage), not on the server.
+//
+// The controls lie over the picture (design mockup 12, in simulator.html and simulator.css):
+// fixture and tool at the left, the aim of the lights and the view at the right, the numbers and
+// the settings along the foot. A key that is on says so with `aria-pressed`, and the sliders are
+// the console faders of ui.js. The notice (`#note`) lies over the foot and takes no room.
 
 import * as THREE from 'three';
 import { createCalibration } from '/calibrate.js';
@@ -52,6 +59,7 @@ import {
   railSpan,
   railsOf,
 } from '/roomLamps.js';
+import { start as startShell } from '/shell.js';
 import { createSmoke } from '/smoke.js';
 import { cleanSmoke, SMOKE_RANGES } from '/smokeSim.js';
 import {
@@ -63,6 +71,8 @@ import {
   strobeOpen,
   tiltAngle,
 } from '/spiderPose.js';
+import { mountTopBar } from '/topbar.js';
+import { fader, makeDismissible, setNotice } from '/ui.js';
 
 const STORE = 'lightdeck.simulator.v1';
 const DEFAULT_HAZE = 60;
@@ -97,6 +107,8 @@ const SNAP_DEGREES = 5;
 const CLICK_SLOP = 5;
 
 const $ = (id) => document.getElementById(id);
+const note = $('note');
+makeDismissible(note);
 
 // ---- what this browser keeps ----
 
@@ -168,10 +180,7 @@ const room = createRoom({
   scene,
   renderer,
   onLoaded(error) {
-    if (error) {
-      $('note').textContent = error.message;
-      $('note').hidden = false;
-    }
+    if (error) setNotice(note, error.message);
   },
 });
 let photoView = null;
@@ -194,10 +203,10 @@ function showRoomSettings() {
   $('room-dark').setAttribute('aria-pressed', String(roomDark));
   $('room-eye').disabled = !on;
   $('room-eye').setAttribute('aria-pressed', String(photoView !== null));
-  $('room-light').disabled = !on;
+  roomLightBar.refresh();
+  roomLightBar.input.disabled = !on;
+  roomLightBar.classList.toggle('is-disabled', !on);
   $('room-ceiling').disabled = !on;
-  $('room-light').value = String(roomLight);
-  $('room-light-value').textContent = `${roomLight}%`;
   $('room-ceiling').value = String(ceiling);
 }
 
@@ -648,10 +657,10 @@ function makeRail(fixture, rail, placement) {
  * which says where the front points, comes on top of it and is left as it is.
  */
 const MOUNTS = [
-  { label: 'Lights down', degrees: 180 },
-  { label: 'Lights forward', degrees: 90 },
-  { label: 'Lights up', degrees: 0 },
-  { label: 'Lights back', degrees: 270 },
+  { label: 'Down', degrees: 180 },
+  { label: 'Forward', degrees: 90 },
+  { label: 'Up', degrees: 0 },
+  { label: 'Back', degrees: 270 },
 ];
 const UP = new THREE.Vector3(0, 1, 0);
 const ALONG_BARS = new THREE.Vector3(1, 0, 0);
@@ -751,6 +760,7 @@ async function fetchState() {
 function setLamp(id, state, text) {
   const item = $(id);
   item.dataset.state = state;
+  item.querySelector('.ldot').dataset.state = state;
   item.querySelector('.link-text').textContent = text;
 }
 function showBridge(state, status) {
@@ -891,7 +901,7 @@ function showLampKeys() {
 function showPosition() {
   const lamp = selected?.kind === 'lamp';
   // For a lamp the first field is how far along its rail it hangs, and the others do not apply.
-  document.querySelector('label[for="pos-x"]').textContent = lamp ? 'Along the rail' : 'Across';
+  document.querySelector('label[for="pos-x"]').textContent = lamp ? 'Along rail m' : 'Across m';
   for (const id of ['pos-y', 'pos-z']) {
     $(id).style.visibility = lamp ? 'hidden' : 'visible';
     document.querySelector(`label[for="${id}"]`).style.visibility = lamp ? 'hidden' : 'visible';
@@ -1005,13 +1015,19 @@ $('room-dark').addEventListener('click', () => {
   applyDark();
   showRoomSettings();
 });
-$('room-light').addEventListener('input', () => {
-  roomLight = Number($('room-light').value);
-  store.roomLight = roomLight;
-  saveStore();
-  room.setBrightness(roomLight / 100);
-  showRoomSettings();
+const roomLightBar = fader({
+  id: 'room-light',
+  label: 'Room light',
+  step: 5,
+  read: () => roomLight,
+  write(value) {
+    roomLight = value;
+    store.roomLight = roomLight;
+    saveStore();
+    room.setBrightness(roomLight / 100);
+  },
 });
+$('room-light-holder').append(roomLightBar);
 $('room-ceiling').addEventListener('change', () => {
   const value = Number($('room-ceiling').value);
   if (Number.isFinite(value) && value >= 2 && value <= 4) {
@@ -1101,16 +1117,21 @@ $('calibrate-toggle').addEventListener('click', () => {
 
 // ---- the settings of the look ----
 
-function showSettings() {
-  $('haze').value = String(haze);
-  $('haze-value').textContent = `${haze}%`;
-}
-$('haze').addEventListener('input', () => {
-  haze = Number($('haze').value);
-  store.haze = haze;
-  saveStore();
-  showSettings();
+const hazeBar = fader({
+  id: 'haze',
+  label: 'Haze',
+  step: 5,
+  read: () => haze,
+  write(value) {
+    haze = value;
+    store.haze = haze;
+    saveStore();
+  },
 });
+$('haze-holder').append(hazeBar);
+function showSettings() {
+  hazeBar.refresh();
+}
 
 // ---- the smoke machine ----
 
@@ -1131,12 +1152,7 @@ function showSmoke() {
   $('smoke-toggle').setAttribute('aria-pressed', String(smoke.present));
   $('smoke').hidden = !smoke.present;
   $('smoke-on').setAttribute('aria-pressed', String(smoke.emitting));
-  const settings = smoke.settings;
-  for (const [name, range] of Object.entries(SMOKE_RANGES)) {
-    const field = $(`smoke-${name}`);
-    if (document.activeElement !== field) field.value = String(settings[name]);
-    $(`smoke-${name}-value`).textContent = `${settings[name]}${range.unit}`;
-  }
+  for (const bar of smokeBars) bar.refresh();
 }
 
 /** Puts the smoke machine in the scene, where it was last put, or takes it out. */
@@ -1158,28 +1174,25 @@ function setMachine(on) {
   showSmoke();
 }
 
-for (const [name, range] of Object.entries(SMOKE_RANGES)) {
-  const label = document.createElement('label');
-  label.htmlFor = `smoke-${name}`;
-  label.append(`${range.label} `);
-  const value = document.createElement('output');
-  value.id = `smoke-${name}-value`;
-  label.append(value);
-  const input = document.createElement('input');
-  input.type = 'range';
-  input.id = `smoke-${name}`;
-  input.min = String(range.min);
-  input.max = String(range.max);
-  input.step = String(range.step);
-  input.addEventListener('input', () => {
-    smoke.set({ [name]: Number(input.value) });
-    store.smoke ??= {};
-    store.smoke.settings = smoke.settings;
-    saveStore();
-    showSmoke();
-  });
-  $('smoke-settings').append(label, input);
-}
+/** One console fader per setting of the machine, in the order of SMOKE_RANGES. */
+const smokeBars = Object.entries(SMOKE_RANGES).map(([name, range]) =>
+  fader({
+    id: `smoke-${name}`,
+    label: range.label,
+    min: range.min,
+    max: range.max,
+    step: range.step,
+    format: (value) => `${value}${range.unit}`,
+    read: () => smoke.settings[name],
+    write(value) {
+      smoke.set({ [name]: value });
+      store.smoke ??= {};
+      store.smoke.settings = smoke.settings;
+      saveStore();
+    },
+  }),
+);
+$('smoke-settings').append(...smokeBars);
 $('smoke-toggle').addEventListener('click', () => setMachine(!smoke.present));
 $('smoke-on').addEventListener('click', () => {
   smoke.setEmitting(!smoke.emitting);
@@ -1307,13 +1320,15 @@ function drawLamp(sim) {
 }
 
 function resize() {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
+  // The picture fills what is under the top bar, not the window.
+  const width = $('view').clientWidth;
+  const height = $('view').clientHeight;
+  if (width === 0 || height === 0) return;
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
 }
-window.addEventListener('resize', resize);
+new ResizeObserver(resize).observe($('view'));
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -1322,14 +1337,10 @@ function frame(now) {
   let program = false;
   for (const sim of sims) program = drawSpider(sim, dt, now / 1000) || program;
   for (const sim of lampSims) drawLamp(sim);
-  const note = $('note');
   const text = program
     ? 'A spider runs a program of its own. The simulator only draws the lens bytes, which are not what the fixture shows then.'
     : '';
-  if (note.textContent !== text) {
-    note.textContent = text;
-    note.hidden = text === '';
-  }
+  if (note.textContent !== text) setNotice(note, text);
   if (smoke.present) {
     smoke.update(dt, {
       lenses: shiningLenses(),
@@ -1344,6 +1355,10 @@ function frame(now) {
 // ---- start ----
 
 async function start() {
+  // The top bar of the console, with a Live key back to the tablet page. Without lightdeck the
+  // shell says so and gives nothing, and this page says it too, below.
+  const shell = await startShell({ page: 'simulator', bare: true });
+  if (shell) mountTopBar(shell, { left: 'live' });
   resize();
   showSettings();
   room.setBrightness(roomLight / 100);
@@ -1373,9 +1388,7 @@ async function start() {
   try {
     state = await fetchState();
   } catch {
-    $('note').textContent =
-      'This page cannot reach lightdeck. Check that it is running, then reload.';
-    $('note').hidden = false;
+    setNotice(note, 'This page cannot reach lightdeck. Check that it is running, then reload.');
     setLamp('link-stream', 'down', 'Lightdeck lost');
     return;
   }
@@ -1424,12 +1437,11 @@ async function start() {
   if (Number.isFinite(warm) && smoke.present) smoke.advance(warm, smokeBounds());
   showSmoke();
   if (sims.length === 0 && railSims.length === 0) {
-    $('note').textContent = 'There is nothing in this rig to draw.';
-    $('note').hidden = false;
+    setNotice(note, 'There is nothing in this rig to draw.');
   } else {
     select(sims[0] ?? railSims[0]);
   }
-  setLamp('link-stream', 'unknown', 'Lightdeck');
+  // The stream may be up already (the page was shown while the shell started): its lamp stands.
   listen();
   requestAnimationFrame(frame);
 }

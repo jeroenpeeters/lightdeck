@@ -1,10 +1,19 @@
 // The shell of every page of the console. Plain browser JavaScript, no build step.
 //
 // A page is about one fixture, or about the show, as the deck is. Around it the shell
-// puts what belongs to no fixture: the way to the other pages, the tempo, the blackout,
-// the level of the master and of the master speed, and the state of the link to the LR512. It also
+// puts what belongs to no fixture: the top bar (topbar.js: a Live key back to the live page, the tempo, the
+// master, the master speed and the blackout), the notice, and the state of the link to the LR512. It also
 // does the talking to the server, so that a page only has to say what changes and to draw
 // what it is told.
+//
+// The top bar is the same on every page and is put first in the element with the class `app` (the body when
+// there is none). Where the tempo comes from (By hand, Rekordbox, Idle in breakdown), its nudge keys and
+// what rekordbox says are in the menu sheet of the tablet page (menu.js); a page that wants them asks the
+// shell for them below. A `bare` page (the tablet page) mounts the top bar itself with its own key, `menu`,
+// and gets nothing from the shell on screen but the notice.
+//
+// The notice lies over the foot of the screen, in the element `#notices` (a `.notices-stack`) when the page
+// has one, else in one that the shell makes. A click on it clears it, and it stays away while it says the same.
 //
 // The master is shown here and set on the deck. It is shown on every page, because on
 // the page of a fixture it is why less goes out than what is set. The same goes for the
@@ -16,9 +25,9 @@
 //   const shell = await start();          null when the page cannot be shown
 //   const shell = await start({ page: 'deck' });        for a page about no fixture, such as
 //                                          the deck, the palettes or the video wall
-//   const shell = await start({ page: 'tablet', bare: true });   a page that draws its own
-//                                          controls: the shell then shows no bar and no tempo
-//                                          desk, and a page asks for what it needs below
+//   const shell = await start({ page: 'tablet', bare: true });   a page that mounts its own top bar
+//                                          (`mountTopBar(shell, { left: 'menu' })`): the shell then
+//                                          shows no bar, and a page asks for what it needs below
 //   shell.fixture                          the fixture as /api/state describes it
 //   shell.fixtures                         every fixture of the console
 //   shell.show                             the show: its file, what is wrong with it, and
@@ -66,89 +75,37 @@
 //   shell.rates                            the speeds the master speed can have
 //   shell.tempo.rate                       the master speed
 //   shell.setRate(rate)                    set the master speed, for every effect
-//   shell.tap()                            a tap on the beat, as the Tap key of the desk makes it
+//   shell.tap()                            a tap on the beat, as the Tap key of the bar makes it
+//   shell.setBpm(bpm)                      the tempo by hand (takes the tempo back from Rekordbox)
+//   shell.nudgeTempo(step)                 the tempo by hand, one bpm up or down (so, 1 or -1)
+//   shell.tempoLimits                      { min, max } of the bpm
+//   shell.setSource('manual' | 'rekordbox')   who sets the tempo
+//   shell.setBreakdown(on)                 whether the effects idle while rekordbox is in a breakdown
+//   shell.rkbxLine                         what rekordbox says in a line, { text, state }: state is
+//                                          off, down, silent, music or beat
 //   shell.setBlackout(on)                  switch the blackout, for every fixture
 //   shell.links                            the state of the link lamps: { bridge, device, hass }, each
 //                                          { state: 'ok' | 'down' | 'unknown' | 'simulated', text }.
 //                                          `hass` is there only when a fixture is driven by
 //                                          Home Assistant
 //   shell.on('status', () => ...)          the bridge or the LR512 came or went
+//   shell.bar                              the top bar of the page ({ root, key, ... }, see topbar.js), or
+//                                          null for a bare page, which mounts its own
 //
 // And for a page that shows the master:
 //
-//   masterPercent(level)                   the master in percent, as the shell shows it
+//   masterPercent(level)                   the master in percent, as the bar shows it
 
 import { changesOnTheWay, merge } from './changes.js';
-import { $, element, makeDismissible, percent, setNotice, slider, speedName } from './ui.js';
+import { mountTopBar } from './topbar.js';
+import { $, element, makeDismissible, masterPercent, setNotice } from './ui.js';
 
-const BEATS_PER_BAR = 4;
+export { masterPercent };
+
 const RETRY_MS = 600;
 /** Taps further apart than this start a new count. */
 const TAP_GAP_MS = 2000;
 const TAPS_KEPT = 8;
-
-const FRAME = `
-  <header class="topbar">
-    <p class="brand">Lightdeck</p>
-    <nav class="pages" id="pages" aria-label="Pages"></nav>
-    <p class="master-level" id="master-level" data-full="true">
-      <span class="master-name">Master</span>
-      <span class="master-value" id="master-value"></span>
-    </p>
-    <p class="master-level" id="speed-level" data-full="true">
-      <span class="master-name">Speed</span>
-      <span class="master-value" id="speed-value"></span>
-    </p>
-    <ul class="links" id="links" aria-label="Connection">
-      <li class="link" id="link-bridge" data-state="unknown">
-        <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
-      </li>
-      <li class="link" id="link-device" data-state="unknown">
-        <span class="lamp" aria-hidden="true"></span><span class="link-text">LR512</span>
-      </li>
-      <li class="link" id="link-hass" data-state="unknown" hidden>
-        <span class="lamp" aria-hidden="true"></span><span class="link-text">Home Assistant</span>
-      </li>
-    </ul>
-    <button type="button" class="blackout" id="blackout" aria-pressed="false">Blackout</button>
-  </header>
-
-  <section class="panel desk" aria-label="Tempo">
-    <div class="tempo-source">
-      <fieldset class="source-keys" aria-label="Who sets the tempo">
-        <button type="button" class="pick" id="source-manual" aria-pressed="true">By hand</button>
-        <button type="button" class="pick" id="source-rekordbox" aria-pressed="false">Rekordbox</button>
-      </fieldset>
-      <button type="button" class="pick" id="breakdown" aria-pressed="false">Idle in breakdown</button>
-      <p class="heard" id="heard" data-state="off"></p>
-    </div>
-    <div class="sliders" id="tempo-sliders"></div>
-    <div class="desk-tap">
-      <p class="hint" id="tap-hint">Your last tap is beat one of the bar.</p>
-      <div class="tap-row" id="tap-row">
-        <button type="button" class="key nudge" id="tempo-down" aria-label="Tempo down by one">−1</button>
-        <button type="button" class="key tap" id="tap">Tap the beat</button>
-        <button type="button" class="key nudge" id="tempo-up" aria-label="Tempo up by one">+1</button>
-        <ol class="beats" id="beats" aria-hidden="true">
-          <li></li>
-          <li></li>
-          <li></li>
-          <li></li>
-        </ol>
-      </div>
-    </div>
-  </section>
-
-  <p class="notice" id="notice" role="status" hidden></p>
-`;
-
-/**
- * The master in percent. Only a master at 0 is shown as 0: anything above it lets the
- * fixtures show, however little.
- */
-export function masterPercent(level) {
-  return level > 0 ? Math.max(1, percent(level)) : 0;
-}
 
 function alarm(text) {
   const notice = $('notice');
@@ -163,16 +120,21 @@ function readTempo(from) {
 }
 
 export async function start({ page = 'fixture', bare = false } = {}) {
-  const frame = document.createElement('template');
-  frame.innerHTML = FRAME;
-  document.body.prepend(frame.content);
-  // A bare page draws its own controls: the bar and the tempo desk stay there, out of sight, so
-  // that nothing that works on them has to know. The notice stays, for the page to put where it wants.
-  if (bare) {
-    document.body.classList.add('bare-shell');
-    // Over the keys of a tablet a notice has to be able to go: a click on it clears it.
-    makeDismissible($('notice'));
+  // The notice lies over the foot of the screen, in a stack of its own that a page may have made.
+  const host = document.querySelector('.app') ?? document.body;
+  let stack = $('notices');
+  if (!stack) {
+    stack = element('div', 'notices-stack');
+    stack.id = 'notices';
+    host.append(stack);
   }
+  const notice = element('p', 'notice');
+  notice.id = 'notice';
+  notice.setAttribute('role', 'status');
+  notice.hidden = true;
+  stack.prepend(notice);
+  // Over the keys a notice has to be able to go: a click on it clears it.
+  makeDismissible(notice);
 
   const id =
     page === 'fixture'
@@ -237,26 +199,10 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     for (const handler of handlers[name]) handler(message);
   };
 
-  const pages = [
-    { name: 'Deck', href: '/deck', here: page === 'deck' },
-    { name: 'Palettes', href: '/palettes', here: page === 'palettes' },
-    { name: 'Tablet', href: '/tablet', here: page === 'tablet' },
-    { name: 'Video wall', href: '/videowall', here: page === 'videowall' },
-    ...initial.fixtures.map((each) => ({
-      name: each.label,
-      href: `/fixtures/${each.id}`,
-      here: each.id === id,
-    })),
-    { name: 'Simulator', href: '/simulator', here: false },
-  ];
-  for (const each of pages) {
-    const link = element('a', 'page-link', each.name);
-    link.href = each.href;
-    if (each.here) link.setAttribute('aria-current', 'page');
-    $('pages').append(link);
-  }
   if (page === 'fixture' && !fixture) {
-    alarm(`There is no fixture called "${id}". Choose one above.`);
+    alarm(
+      `There is no fixture called "${id}". Go back to the live page and choose one in the menu.`,
+    );
     return null;
   }
   if (fixture) {
@@ -503,7 +449,6 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     });
     on('status', (message) => {
       status = message;
-      renderLinks();
       renderNotice();
       tell('status');
     });
@@ -529,20 +474,6 @@ export async function start({ page = 'fixture', bare = false } = {}) {
 
   function beatNow(now = performance.now()) {
     return beatBase.beat + ((now - beatBase.at) / 60_000) * tempo.bpm;
-  }
-
-  let litBeat = -1;
-  function drawBeat() {
-    const beat = Math.floor(beatNow());
-    // While the tempo does not run, the effects are idle and so is the beat.
-    const index = tempo.running ? ((beat % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR : -1;
-    if (index !== litBeat) {
-      litBeat = index;
-      [...$('beats').children].forEach((lamp, i) => {
-        lamp.dataset.on = String(i === index);
-      });
-    }
-    requestAnimationFrame(drawBeat);
   }
 
   function setTempo(patch) {
@@ -602,34 +533,15 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     tell('change');
   }
 
-  // ---- building ----
+  // ---- the tempo: the bar and the menu ask for these ----
 
-  const tempoRow = slider({
-    id: 's-bpm',
-    label: 'Tempo in beats per minute',
-    min: limits.min,
-    max: limits.max,
-    read: () => Math.round(tempo.bpm),
-    write: (number) => setTempo(byHand({ bpm: number })),
-  });
-  $('tempo-sliders').append(tempoRow);
+  function setBpm(bpm) {
+    setTempo(byHand({ bpm: Math.min(limits.max, Math.max(limits.min, Math.round(bpm))) }));
+  }
 
-  // A tap counts when the finger lands, not when it lifts. The click covers the keyboard.
-  $('tap').addEventListener('pointerdown', (event) => {
-    if (event.button === 0) tap();
-  });
-  $('tap').addEventListener('click', (event) => {
-    if (event.detail === 0) tap();
-  });
-  $('source-manual').addEventListener('click', () => {
-    if (tempo.source !== 'manual') setTempo({ source: 'manual' });
-  });
-  $('source-rekordbox').addEventListener('click', () => {
-    if (tempo.source !== 'rekordbox') setTempo({ source: 'rekordbox' });
-  });
-  $('breakdown').addEventListener('click', () => setBreakdown(!rkbx.breakdown.enabled));
-  $('tempo-down').addEventListener('click', () => nudgeTempo(-1));
-  $('tempo-up').addEventListener('click', () => nudgeTempo(1));
+  function setSource(source) {
+    if (tempo.source !== source) setTempo({ source });
+  }
 
   /** The speed an effect runs at, counted the way the server does. */
   function speed(own = 1) {
@@ -645,7 +557,6 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     render();
     tell('change');
   }
-  $('blackout').addEventListener('click', () => setBlackout(!blackout));
 
   // ---- drawing ----
 
@@ -680,19 +591,6 @@ export async function start({ page = 'fixture', bare = false } = {}) {
                   : 'Home Assistant down',
           };
     return { bridge, device, hass };
-  }
-
-  function renderLinks() {
-    const { bridge, device, hass } = linkStates();
-    $('link-bridge').dataset.state = bridge.state;
-    $('link-bridge').querySelector('.link-text').textContent = bridge.text;
-    $('link-device').dataset.state = device.state;
-    $('link-device').querySelector('.link-text').textContent = device.text;
-    $('link-hass').hidden = hass === undefined;
-    if (hass) {
-      $('link-hass').dataset.state = hass.state;
-      $('link-hass').querySelector('.link-text').textContent = hass.text;
-    }
   }
 
   /** Why nothing reaches this fixture where it is patched, or nothing when it does. */
@@ -765,22 +663,6 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     return { text: `Rekordbox${bpm}, no beats`, state: 'music' };
   }
 
-  function renderSource() {
-    $('source-manual').setAttribute('aria-pressed', String(tempo.source === 'manual'));
-    $('source-rekordbox').setAttribute('aria-pressed', String(tempo.source === 'rekordbox'));
-    $('breakdown').setAttribute('aria-pressed', String(rkbx.breakdown.enabled));
-    const { text, state } = rkbxLine();
-    const line = $('heard');
-    line.textContent = text;
-    line.dataset.state = state;
-    // Rekordbox sends the beat, so there is nothing to tap.
-    const tapping = tempo.source !== 'rekordbox';
-    $('tap').hidden = !tapping;
-    $('tap-hint').hidden = !tapping;
-    $('tap-row').dataset.tap = String(tapping);
-    $('beats').dataset.idle = String(!tempo.running);
-  }
-
   function renderNotice() {
     const notes = pageNotes();
     const patch = watched.map(patchNote).find((note) => note !== '');
@@ -825,39 +707,16 @@ export async function start({ page = 'fixture', bare = false } = {}) {
         text = 'Home Assistant is simulated: no real lamp is touched by what you set here.';
       }
     }
-    const notice = $('notice');
     notice.dataset.level = level;
     setNotice(notice, text);
   }
 
+  /** What the shell itself draws is the notice; the bar and the menu draw from the events. */
   function render() {
-    tempoRow.refresh();
-    renderSource();
-    $('speed-level').dataset.full = String(tempo.rate === 1);
-    $('speed-value').textContent = speedName(tempo.rate);
-    $('blackout').setAttribute('aria-pressed', String(blackout));
-    $('blackout').textContent = blackout ? 'Lift blackout' : 'Blackout';
-    const level = masterPercent(master);
-    $('master-level').dataset.full = String(level === 100);
-    $('master-value').textContent = `${level}%`;
-    renderLinks();
     renderNotice();
   }
 
-  render();
-  if (!document.hidden) listen();
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) hush();
-    else listen();
-  });
-  // A page that the browser keeps for the way back is not on screen either.
-  window.addEventListener('pagehide', hush);
-  window.addEventListener('pageshow', () => {
-    if (!document.hidden) listen();
-  });
-  requestAnimationFrame(drawBeat);
-
-  return {
+  const api = {
     fixture,
     fixtures: initial.fixtures,
     send: sendFixture,
@@ -897,6 +756,14 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     },
     setMaster,
     tap,
+    setBpm,
+    nudgeTempo,
+    tempoLimits: { min: limits.min, max: limits.max },
+    setSource,
+    setBreakdown,
+    get rkbxLine() {
+      return rkbxLine();
+    },
     setBlackout,
     get links() {
       return linkStates();
@@ -906,5 +773,23 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     get tempo() {
       return { ...tempo };
     },
+    bar: null,
   };
+
+  // Every page that is not bare has the top bar, with a key back to the live page.
+  if (!bare) api.bar = mountTopBar(api, { left: 'live', host });
+
+  render();
+  if (!document.hidden) listen();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hush();
+    else listen();
+  });
+  // A page that the browser keeps for the way back is not on screen either.
+  window.addEventListener('pagehide', hush);
+  window.addEventListener('pageshow', () => {
+    if (!document.hidden) listen();
+  });
+
+  return api;
 }

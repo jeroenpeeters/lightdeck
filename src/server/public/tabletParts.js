@@ -1,27 +1,16 @@
-// The parts of the tablet page (tablet.js) that are not its own: the notice, the tempo, the masters,
-// the blackout, the link dots and the controls of the lamps of the room, and the keys of looks and
-// the chips of the tray (scenes and palettes). They draw into elements with the ids of `tablet.html`,
-// in the classes of lightdeck.css. Plain browser JavaScript.
+// The parts of the tablet page (tablet.js) that are not its own: the notice, the controls of the lamps of
+// the room, and the keys of looks and the chips of the tray (scenes and palettes). They draw into
+// elements with the ids of `tablet.html`, in the classes of lightdeck.css. Plain browser JavaScript. (The
+// top bar, with the tempo, the masters, the blackout and the link dots, is topbar.js, and the menu sheet
+// is menu.js: both are shared with the other pages.)
 //
 // A page calls `init(shell)` once, builds what it uses, and calls the `render` functions when the
 // shell says the state changed. A press is asked once through `ask`: when it does not reach
 // lightdeck the page says so and the operator presses again.
 
-import { masterPercent } from './shell.js';
-import {
-  drawChip,
-  drawLook,
-  fader,
-  makeChip,
-  makeLook,
-  movesOf,
-  speedPick,
-  stateOf,
-} from './tabletKit.js';
+import { drawChip, drawLook, fader, makeChip, makeLook, movesOf, stateOf } from './tabletKit.js';
 import { chipMarks, splitNumber } from './tabletLogic.js';
 import { $, element, makeDismissible, sentence, setNotice, speedName } from './ui.js';
-
-const BEATS_PER_BAR = 4;
 
 let shell;
 /** What the server answered to what could not be done. */
@@ -180,148 +169,6 @@ export function laneWords(group, type) {
     changed,
     colours: type === 'colour' ? item?.colours : undefined,
   };
-}
-
-// ---- the top row ----
-
-/**
- * The links stand in the menu, with their words, and the key of the menu has a dot for each of them
- * without words: green when it is fine, red when it is down, hollow when it is made up (simulated) or
- * not asked for. A link that is not there (no bridge asked for) or made up is not wrong.
- */
-export function renderLinks() {
-  const { bridge, device, hass } = shell.links;
-  const links = [
-    ['t-link-bridge', 't-dot-bridge', bridge],
-    ['t-link-device', 't-dot-device', device],
-  ];
-  // Home Assistant has a lamp only when a fixture is driven by it.
-  $('t-link-hass').hidden = hass === undefined;
-  $('t-dot-hass').hidden = hass === undefined;
-  if (hass) links.push(['t-link-hass', 't-dot-hass', hass]);
-  for (const [id, dot, link] of links) {
-    $(id).dataset.state = link.state;
-    $(id).querySelector('.link-text').textContent = link.text;
-    $(dot).className = link.state === 'down' ? 'lost' : link.state === 'ok' ? '' : 'sim';
-  }
-  const wrong = links.some(([, , link]) => link.state === 'down');
-  $('t-menu-key').setAttribute(
-    'aria-label',
-    wrong ? 'Menu, something is not connected' : 'Menu, everything is connected',
-  );
-}
-
-/**
- * The small menu in the top row: the way to the other pages, full screen and the lamps of the links.
- * It lies over the page and takes no room, so no key moves when it opens. A press outside it, on
- * one of its keys or on Escape closes it.
- */
-export function buildMenu() {
-  const key = $('t-menu-key');
-  const menu = $('t-menu');
-  const set = (open) => {
-    menu.hidden = !open;
-    key.setAttribute('aria-expanded', String(open));
-  };
-  key.addEventListener('click', () => set(menu.hidden));
-  document.addEventListener('pointerdown', (event) => {
-    if (!menu.hidden && !menu.contains(event.target) && !key.contains(event.target)) set(false);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') set(false);
-  });
-  // Full screen does its work on the press, and the menu may go.
-  $('t-full').addEventListener('click', () => set(false));
-}
-
-/**
- * Full screen without the bar of the browser. A browser only installs a page as an app on https or
- * on localhost, so over `http://192.168...` the home screen only gets a shortcut that keeps the bar.
- * Full screen is allowed on any address, but only on a press: so the page has a key for it. It is
- * not there where the browser has none, and not when the page already is an app.
- */
-export function buildFullscreen() {
-  const key = $('t-full');
-  const root = document.documentElement;
-  const app =
-    window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches ||
-    // The tablet app of lightdeck (android-tablet/) is already full screen: it says so in its agent.
-    navigator.userAgent.includes('LightdeckTablet');
-  if (!root.requestFullscreen || app) return;
-  key.hidden = false;
-  const show = () => key.setAttribute('aria-pressed', String(document.fullscreenElement !== null));
-  key.addEventListener('click', () => {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else root.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
-  });
-  document.addEventListener('fullscreenchange', show);
-  show();
-}
-
-// ---- the tempo, the masters and the blackout ----
-
-let master;
-let showSpeed = () => {};
-
-export function buildMaster() {
-  master = fader({
-    id: 't-master-level',
-    label: 'Master',
-    read: () => masterPercent(shell.master),
-    write: (number) => shell.setMaster(number / 100),
-  });
-  $('t-master').append(master);
-  showSpeed = speedPick($('t-speed'), shell.rates.map(speedName), shell.rates, shell.setRate);
-}
-
-export function buildTempo() {
-  // A tap counts when the finger lands, not when it lifts. The click covers the keyboard.
-  const pad = $('t-tap');
-  pad.addEventListener('pointerdown', (event) => {
-    if (event.button === 0) shell.tap();
-  });
-  pad.addEventListener('click', (event) => {
-    if (event.detail === 0) shell.tap();
-  });
-  $('t-blackout').addEventListener('click', () => shell.setBlackout(!shell.blackout));
-}
-
-/** The masters, the tempo and the blackout moved, here or on another screen. */
-export function renderChange() {
-  master.refresh();
-  showSpeed(shell.tempo.rate);
-  $('t-bpm').textContent = String(Math.round(shell.tempo.bpm));
-  const rekordbox = shell.tempo.source === 'rekordbox';
-  $('t-src').textContent = rekordbox ? 'Rekordbox' : 'By hand';
-  // Rekordbox sends the beat, so there is nothing to tap. The key stays where it is, and rests.
-  const tap = $('t-tap');
-  tap.disabled = rekordbox;
-  tap.classList.toggle('is-disabled', rekordbox);
-  const on = shell.blackout;
-  const key = $('t-blackout');
-  key.setAttribute('aria-pressed', String(on));
-  key.classList.toggle('is-on', on);
-  key.textContent = on ? 'Lift blackout' : 'Blackout';
-}
-
-let litBeat = -1;
-/** A lamp for each beat of the bar, as the tempo desk of the shell does it. */
-function drawBeat() {
-  const { running } = shell.tempo;
-  const index = running
-    ? ((Math.floor(shell.beat()) % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR
-    : -1;
-  if (index !== litBeat) {
-    litBeat = index;
-    [...$('t-beats').children].forEach((lamp, i) => {
-      lamp.classList.toggle('lit', i === index);
-    });
-  }
-  requestAnimationFrame(drawBeat);
-}
-
-export function startBeat() {
-  requestAnimationFrame(drawBeat);
 }
 
 // ---- the lamps of the room ----

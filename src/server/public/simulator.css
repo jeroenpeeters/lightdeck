@@ -1,371 +1,425 @@
 /*
- * The simulator: a canvas over the whole window with the controls laid over it, so that
- * nothing takes room from the picture and nothing in the picture moves when a note comes.
- * Colours and sizes are the tokens of styles.css.
+ * The simulator (design mockup 12): the top bar of the console, and under it the picture with the controls
+ * laid over it, so that nothing takes room from the picture and nothing in the picture moves when a note
+ * comes. Only what is its own is here: the base, the top bar, the keys, the faders, the notices and the
+ * fields come from lightdeck.css and chrome.css. Colours are the tokens.
+ *
+ *   .view     what is left under the top bar; the canvas fills it
+ *   .tb       a panel over the picture: .tb-left (fixture, tool), .tb-right (aim, view), .tb-lamps (the
+ *             lamps of a chosen rail), .tb-links (the lamps for the connections) and .tb-bottom (the numbers)
+ *   .dock     the foot: the notices, the Calibrate and Smoke panels and the bottom bar, one over the other
+ *
+ * A key that is on says so with aria-pressed (white, where you are), and the key of the smoke machine
+ * that is in the scene is amber. Neither changes the size of a key.
  */
 
-html,
-body {
-  height: 100%;
+.sim {
+  --edge: 12px;
+  --left-w: 156px;
+  --right-w: 172px;
 }
-body {
-  margin: 0;
-  padding: 0;
+.view {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: hidden;
+  background: radial-gradient(ellipse at 50% 30%, var(--s2) 0%, var(--ground) 70%);
 }
-
 #stage {
-  position: fixed;
+  position: absolute;
   inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
   touch-action: none;
 }
 
-.tools {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+/* ---- the panels over the picture ---- */
+
+.tb {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--s1) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.tb .lbl {
+  padding: 2px 4px 4px;
+}
+.tb .lbl:not(:first-child) {
+  padding-top: 10px;
+}
+.tb-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tb-left,
+.tb-right {
+  top: var(--edge);
+  scrollbar-width: none;
+}
+.tb-left::-webkit-scrollbar,
+.tb-right::-webkit-scrollbar {
+  display: none;
+}
+.tb-left {
+  left: var(--edge);
+  width: var(--left-w);
+  /* The connection lamps lie under it. */
+  max-height: calc(100% - 2 * var(--edge) - 80px);
+  overflow-y: auto;
+}
+.tb-right {
+  right: var(--edge);
+  width: var(--right-w);
+  max-height: calc(100% - 2 * var(--edge));
+  overflow-y: auto;
+}
+
+/* A key in a panel: a press is where you are (white), and a key that cannot be used rests. */
+.tb .key {
+  flex: none;
+  justify-content: center;
+  height: var(--k-s);
+  padding: 0 12px;
+  line-height: 1.1;
+}
+.tb .key[aria-pressed="true"] {
+  background: var(--s3);
+  border-color: var(--t1);
+  box-shadow: inset 0 0 0 1px var(--t1);
+}
+/* The smoke machine is amber while it is in the scene: it is what the lights shine on. */
+.tb .key.on-amber[aria-pressed="true"],
+.panels .key[aria-pressed="true"]#smoke-on {
+  background: var(--on-tint);
+  border-color: var(--on);
+  box-shadow: none;
+  color: var(--on);
+}
+.tb .key.on-amber[aria-pressed="true"]::before,
+#smoke-on[aria-pressed="true"]::before {
+  background: var(--on);
+}
+.tb .key:disabled {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--line-2);
+  box-shadow: none;
+  color: var(--t3);
+}
+
+/* The lamps of the rail chosen: keys in a row that wraps, between the two columns. */
+.tb-lamps {
+  top: var(--edge);
+  left: calc(var(--edge) * 2 + var(--left-w));
+  right: calc(var(--edge) * 2 + var(--right-w));
+  width: auto;
+}
+.tb-wrap {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.5rem clamp(0.5rem, 1.5vw, 1rem);
-  pointer-events: none;
+  gap: 4px;
 }
-.tools > * {
-  pointer-events: auto;
-}
-.title {
-  align-self: center;
-  margin-right: 0.5rem;
-}
-.home {
-  display: inline-flex;
-  align-items: center;
-  color: var(--paper);
-  text-decoration: none;
+.tb-wrap .key {
+  min-width: 96px;
+  padding: 0 14px;
 }
 
-.group {
-  padding: 0.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--panel) 88%, transparent);
-}
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-.key {
-  min-height: var(--touch);
-  padding: 0 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  font-weight: 500;
-}
-.key:active {
-  background: var(--key-down);
-}
-.key[aria-pressed="true"] {
-  border-color: var(--signal);
-  background: var(--signal);
-  color: var(--ink);
-  font-weight: 600;
-}
-/* A key that says one of two things keeps one width: the longer word sets it. */
-#space {
-  min-width: 8.5rem;
-}
+/* ---- the connection lamps, under the left column ---- */
 
-.settings {
-  display: grid;
-  grid-template-columns: auto minmax(7rem, 1fr);
-  align-items: center;
-  gap: 0.25rem 0.75rem;
-  padding: 0.5rem 0.75rem;
-}
-.settings label {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-}
-.settings output {
-  display: inline-block;
-  min-width: 3.5ch;
-  color: var(--paper);
-  text-align: right;
-}
-.settings input[type="range"] {
-  min-height: var(--touch);
-  accent-color: var(--signal);
-}
-
-/* Number fields in the toolbar: the room's ceiling and where the fixture hangs. */
-.settings input[type="number"],
-.position input {
-  width: 5.5rem;
-  min-height: var(--touch);
-  padding: 0 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  text-align: right;
-}
-.settings input:disabled,
-.position input:disabled {
-  opacity: 0.45;
-}
-.position {
-  display: grid;
-  grid-template-columns: repeat(3, 5.5rem);
-  align-items: center;
-  gap: 0.25rem 0.5rem;
-  padding: 0.5rem 0.75rem;
-}
-.position label {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-}
-
-/* The link lamps and the note sit at the bottom, over the picture, and move nothing. */
-.links {
-  position: fixed;
-  left: clamp(0.5rem, 1.5vw, 1rem);
-  bottom: max(0.5rem, env(safe-area-inset-bottom));
-  display: flex;
-  gap: 0.75rem;
+.tb-links {
+  left: var(--edge);
+  bottom: var(--edge);
+  width: var(--left-w);
   margin: 0;
-  padding: 0.25rem 0.75rem;
+  gap: 6px;
+  padding: 10px 12px;
   list-style: none;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--panel) 88%, transparent);
-  font-size: var(--small);
 }
 .link {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  color: var(--dim);
+  gap: 8px;
+  color: var(--t2);
+  font: 500 var(--fs-s) / 1.2 var(--f-ui);
 }
-.lamp {
-  width: 0.65rem;
-  height: 0.65rem;
-  border-radius: 50%;
+
+/* ---- the foot: notices, the two panels, the numbers ---- */
+
+.dock {
+  position: absolute;
+  left: calc(var(--edge) * 2 + var(--left-w));
+  right: var(--edge);
+  bottom: var(--edge);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.dock > * {
+  pointer-events: auto;
+}
+/* The notices lie over the picture above everything of the foot, and take no room. */
+.dock > .notices-stack {
+  position: absolute;
+  right: calc(var(--right-w) + var(--edge));
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  pointer-events: none;
+}
+.panels {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  /* Clear of the right column. */
+  padding-right: calc(var(--right-w) + var(--edge));
+  pointer-events: none;
+}
+.panels > * {
+  pointer-events: auto;
+}
+.panels > .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  max-height: 60vh;
+  padding: 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: color-mix(in srgb, var(--s1) 94%, transparent);
+}
+.panels > .panel::-webkit-scrollbar {
+  display: none;
+}
+.calibrate {
+  flex: 0 1 372px;
+  /* It keeps the right and the smoke panel the left, so that neither moves when the other opens. */
+  order: 2;
+  margin-left: auto;
+}
+.smoke {
+  flex: 0 1 520px;
+  order: 1;
+}
+.smoke-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 8px;
+}
+
+/* The numbers of the fixture, the look of the picture and the keys that go with them. */
+.tb-bottom {
+  position: static;
+  flex-flow: row wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  padding: 10px 12px;
+}
+.nf {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.nf > .fader {
+  width: 100%;
+}
+.nf .field {
+  width: 96px;
+  text-align: right;
+}
+.nf .field.ceiling {
+  width: 72px;
+}
+.nf.grow {
+  flex: 1 1 120px;
+  min-width: 112px;
+}
+/* The label of a fader is the one above it. */
+.tb-bottom .fader .fl {
+  display: none;
+}
+/* Numbers are typed: no little arrows. */
+.field[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.field[type="number"]::-webkit-inner-spin-button,
+.field[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+.sep {
+  align-self: stretch;
+  width: 1px;
   background: var(--line);
 }
-.link[data-state="ok"] .lamp {
-  background: var(--go);
+.tb-acts {
+  display: flex;
+  gap: 8px;
 }
-.link[data-state="down"] .lamp {
-  background: var(--stop);
-}
-
-.note {
-  position: fixed;
-  right: clamp(0.5rem, 1.5vw, 1rem);
-  bottom: max(0.5rem, env(safe-area-inset-bottom));
-  max-width: min(36rem, calc(100vw - 2rem));
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--signal);
-  border-radius: var(--radius);
-  background: var(--panel);
-  font-size: var(--small);
-}
-.note[hidden] {
-  display: none;
+.tb-acts .key {
+  padding: 0 14px;
+  white-space: nowrap;
 }
 
-/* ---- the smoke machine's panel, laid over the picture at the left ---- */
+/* ---- the calibrate panel ---- */
 
-.smoke {
-  position: fixed;
-  left: clamp(0.5rem, 1.5vw, 1rem);
-  bottom: 4.5rem;
-  width: min(36rem, calc(100vw - 1.5rem));
-  max-height: calc(100dvh - 10rem);
-  overflow-y: auto;
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-}
-.smoke[hidden] {
-  display: none;
-}
-.smoke h2 {
-  margin: 0;
-  font-size: var(--small);
-}
-.smoke .settings {
-  padding: 0;
-  grid-template-columns: 10rem minmax(4rem, 1fr) 10rem minmax(4rem, 1fr);
-}
-@media (max-width: 760px) {
-  .smoke .settings {
-    grid-template-columns: 10rem minmax(4rem, 1fr);
-  }
-}
-/* The value changes length while it is dragged: its room is reserved. */
-.smoke .settings output {
-  min-width: 8ch;
-}
-
-/* ---- the calibrate panel, laid over the picture at the right ---- */
-
-.calibrate {
-  position: fixed;
-  right: clamp(0.5rem, 1.5vw, 1rem);
-  bottom: 4.5rem;
-  width: min(23rem, calc(100vw - 1.5rem));
-  max-height: calc(100dvh - 10rem);
-  overflow-y: auto;
-  display: grid;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-}
-.calibrate[hidden] {
-  display: none;
-}
 .cal-bar {
-  display: grid;
-  gap: 0.5rem;
-  padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 .cal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 8px;
+}
+.cal-head h3 {
+  margin: 0;
+  font: 600 var(--fs-m) / 1.2 var(--f-ui);
+}
+.cal-bar h4 {
+  margin: 4px 0 0;
+  color: var(--t3);
+  font: 600 var(--fs-xs) / 1.2 var(--f-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .cal-line {
   display: flex;
   justify-content: space-between;
-  gap: 0.5rem;
-  color: var(--dim);
-  font-size: var(--small);
+  gap: 8px;
+  color: var(--t2);
+  font: 500 var(--fs-s) / 1.3 var(--f-ui);
 }
 .cal-value {
   min-width: 6ch;
-  color: var(--paper);
-  font-weight: 600;
+  color: var(--t1);
+  font: 600 var(--fs-s) var(--f-num);
   text-align: right;
 }
 .cal-angle {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 56px minmax(0, 1fr) 56px;
   align-items: center;
-  gap: 0.5rem;
+  gap: 6px;
 }
-.cal-angle input[type="range"] {
-  min-height: var(--touch);
+/* The line above the fader says what it is and gives the angle to a tenth of a degree. */
+.cal-angle .fader .fl {
+  display: none;
+}
+.cal-angle .key {
   min-width: 0;
-  accent-color: var(--signal);
-}
-.cal-bar h4 {
-  margin: 0;
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
+  padding: 0;
 }
 .points {
-  display: grid;
-  gap: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .point {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 0.5rem;
-  min-height: var(--touch);
-  padding-left: 0.5rem;
-  background: var(--key);
-  border-radius: var(--radius);
+  gap: 6px;
+  padding: 6px;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 .point .key {
-  min-width: var(--touch);
-  padding: 0;
+  flex: none;
+  min-width: 56px;
+  padding: 0 8px;
 }
 .point-fields {
   display: flex;
   flex: 1;
-  gap: 0.4rem;
+  gap: 6px;
   min-width: 0;
 }
 .point-field {
-  display: grid;
+  display: flex;
   flex: 1;
-  gap: 0.1rem;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
-  padding: 0.25rem 0;
 }
-.point-field span {
+.point-field span,
+.cal-form label,
+.cal-export label {
   overflow: hidden;
-  color: var(--dim);
-  font-size: var(--small);
+  color: var(--t3);
+  font: 600 var(--fs-xs) / 1.2 var(--f-ui);
+  letter-spacing: 0.08em;
   text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 .point-field input {
-  width: 100%;
   min-width: 0;
-  min-height: 2.25rem;
-}
-/* The key that adds a typed point and the key that removes one have the same width. */
-.point .key {
-  min-width: 4.5rem;
+  padding: 0 8px;
+  text-align: right;
 }
 .cal-export {
-  display: grid;
-  gap: 0.25rem;
-  padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-.cal-export label {
-  color: var(--dim);
-  font-size: var(--small);
-}
 .cal-export textarea {
-  width: 100%;
-  padding: 0.4rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--ground);
-  color: var(--paper);
-  font: inherit;
-  font-size: var(--small);
+  height: auto;
+  min-height: 72px;
+  padding: 8px 12px;
+  font-size: var(--fs-s);
   resize: none;
 }
 /* The copy key keeps its width when its word changes. */
 #calibrate-copy {
-  min-width: 9rem;
-  justify-self: start;
+  align-self: flex-start;
+  min-width: 144px;
 }
-
-/* The timing of a move: two fields and a key. The line for what happened keeps its room. */
 .cal-form {
-  display: grid;
-  gap: 0.25rem;
-}
-.cal-form label {
-  color: var(--dim);
-  font-size: var(--small);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .cal-message {
   min-height: 2.6em;
+}
+
+/* ---- upright: the picture is narrow, so the panels stack ---- */
+
+@media (max-width: 56rem) {
+  .panels {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .panels > .panel {
+    max-height: 30vh;
+  }
+  .calibrate,
+  .smoke {
+    flex: none;
+    max-width: none;
+    margin-left: 0;
+  }
+  .smoke-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

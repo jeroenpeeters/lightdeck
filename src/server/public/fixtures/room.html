@@ -3,61 +3,74 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f1114" />
+    <meta name="theme-color" content="#08090b" />
     <title>Room Lights</title>
-    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="preload" href="/fonts/plex-condensed-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/plex-condensed-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/plex.css" />
+    <link rel="stylesheet" href="/lightdeck.css" />
+    <link rel="stylesheet" href="/chrome.css" />
     <link rel="stylesheet" href="/fixtures/room.css" />
   </head>
   <body>
-    <!-- The shell puts the status bar, the tempo and the notice above this. -->
-    <main class="console" id="console">
-      <header class="fixture-head">
-        <h1 id="fixture-name">Room Lights</h1>
-        <p class="where" id="where"></p>
-        <p class="running" id="running" data-on="false"></p>
+    <!-- The shell puts the top bar (a Live key, the tempo, the masters, Blackout) first in .app. -->
+    <div class="app page" id="app">
+      <header class="page-head">
+        <div class="ph-title">
+          <h1 id="fixture-name">Room Lights</h1>
+          <span class="meta" id="where"></span>
+          <span class="tag mute" id="running" data-on="false"></span>
+        </div>
+        <div class="ph-actions" id="whole-room"></div>
       </header>
 
-      <section class="panel lamps" aria-labelledby="lamps-title">
-        <div class="lamps-head">
-          <h2 id="lamps-title">Lamps</h2>
-          <div class="whole-room" id="whole-room"></div>
-        </div>
-        <div class="sliders room-dimmer" id="dimmer-sliders"></div>
-        <p class="hint" id="dimmer-hint"></p>
-        <div id="zones"></div>
-      </section>
+      <div class="setup no-nav">
+        <main class="setup-main" aria-label="Lamps">
+          <section class="panel room-dimmer" aria-label="Room dimmer">
+            <div id="dimmer-sliders"></div>
+            <p class="hint" id="dimmer-hint"></p>
+          </section>
+          <div class="zones" id="zones"></div>
+        </main>
 
-      <div class="panel scenery">
-        <h2>Scenery</h2>
-        <p class="hint">
-          The lamps are the slow light under the spider and the laser. A palette colours them, and
-          an effect moves its colours over the lamps now and then.
-        </p>
+        <aside class="setup-side" aria-label="Scenery">
+          <p class="hint scenery-intro">
+            The lamps are the slow light under the spider and the laser. A palette colours them, and
+            an effect moves its colours over the lamps now and then.
+          </p>
 
-        <fieldset class="choice palette-list" id="palette-list">
-          <legend>Palette</legend>
-        </fieldset>
-        <fieldset class="choice" id="palette-speed">
-          <legend>Palette pace</legend>
-        </fieldset>
-        <p class="hint" id="pace-hint"></p>
-        <p class="hint" id="palette-hint"></p>
+          <section class="block" aria-labelledby="palette-title">
+            <div class="sh"><h3 id="palette-title">Palette</h3></div>
+            <div class="chips" id="palette-list"></div>
+            <p class="hint" id="palette-hint"></p>
+            <div class="sh"><h3>Palette pace</h3></div>
+            <fieldset class="row pace" id="palette-speed">
+              <legend class="visually-hidden">Palette pace</legend>
+            </fieldset>
+            <p class="hint" id="pace-hint"></p>
+          </section>
 
-        <fieldset class="effect-list" id="effect-list">
-          <legend class="visually-hidden">Choose an effect</legend>
-        </fieldset>
-        <button type="button" class="key stop" id="effect-stop">No effect</button>
-        <p class="hint" id="effect-hint"></p>
-        <fieldset class="choice" id="effect-speed">
-          <legend>Speed of this effect</legend>
-        </fieldset>
-        <p class="hint" id="speed-hint"></p>
+          <section class="block" aria-labelledby="effect-title">
+            <div class="sh"><h3 id="effect-title">Scenery effect</h3></div>
+            <div class="chips" id="effect-list"></div>
+            <p class="hint" id="effect-hint"></p>
+            <div class="sh"><h3>Speed of this effect</h3></div>
+            <fieldset id="effect-speed">
+              <legend class="visually-hidden">Speed of this effect</legend>
+            </fieldset>
+            <p class="hint" id="speed-hint"></p>
+          </section>
 
-        <div class="sliders" id="fade-sliders"></div>
-        <p class="hint" id="fade-hint"></p>
+          <section class="block" aria-labelledby="fade-title">
+            <div class="sh"><h3 id="fade-title">Fade</h3></div>
+            <div id="fade-sliders"></div>
+            <p class="hint" id="fade-hint"></p>
+          </section>
+        </aside>
       </div>
-    </main>
+
+      <div class="notices-stack" id="notices"></div>
+    </div>
 
     <script type="module" src="/fixtures/room.js"></script>
   </body>

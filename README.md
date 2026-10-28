@@ -152,13 +152,14 @@ says "Home Assistant simulated" in amber.
 
 Go to `http://<computer-ip>:8080` on the tablet. The console has:
 
-- **Deck**: per group a lane of scenes of lights, a lane of palettes, a lane of scenes of
-  motion, a lane of zones (how far the motion effects reach), and a row of looks. Set the fixtures on their pages, store that as a scene, and get
-  it back with one press.
+- **Deck**: the groups and the lanes (looks, lights, colour, motion, zone) as a list, the keys of
+  the chosen one, and the sequences at the side. Show mode presses them; Program mode stores,
+  renames and deletes scenes, looks and groups. Set the fixtures on their pages, store that as a
+  scene, and get it back with one press.
 - **Palettes**: the colours of the show, apart from the effects. A list of up to eight
   colours (or off), static or cycling.
 - **Tablet** (`/tablet`, the old `/moods` goes there): the page for a tablet at the side of the
-  dance floor, built after the design in [design/](design/HANDOFF.md) (a lighting-console look,
+  dance floor, built after the design in [design/](design/HANDOFF.md) (every page has it: a lighting-console look,
   dark, IBM Plex, a rail of the groups with what each shows right now), with few, big controls: tap the tempo, the master and its speed, the parts of the
   evening (sequences, with Next and Hold), the looks of a group by mood with a tray under them to
   vary the look (palette, effect, movement, zone), the lamps of the room (a dimmer, and a switch
@@ -179,8 +180,9 @@ Go to `http://<computer-ip>:8080` on the tablet. The console has:
   computer), the tablet page has a **Fullscreen** key in the top row that hides the bar of the
   browser while the page is open.
 - **Simulator** (`/simulator`): the 3D view.
-- On every page: the tempo with tap and nudge, the speed of the effects, the blackout,
-  and lamps that show whether the bridge and the LR512 are connected.
+- On every page: the bpm with beat lamps and Tap, the master, the speed of the effects and the
+  blackout, and a key to the live page. The tempo source (by hand or Rekordbox), the nudge and the
+  state of the links (bridge, LR512, Home Assistant) are in the menu of the tablet page.
 
 ## Settings
 

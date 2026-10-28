@@ -2,8 +2,9 @@
 // Plain browser JavaScript, no build step. (Jeroen, 2026-10-20; it is the only page for a tablet since
 // 2026-10-23, and has the design of the console (`design/`, mockups 01 and 02) since 2026-10-26.)
 //
-//   top bar    always there: a Menu key (a small menu over the page: the main view, full screen and the
-//              links with their words; the key has a dot for each link), the bpm with where the tempo
+//   top bar    always there (topbar.js, the same bar as every setup page has): a Menu key that opens the
+//              menu sheet (menu.js: the way to every other page, the tempo source and the links with
+//              their words, full screen; the key has a dot for each link), the bpm with where the tempo
 //              comes from and the beat lamps, Tap, the master with the keys of the master speed, and
 //              Blackout
 //   rail       a tile per group that has something to play (the spider, the laser, the room) and last
@@ -30,20 +31,23 @@
 //   room       on the tab of the room, the dimmer of the lamps and a switch per rail above the looks
 //   video wall the tile replaces the looks and the tray by the controls of the video wall
 //              (videowallPanel.js, which /videowall has too): what plays, a Blackout key, the library
-//              of the player as keys with a preview, the text of the track and where it goes. It reads
-//              the picture of the wall only while the tab is on screen; the tile in the rail only says
+//              of the player as keys with a preview, the text of the track (On, Test, Clear, Send current
+//              track) and, as the fifth tab of the library, Text settings: the address and PIN of the
+//              player, the time, lines, filter, colour, size and place of the text. It reads the
+//              picture of the wall only while the tab is on screen; the tile in the rail only says
 //              whether the track text is on
 //
 // The page draws what the server says and asks for what the operator wants. A state only swaps classes:
 // keys have a fixed size and place whatever state they are in, and notices lie over the foot of the
-// screen without taking room, so that nothing moves under a finger. The pieces it shares with the keys
-// and the top bar are in `tabletParts.js`, `tabletKit.js` and `tabletRail.js`, and what is worked out
-// from the state without the browser is in `tabletLogic.js`.
+// screen without taking room, so that nothing moves under a finger. The keys and the lamps of the room
+// are made in `tabletParts.js`, `tabletKit.js` and `tabletRail.js`, and what is worked out from the state
+// without the browser is in `tabletLogic.js`.
 //
 // It is an installable app (the manifest and the icons, `manifest.webmanifest` and `icons/`, and
 // `sw.js` that keeps the page so that it opens when lightdeck cannot be reached): on the home
 // screen of the tablet it opens full screen. See the end of this file for the service worker.
 
+import { mountMenu } from './menu.js';
 import { start } from './shell.js';
 import { syncKeys } from './tabletKit.js';
 import {
@@ -58,11 +62,7 @@ import {
 } from './tabletLogic.js';
 import {
   ask,
-  buildFullscreen,
-  buildMaster,
-  buildMenu,
   buildRoom,
-  buildTempo,
   chipItems,
   clearFailure,
   init,
@@ -72,15 +72,13 @@ import {
   onLook,
   refreshDimmer,
   registerWorker,
-  renderChange,
-  renderLinks,
   renderNotice,
   renderRails,
   roomFixture,
   roomGroup,
-  startBeat,
 } from './tabletParts.js';
 import { drawTile, makeTile } from './tabletRail.js';
+import { mountTopBar } from './topbar.js';
 import { $, element } from './ui.js';
 import { mountVideoWall } from './videowallPanel.js';
 
@@ -671,14 +669,12 @@ async function main() {
   if (!shell) return;
   init(shell);
   wallOpen = remembered() === WALL;
-  // The notice of the shell joins the one of the page, where it takes no room from the keys.
-  $('notices').prepend($('notice'));
 
-  buildMaster();
+  // The top bar, with a Menu key that opens the menu sheet over the page (the same bar that every setup
+  // page has, with a Live key). The notice of the shell is in the stack of the page, over the keys.
+  const bar = mountTopBar(shell, { left: 'menu' });
+  mountMenu(shell, bar);
   buildRoom();
-  buildTempo();
-  buildFullscreen();
-  buildMenu();
   build();
 
   shell.on('show', () => {
@@ -698,14 +694,9 @@ async function main() {
     schedulePaint();
   });
   shell.on('frames', schedulePaint);
-  shell.on('change', renderChange);
-  shell.on('status', renderLinks);
-  renderChange();
-  renderLinks();
   render();
   renderPhases();
   renderNotice();
-  startBeat();
 }
 
 main();

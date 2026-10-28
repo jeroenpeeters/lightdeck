@@ -3,49 +3,115 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f1114" />
+    <meta name="theme-color" content="#08090b" />
     <title>Palettes</title>
-    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="preload" href="/fonts/plex-condensed-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/plex-condensed-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/plex.css" />
+    <link rel="stylesheet" href="/lightdeck.css" />
+    <link rel="stylesheet" href="/chrome.css" />
     <link rel="stylesheet" href="/palettes.css" />
   </head>
   <body>
-    <!-- The shell puts the status bar and the tempo above this. Its notice goes below. -->
-    <main class="console" id="console">
-      <header class="fixture-head">
-        <h1>Palettes</h1>
-        <p class="where" id="where"></p>
+    <!--
+      The palettes of the show: a list at the left, the chosen palette in the middle (its slots and the
+      colour of one slot) and how it runs at the right. The shell puts the top bar (a Live key, the
+      tempo, the masters and Blackout) first in .app and its notice in #notices.
+    -->
+    <div class="app page" id="app">
+      <header class="page-head">
+        <div class="ph-title">
+          <h1>Palettes</h1>
+          <span class="meta" id="meta"></span>
+        </div>
+        <div class="ph-actions">
+          <button type="button" class="key c new-key" id="new-open" aria-expanded="false" aria-controls="new-sheet">+ New palette</button>
+          <!-- Lies over the page under the key, so nothing moves when it opens. -->
+          <form class="panel new-sheet" id="new-sheet" hidden>
+            <label class="fld" for="new-name">
+              <span class="lbl">Name of the new palette</span>
+              <input class="field" id="new-name" type="text" maxlength="40" autocomplete="off" />
+            </label>
+            <p class="hint">It starts as a single white, and grows from there.</p>
+            <div class="new-keys">
+              <button type="button" class="key c" id="new-cancel">Cancel</button>
+              <button type="submit" class="key c is-edit" id="new-make">Make palette</button>
+            </div>
+          </form>
+        </div>
       </header>
 
-      <p class="hint palettes-hint">
-        A palette is the colours of the show. An effect takes its colours from the palette that is
-        on in a group: slot 1 is what hits or flashes, slot 2 the backdrop, slot 3 an accent. A
-        slot that is not in the list is off. Set a palette on a group on the deck.
-      </p>
+      <div class="setup">
+        <nav class="setup-nav" aria-label="Palettes">
+          <div class="pl-list" id="list"></div>
+        </nav>
 
-      <!-- A panel per palette comes here. -->
-      <div class="palettes" id="palettes"></div>
+        <main class="setup-main" id="main">
+          <div class="pal-head">
+            <div class="pal-title">
+              <h2 id="title">Palette</h2>
+              <span class="t2 uses" id="uses"></span>
+              <input class="field" id="rename" type="text" maxlength="40" autocomplete="off" aria-label="Name of the palette" hidden />
+            </div>
+            <div class="pal-keys">
+              <button type="button" class="key c" id="rename-key">Rename</button>
+              <button type="button" class="key c" id="copy-key">Duplicate</button>
+              <button type="button" class="key c" id="delete-key">Delete…</button>
+            </div>
+          </div>
 
-      <section class="panel" aria-labelledby="new-palette-title">
-        <h2 id="new-palette-title">New palette</h2>
-        <form class="name-row" id="make-palette">
-          <label for="palette-name">Name of the new palette</label>
-          <input class="field" id="palette-name" type="text" maxlength="40" autocomplete="off" />
-          <button type="submit" class="key">Make palette</button>
-        </form>
-        <p class="hint">It starts as a single white, and grows from there.</p>
-      </section>
+          <div class="slots" id="slots"></div>
 
-      <!--
-        Last, and kept at the bottom of the screen: a notice moves no key when it comes.
-        The page puts the notice of the shell here too.
-      -->
-      <div class="notices">
-        <div class="notices-stack" id="notices">
-          <p class="notice" id="palettes-notice" data-level="alarm" role="alert" hidden></p>
-        </div>
+          <section class="panel slot-ed" aria-labelledby="slot-title">
+            <div class="sh">
+              <h3 id="slot-title">Slot</h3>
+              <div class="row slot-keys">
+                <button type="button" class="key c" id="earlier-key">Earlier</button>
+                <button type="button" class="key c" id="later-key">Later</button>
+                <button type="button" class="key c" id="remove-key">Remove</button>
+                <button type="button" class="key c dark-key" id="dark-key" aria-pressed="false">Dark slot (off)</button>
+              </div>
+            </div>
+            <div class="col" id="channels"></div>
+            <div class="quick" id="quick"></div>
+            <span class="t3 room" id="room"></span>
+          </section>
+
+          <p class="hint">
+            A palette is the colours of the show. An effect takes its colours from the palette that is on in a
+            group: slot 1 is what hits or flashes, slot 2 the backdrop, slot 3 an accent. A slot that is not in
+            the list is off. A change is sent when you let go.
+          </p>
+        </main>
+
+        <aside class="setup-side" aria-label="How the palette runs">
+          <div class="col side-block">
+            <span class="lbl">Change</span>
+            <div id="change"></div>
+          </div>
+          <div class="col side-block">
+            <span class="lbl">Pace</span>
+            <fieldset id="pace"></fieldset>
+            <span class="t2 note" id="pace-note"></span>
+          </div>
+          <div class="col side-block">
+            <span class="lbl">Shows at once</span>
+            <div class="shown" id="shown"></div>
+            <span class="t2 note" id="shown-note"></span>
+          </div>
+          <div class="col side-block">
+            <div class="sh"><span class="lbl">On the lenses</span></div>
+            <div class="lenses big" id="lenses" aria-hidden="true"></div>
+            <div class="col" id="groups"></div>
+            <span class="t3 note" id="groups-note"></span>
+          </div>
+        </aside>
       </div>
-    </main>
+
+      <div class="notices-stack" id="notices">
+        <p class="notice" id="palettes-notice" data-level="alarm" role="alert" hidden></p>
+      </div>
+    </div>
 
     <script type="module" src="/palettes.js"></script>
   </body>

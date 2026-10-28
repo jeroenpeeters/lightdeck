@@ -3,44 +3,74 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f1114" />
+    <meta name="theme-color" content="#08090b" />
     <title>Laser</title>
-    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="preload" href="/fonts/plex-condensed-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/plex-condensed-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/plex.css" />
+    <link rel="stylesheet" href="/lightdeck.css" />
+    <link rel="stylesheet" href="/chrome.css" />
     <link rel="stylesheet" href="/fixtures/laser.css" />
   </head>
   <body>
-    <!-- The shell puts the status bar, the tempo and the notice above this. -->
-    <main class="console" id="console">
-      <header class="fixture-head">
-        <h1 id="fixture-name">Laser</h1>
-        <p class="where" id="where"></p>
-        <p class="running" id="running" data-on="false"></p>
+    <!-- The shell puts the top bar (a Live key, tempo, masters, Blackout) first in .app and the notice in #notices. -->
+    <div class="app page" id="app">
+      <header class="page-head">
+        <div class="ph-title">
+          <h1 id="fixture-name">Laser</h1>
+          <span class="meta" id="where"></span>
+        </div>
+        <div class="ph-actions" id="now">
+          <span class="lbl">Now</span>
+          <span class="lz-now" id="now-tags"></span>
+        </div>
       </header>
 
-      <section class="panel output" aria-labelledby="output-title">
-        <h2 id="output-title">Output</h2>
-        <div class="laser-tile" id="laser-tile" data-on="false">
-          <span class="laser-state" id="laser-state"></span>
-          <span class="laser-detail" id="laser-detail"></span>
-        </div>
-      </section>
+      <div class="setup">
+        <nav class="setup-nav" aria-label="Views">
+          <div class="snav" role="tablist">
+            <button type="button" role="tab" id="tab-effects" aria-controls="view-effects" aria-selected="true">Effects <span class="n" id="n-effects"></span></button>
+            <button type="button" role="tab" id="tab-colour" aria-controls="view-colour" aria-selected="false">Colour <span class="n" id="n-colour"></span></button>
+            <button type="button" role="tab" id="tab-channels" aria-controls="view-channels" aria-selected="false">Channels <span class="n" id="n-channels"></span></button>
+          </div>
+        </nav>
 
-      <div class="panel work">
-        <p class="hint" id="laser-hint" hidden></p>
-        <div class="laser-lead" id="laser-lead">
-          <!-- The keys that open and close the laser come here. -->
-          <div id="laser-gate"></div>
-          <!-- The effects, the motion and the colours of the colour chase come here. -->
-        </div>
+        <!-- The laser's own area has a red frame: red means laser. -->
+        <main class="setup-main lz-main">
+          <div class="lz-note" id="laser-note" data-urgent="false">
+            <svg class="red" width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 3l9 16H2z" /><path d="M11 9v4M11 16v.5" /></svg>
+            <p id="laser-hint" role="status"></p>
+          </div>
 
-        <h3>Channels</h3>
-        <div class="laser-blocks" id="laser-blocks"></div>
+          <section id="view-effects" class="lz-view" aria-label="Effects">
+            <!-- The mode and the control that comes after it (the pattern) are the first row, the effects the second. -->
+            <div class="lz-lead" id="laser-lead"></div>
+            <div class="lz-effects" id="laser-effects"></div>
+          </section>
 
-        <h3>Channels being sent</h3>
-        <ol class="readout" id="readout"></ol>
+          <section id="view-colour" class="lz-view" aria-label="Colour" hidden>
+            <div class="lz-colours" id="laser-colours"></div>
+          </section>
+
+          <section id="view-channels" class="lz-view" aria-label="Channels" hidden>
+            <div class="lz-blocks" id="laser-blocks"></div>
+          </section>
+        </main>
+
+        <aside class="setup-side" aria-label="Output">
+          <div class="sh"><h3>Output</h3><span class="t2 lz-live">live</span></div>
+          <div class="panel lz-tile" id="laser-tile" data-on="false">
+            <div class="lz-strip hazard-dim" id="laser-strip" aria-hidden="true"></div>
+            <span class="lz-state" id="laser-state"></span>
+            <span class="lz-detail" id="laser-detail"></span>
+          </div>
+          <div class="sh"><h3>Channels being sent</h3></div>
+          <ul class="readout" id="readout"></ul>
+        </aside>
       </div>
-    </main>
+
+      <div class="notices-stack" id="notices"></div>
+    </div>
 
     <script type="module" src="/fixtures/laser.js"></script>
   </body>
