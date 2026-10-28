@@ -63,6 +63,7 @@ describe('LaserController', () => {
       effect: { id: null, speed: 1 },
       motion: { id: null, speed: 1 },
       colours: [],
+      blackout: false,
     });
   });
 
@@ -94,7 +95,7 @@ describe('LaserController', () => {
       { raw: { mode: 'manual' } },
       { raw: { mode: null } },
       { raw: 'manual' },
-      { raw: { mode: MANUAL }, blackout: false },
+      { raw: { mode: MANUAL }, blackout: 'no' },
       { levels: { mode: 1 } },
       'manual',
       null,
@@ -111,6 +112,34 @@ describe('LaserController', () => {
     expect(ch(output, LASER_AT + 1)).toBe(57);
     expect(laser.getState().raw.mode).toBe(MANUAL);
     expect(laser.getDmx()[0]).toBe(0);
+  });
+
+  it('closes for a blackout of its own, keeps what was set, and opens as it was', () => {
+    laser.update({ raw: { mode: MANUAL, program: 57 } });
+    laser.update({ blackout: true }, 'tablet');
+    expect(laser.getState().blackout).toBe(true);
+    expect(ch(output, LASER_AT)).toBe(0);
+    expect(laser.getState().raw.mode).toBe(MANUAL);
+    // A change while it is dark does not open it, and the blackout of the console does not lift it.
+    laser.update({ raw: { mode: 223 } });
+    laser.setBlackout(true);
+    laser.setBlackout(false);
+    expect(ch(output, LASER_AT)).toBe(0);
+    laser.update({ blackout: false });
+    expect(ch(output, LASER_AT)).toBe(223);
+  });
+
+  it('has a blackout of its own in no scene, and it must be true or false', () => {
+    laser.update({ blackout: true });
+    for (const type of ['lights', 'colour', 'motion', 'zone'] as const) {
+      expect(JSON.stringify(laser.snapshot(type))).not.toContain('lackout');
+    }
+    laser.recall('lights', { raw: { mode: MANUAL } });
+    expect(laser.getState().blackout).toBe(true);
+    expect(ch(output, LASER_AT)).toBe(0);
+    expect(() => laser.check('lights', { blackout: false })).toThrow(/no scene/);
+    expect(() => laser.update({ blackout: 1 })).toThrow(PatchError);
+    expect(laser.getState().blackout).toBe(true);
   });
 
   it('stays closed when the mode changes during a blackout', () => {
@@ -633,6 +662,7 @@ describe('LaserController effects', () => {
         effect: { id: null, speed: 1 },
         motion: { id: 'twist', speed: 1 },
         colours: [],
+        blackout: false,
       },
     ]);
   });

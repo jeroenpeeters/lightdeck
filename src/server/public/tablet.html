@@ -47,9 +47,15 @@
             <span class="lbl" id="t-where"></span>
           </div>
 
-          <!-- The lamps of the room: their dimmer and a switch per rail. Only on the tab of the room. -->
-          <section class="t-room" id="t-room" aria-label="Room lights" hidden>
-            <div class="t-room-dimmer" id="t-room-dimmer"></div>
+          <!--
+            The sub dimmer of the group and its own blackout, in the same place on every tab (the
+            laser has no dimmer: its fader rests), and on the tab of the room a switch per rail.
+          -->
+          <section class="t-sub" id="t-sub" aria-label="Dimmer and blackout">
+            <div class="t-sub-dimmer" id="t-sub-dimmer"></div>
+            <button type="button" class="bo t-sub-bo" id="t-sub-dark" aria-pressed="false">
+              Blackout
+            </button>
             <fieldset class="t-rails" id="t-rails" aria-label="Rails" hidden></fieldset>
           </section>
 
@@ -90,11 +96,8 @@
               <h3 id="m-tray-title">Vary</h3>
               <span class="t-tray-with" id="m-tray-hint"></span>
             </div>
-            <div class="row" style="gap: 6px">
-              <!-- All puts the look back as it was stored. -->
-              <button type="button" class="key c t-small" id="m-all">All</button>
-              <button type="button" class="key c t-small" id="m-off">Off</button>
-            </div>
+            <!-- All is a toggle: lit, the tray offers everything of the group, not only what goes with the look. -->
+            <button type="button" class="key c t-small" id="m-all" aria-pressed="false">All</button>
           </div>
           <section class="t-lane" data-lane="colour" id="m-lane-colour" aria-label="Colour">
             <div class="sh"><h3 id="m-name-colour">Colour</h3><span class="t3 t-note">dashed = the look's own</span></div>
@@ -117,8 +120,8 @@
 
       <!--
         The parts of the evening: a key per sequence of the show (Begin, Midden, Techno ...). A press
-        starts it, and the looks change by themselves on the bars. Next skips to the next step, Hold
-        stops the sequence and leaves the lights as they are.
+        starts it, and the looks change by themselves on the bars. Next skips to the next step. Hold is
+        a toggle: it freezes the sequence where it is, and pressed again the sequence goes on.
       -->
       <section class="t-parts" id="m-phases" aria-label="Parts of the evening" hidden>
         <div class="t-part-keys" id="m-phase-keys"></div>

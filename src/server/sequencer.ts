@@ -20,6 +20,12 @@
  * - **The music stops: the sequence waits.** Like the effects, a sequence does not go on while
  *   the tempo is not running (the audio source says the music has stopped), and counts again
  *   from the next bar line when it does.
+ * - **Hold freezes it, and letting go goes on.** `hold(true)` stops the counting where it is: the step
+ *   that is on stays on with the bars it has left, and the fixtures are not touched. `hold(false)`
+ *   lets the sequence go on from there, counting again from the next bar line (the bar that is going
+ *   on is not one of the bars of the step, as after the music stops). A hold is not a stop: the
+ *   sequence is still the one that runs. Starting or stopping a sequence lets go of the hold, and
+ *   `next()` is refused while it holds, so that what is frozen stays as it is.
  * - **Next skips ahead.** `next()` sets the following step at once, as the bar line does, for an
  *   operator who has had enough of a look: it counts its bars from here, and the sequence goes on.
  * - **One sequence runs at a time.** Starting one stops the one that runs. Stopping leaves the
@@ -57,6 +63,8 @@ export interface SequenceState {
   barsLeft: number;
   /** True while the music has stopped and the bars are not counted. */
   paused: boolean;
+  /** True while the operator holds the sequence: the bars are not counted until it is let go. */
+  held: boolean;
   /** What went wrong at the last step, in words, or null. */
   problem: string | null;
 }
@@ -76,6 +84,7 @@ export class Sequencer extends EventEmitter {
   private step = -1;
   private barsLeft = 0;
   private paused = false;
+  private held = false;
   private problem: string | null = null;
   /** The bar line that was last counted. */
   private lastBar = 0;
@@ -100,6 +109,7 @@ export class Sequencer extends EventEmitter {
       steps: this.current()?.steps.length ?? 0,
       barsLeft: this.barsLeft,
       paused: this.paused,
+      held: this.held,
       problem: this.problem,
     };
   }
@@ -117,6 +127,7 @@ export class Sequencer extends EventEmitter {
     this.lastSet.clear();
     this.step = 0;
     this.barsLeft = sequence.steps[0]?.bars ?? 1;
+    this.held = false;
     this.paused = !this.tempo.isRunning();
     this.lastBar = this.barNow();
     this.apply(sequence, 0);
@@ -131,10 +142,30 @@ export class Sequencer extends EventEmitter {
   next(): void {
     const sequence = this.current();
     if (!sequence) return;
+    if (this.held) throw new PatchError('the sequence is on hold: press Hold again to let it go');
     this.step = (this.step + 1) % sequence.steps.length;
     this.barsLeft = sequence.steps[this.step]?.bars ?? 1;
     this.apply(sequence, this.step);
     this.emit('sequence', this.getState());
+  }
+
+  /**
+   * Holds the sequence that runs, or lets it go: a held sequence counts no bars and sets nothing, a
+   * released one goes on with the bars the step has left. Throws a `PatchError` when none runs.
+   */
+  hold(on: boolean): void {
+    if (this.runningId === null)
+      throw new PatchError('no sequence runs, so there is nothing to hold');
+    if (this.held === on) return;
+    this.held = on;
+    if (on) {
+      this.clearTimer();
+    } else {
+      // It counts again from here: the bar that is going on is not one of the bars of the step.
+      this.lastBar = this.barNow();
+    }
+    this.emit('sequence', this.getState());
+    if (!on) this.arm();
   }
 
   /** Stops the sequence that runs. The fixtures stay as they are. */
@@ -145,6 +176,7 @@ export class Sequencer extends EventEmitter {
     this.step = -1;
     this.barsLeft = 0;
     this.paused = false;
+    this.held = false;
     this.problem = null;
     this.lastSet.clear();
     this.emit('sequence', this.getState());
@@ -181,7 +213,7 @@ export class Sequencer extends EventEmitter {
   /** Looks at the bar lines that went by, steps on when a step is done, and arms the next look. */
   private tick(): void {
     this.clearTimer();
-    if (this.runningId === null) return;
+    if (this.runningId === null || this.held) return;
     if (!this.tempo.isRunning()) {
       if (!this.paused) {
         this.paused = true;
@@ -218,7 +250,7 @@ export class Sequencer extends EventEmitter {
   /** Arms the timer for the next bar line, as the tempo is now. */
   private arm(): void {
     this.clearTimer();
-    if (this.runningId === null || this.paused) return;
+    if (this.runningId === null || this.paused || this.held) return;
     const at = this.tempo.timeOfBeat((this.lastBar + 1) * BEATS_PER_BAR);
     // A millisecond late, so that the look lands past the bar line and not just before it.
     this.timer = setTimeout(() => this.tick(), Math.max(0, at - this.tempo.now()) + 1);

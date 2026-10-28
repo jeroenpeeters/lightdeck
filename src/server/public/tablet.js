@@ -22,13 +22,22 @@
 //   tray       at the side (under the looks when the screen is upright), always there: what goes with
 //              the mood of the look that is on, as colours, effects, movements and zones, to vary the
 //              look with. A press sets that lane of the group and the look shows Varied; the chip of what
-//              the look itself sets is dashed. All puts the look back as it was stored, Off darkens the
-//              group. Nothing opens over the looks for this
+//              the look itself sets is dashed. All is a toggle (remembered in this browser): lit, the tray
+//              offers every colour, effect, movement and zone of the group, to vary further than what
+//              goes with the look; pressed again, it offers only what goes with the look. To put a look
+//              back as it was stored, press the look again. Nothing opens over the looks for this
 //   parts      at the foot, a key per sequence of the show (Begin, Midden, Techno ...) with a bar per bar
 //              of the step that is on: a press starts it and the looks of the spider change by
-//              themselves on the bars. Next skips to the next step, Hold stops the sequence and leaves
-//              the lights as they are. The room and the laser are not in these sequences: by hand
-//   room       on the tab of the room, the dimmer of the lamps and a switch per rail above the looks
+//              themselves on the bars. Next skips to the next step. Hold is a toggle: pressed it freezes
+//              the sequence where it is (the lights stay as they are and no bar is counted, the key is lit
+//              and the part says held), pressed again it lets the sequence go on with the bars the step
+//              had left. Next waits while it is held. The room and the laser are not in these sequences:
+//              by hand
+//   dimmer     above the looks, in the same place on every tab: the sub dimmer of the group (the spider's
+//              own master, the dimmer of the room), in no scene. The laser has none, so its fader rests.
+//              Next to it the blackout of the group alone (every fixture has one, the laser too): dark
+//              with everything kept, lit while on, and the tile in the rail says Blackout in red
+//   room       on the tab of the room, a switch per rail next to the dimmer
 //   video wall the tile replaces the looks and the tray by the controls of the video wall
 //              (videowallPanel.js, which /videowall has too): what plays, a Blackout key, the library
 //              of the player as keys with a preview, the text of the track (On, Test, Clear, Send current
@@ -62,18 +71,20 @@ import {
 } from './tabletLogic.js';
 import {
   ask,
-  buildRoom,
+  buildSub,
   chipItems,
   clearFailure,
+  groupDark,
   init,
   laneWords,
   lookItems,
   onIn,
   onLook,
-  refreshDimmer,
+  refreshSub,
   registerWorker,
   renderNotice,
   renderRails,
+  renderSub,
   roomFixture,
   roomGroup,
 } from './tabletParts.js';
@@ -96,6 +107,8 @@ const STRIP = {
   room: { colour: 'Colour', lights: 'Scenery', motion: 'Motion', zone: 'Zone' },
 };
 const REMEMBERED = 'lightdeck.moods.group';
+/** Whether the tray offers everything of the group (the key All), and not only what goes with the look. */
+const ALL_KEY = 'lightdeck.tablet.all';
 /** What is remembered when the tile of the video wall was the one open. */
 const WALL = 'videowall';
 
@@ -106,6 +119,8 @@ let active = null;
 let wallOpen = false;
 let wallTile;
 let wallPanel;
+/** Whether the tray offers everything of the group. */
+let showAll = false;
 /** By group, the mood chosen for the looks: its id or `all`. Without one it follows the look that is on. */
 const viewChoice = new Map();
 /** The tiles of the rail by the id of the group. */
@@ -126,6 +141,14 @@ function remembered() {
     return localStorage.getItem(REMEMBERED);
   } catch {
     return null;
+  }
+}
+
+function rememberAll() {
+  try {
+    localStorage.setItem(ALL_KEY, String(showAll));
+  } catch {
+    // Private mode or blocked storage: the page works without.
   }
 }
 
@@ -226,7 +249,7 @@ function runningSequence() {
 // ---- the rail ----
 
 /** What a tile of the rail shows for a group. */
-function tileOf(group) {
+function tileBase(group) {
   const look = onLook(group);
   const name = look.item ? splitNumber(look.item.label).name : '';
   const room = roomGroup();
@@ -270,6 +293,13 @@ function tileOf(group) {
     };
   }
   return { kind: 'wall', ...base, status };
+}
+
+/** What a tile shows for a group; a group in a blackout of its own says so, in red. */
+function tileOf(group) {
+  const tile = tileBase(group);
+  if (!groupDark(group)) return tile;
+  return { ...tile, status: 'Blackout', lit: true, alarm: true };
 }
 
 function tileFor(id, kind, onPress) {
@@ -385,7 +415,9 @@ function renderMoodbar(group) {
 function renderLooks(group) {
   const lookOn = onLook(group).item;
   const { sequence, state } = runningSequence();
-  const next = nextLook(sequence, state, group.id, lookOn?.id);
+  const found = nextLook(sequence, state, group.id, lookOn?.id);
+  // While the sequence is held no bar is counted, so a number of bars to go would be wrong.
+  const next = found && state?.held ? { ...found, bars: null } : found;
   const items = [];
   for (const column of lookColumns(group)) {
     if (column.label) {
@@ -440,28 +472,31 @@ function renderTray(group) {
   const mood = trayMood(group);
   const words = wordsOf(group);
   const present = lanesOf(group);
-  $('m-tray-hint').textContent = look ? `with ${look.label}` : 'press a look';
+  const what = look ? `with ${look.label}` : 'press a look';
+  $('m-tray-hint').textContent = showAll ? `everything, ${what}` : what;
   for (const id of LANES) {
     $(`m-lane-${id}`).hidden = !present[id];
     $(`m-name-${id}`).textContent = words[id];
-    // A group whose look is in no mood, or with no mood at all, offers everything it has.
-    syncKeys(tray[id], present[id] ? chipItems(group, id, mood?.[id]) : []);
+    // All offers everything of the group. Without it a group whose look is in no mood, or with no
+    // mood at all, offers everything it has as well.
+    const ids = showAll ? undefined : mood?.[id];
+    syncKeys(tray[id], present[id] ? chipItems(group, id, ids) : []);
   }
-  $('m-all').disabled = !look;
-  $('m-all').classList.toggle('is-disabled', !look);
-  $('m-all').setAttribute('aria-label', look ? `Put ${look.label} back as it was stored` : 'All');
-  $('m-off').setAttribute('aria-label', `${group.label} lights off`);
+  $('m-all').classList.toggle('is-on', showAll);
+  $('m-all').setAttribute('aria-pressed', String(showAll));
 }
 
-/** The lamps of the room have a dimmer and switches per rail, on the tab of the room. */
-function renderRoom(group) {
+/**
+ * The sub dimmer of the group stands above the looks on every tab (the laser has none: its fader
+ * rests), and the tab of the room has a switch per rail next to it.
+ */
+function renderSubRow(group) {
   const room = roomGroup();
   const here = room !== undefined && room.id === group.id;
-  $('t-room').hidden = !here;
-  if (here) {
-    renderRails();
-    refreshDimmer();
-  }
+  $('t-sub').hidden = false;
+  renderSub(group);
+  if (here) renderRails();
+  else $('t-rails').hidden = true;
 }
 
 /** The video wall takes the place of the looks and the tray: the page has two states. */
@@ -490,7 +525,7 @@ function render() {
     looks.none.hidden = false;
     looks.none.textContent = 'There is nothing to play in the show yet. Make it on the deck.';
     $('t-lanes').hidden = true;
-    $('t-room').hidden = true;
+    $('t-sub').hidden = true;
     $('m-tray').hidden = true;
     return;
   }
@@ -499,7 +534,7 @@ function render() {
   renderLooks(group);
   renderLanes(group);
   renderTray(group);
-  renderRoom(group);
+  renderSubRow(group);
 }
 
 /** The controls of the video wall are made the first time the tile is shown. */
@@ -560,7 +595,7 @@ function makePart(sequence) {
   key.append(head, info, bars);
   key.parts = { place, info, bars };
   key.addEventListener('click', () => {
-    // A press on the part that runs does nothing: stopping is what Hold is for.
+    // A press on the part that runs does nothing: freezing it is what Hold is for.
     if (shell.sequence?.running !== sequence.id) ask('/api/sequence', { start: sequence.id });
     showPart(sequence);
   });
@@ -569,13 +604,19 @@ function makePart(sequence) {
 
 function drawPart(key, sequence, state) {
   const on = state.running === sequence.id;
+  const held = on && Boolean(state.held);
   const { place, info, bars } = key.parts;
   key.classList.toggle('is-on', on);
+  key.classList.toggle('is-held', held);
   key.setAttribute('aria-pressed', String(on));
-  place.textContent = on ? partPlace(sequence, state) : '';
+  place.textContent = on
+    ? held
+      ? `held · ${state.step + 1}/${sequence.steps.length}`
+      : partPlace(sequence, state)
+    : '';
   if (on) {
     const next = sequence.steps[(state.step + 1) % sequence.steps.length];
-    const soon = `${stepWords(next)} in ${state.barsLeft}`;
+    const soon = held ? stepWords(next) : `${stepWords(next)} in ${state.barsLeft}`;
     const extra = state.paused
       ? ' · waiting for the music'
       : state.problem
@@ -583,9 +624,16 @@ function drawPart(key, sequence, state) {
         : '';
     // The wide key says what is on and what comes; the narrow one (a tablet upright) says where it is.
     const wide = element('span', 'wide');
-    wide.append(`Now ${stepWords(sequence.steps[state.step])} → `, element('b', '', soon), extra);
+    wide.append(
+      `${held ? 'Held ·' : 'Now'} ${stepWords(sequence.steps[state.step])} → `,
+      element('b', '', soon),
+      extra,
+    );
     const narrow = element('span', 'narrow');
-    narrow.append(`${state.step + 1}/${sequence.steps.length} · `, element('b', '', soon));
+    narrow.append(
+      `${held ? 'held · ' : ''}${state.step + 1}/${sequence.steps.length} · `,
+      element('b', '', soon),
+    );
     info.replaceChildren(wide, narrow);
   } else {
     const wide = element('span', 'wide', partInfo(sequence));
@@ -619,10 +667,15 @@ function renderPhases() {
       draw: (key) => drawPart(key, sequence, state),
     })),
   );
-  for (const id of ['m-next', 'm-hold']) {
-    $(id).disabled = !running;
-    $(id).classList.toggle('is-disabled', !running);
-  }
+  // Hold is a toggle: lit while the sequence is held, and pressed again it lets the sequence go on.
+  // Next is for a sequence that runs freely: what is held stays as it is.
+  const held = Boolean(running && state.held);
+  $('m-hold').disabled = !running;
+  $('m-hold').classList.toggle('is-disabled', !running);
+  $('m-hold').classList.toggle('is-on', held);
+  $('m-hold').setAttribute('aria-pressed', String(held));
+  $('m-next').disabled = !running || held;
+  $('m-next').classList.toggle('is-disabled', !running || held);
   // What a look says is Next follows the sequence, so the looks are drawn again.
   const group = currentGroup();
   if (group && !wallOpen) renderLooks(group);
@@ -651,17 +704,15 @@ function build() {
   tray = Object.fromEntries(
     LANES.map((id) => [id, { grid: $(`m-keys-${id}`), none: null, keys: new Map() }]),
   );
-  $('m-off').addEventListener('click', () => {
-    if (active) ask('/api/playback', { group: active, off: true });
-  });
-  // All puts the look back as it was stored: pressing it again sets every lane it names.
   $('m-all').addEventListener('click', () => {
-    const group = currentGroup();
-    const look = group ? onLook(group).item : undefined;
-    if (group && look) ask('/api/playback', { group: group.id, look: look.id });
+    showAll = !showAll;
+    rememberAll();
+    render();
   });
   $('m-next').addEventListener('click', () => ask('/api/sequence', { next: true }));
-  $('m-hold').addEventListener('click', () => ask('/api/sequence', { stop: true }));
+  $('m-hold').addEventListener('click', () => {
+    if (shell.sequence?.running) ask('/api/sequence', { hold: !shell.sequence.held });
+  });
 }
 
 async function main() {
@@ -669,12 +720,17 @@ async function main() {
   if (!shell) return;
   init(shell);
   wallOpen = remembered() === WALL;
+  try {
+    showAll = localStorage.getItem(ALL_KEY) === 'true';
+  } catch {
+    showAll = false;
+  }
 
   // The top bar, with a Menu key that opens the menu sheet over the page (the same bar that every setup
   // page has, with a Live key). The notice of the shell is in the stack of the page, over the keys.
   const bar = mountTopBar(shell, { left: 'menu' });
   mountMenu(shell, bar);
-  buildRoom();
+  buildSub();
   build();
 
   shell.on('show', () => {
@@ -687,10 +743,12 @@ async function main() {
   // The tile of the video wall says whether the text is on.
   shell.on('videowall', () => renderRail(groupsShown()));
   shell.on('sequence', renderPhases);
-  // The dimmer of the room is set from another screen too, and the lenses and the rails move on.
+  // The dimmer is set from another screen too, and the lenses and the rails move on.
   shell.on('fixtures', () => {
-    refreshDimmer();
-    renderRails();
+    refreshSub();
+    // The rails belong to the tab of the room: on another tab they stay away.
+    const group = currentGroup();
+    if (!wallOpen && group && roomGroup()?.id === group.id) renderRails();
     schedulePaint();
   });
   shell.on('frames', schedulePaint);

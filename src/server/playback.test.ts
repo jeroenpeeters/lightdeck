@@ -391,6 +391,7 @@ describe('Playback', () => {
       effect: { id: null, speed: 1 },
       motion: { id: 'pulse', speed: 1 },
       colours: [],
+      blackout: false,
     });
   });
 

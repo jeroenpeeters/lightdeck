@@ -116,6 +116,11 @@ export interface RoomState {
   effect: RoomEffectSettings;
   colour: RoomColourSettings;
   /**
+   * The blackout of the room alone (Jeroen, 2026-10-28): every lamp off at once, with everything it
+   * is set to kept, as the blackout of the console does for all. Left out of scenes.
+   */
+  blackout: boolean;
+  /**
    * The colour each light is being sent, its brightest channel at 1, for the page to draw a
    * swatch with. Not part of a look and not set with `update`; a switch has none.
    */
@@ -134,6 +139,7 @@ export interface StatePatch {
   zones?: unknown;
   effect?: unknown;
   colour?: unknown;
+  blackout?: unknown;
 }
 
 /** What of the state a change can set. */
@@ -225,7 +231,7 @@ export class RoomController extends EventEmitter implements FixtureController {
     this.cells = lamps.filter((lamp) => lamp.cell >= 0).length;
     this.bars = this.zonesAsBars();
 
-    this.state = { ...this.rest(), shown: {}, reported: {}, problems: {} };
+    this.state = { ...this.rest(), blackout: false, shown: {}, reported: {}, problems: {} };
     for (const lamp of this.lamps) {
       this.state.reported[lamp.id] = null;
       this.state.problems[lamp.id] = null;
@@ -257,6 +263,7 @@ export class RoomController extends EventEmitter implements FixtureController {
       zones: { ...this.state.zones },
       effect: { ...this.state.effect },
       colour: { ...this.state.colour },
+      blackout: this.state.blackout,
       shown: Object.fromEntries(
         Object.entries(this.state.shown).map(([id, colour]) => [id, { ...colour }]),
       ),
@@ -305,9 +312,16 @@ export class RoomController extends EventEmitter implements FixtureController {
 
   update(change: unknown, origin?: string): void {
     const look = this.apply(this.state, change, 'a change of the room');
-    this.state = { ...this.state, ...look };
+    const { blackout } = change as StatePatch;
+    if (blackout !== undefined && typeof blackout !== 'boolean') {
+      throw new PatchError('the blackout must be true or false');
+    }
+    const dark = blackout ?? this.state.blackout;
+    const goesDark = dark && !this.state.blackout;
+    this.state = { ...this.state, ...look, blackout: dark };
     this.emit('wants');
-    this.sync(GLIDE_S, false);
+    // Dark at once, as the blackout of the console is, and back in a glide.
+    this.sync(goesDark ? 0 : GLIDE_S, goesDark);
     this.emit('state', this.getState(), origin);
   }
 
@@ -365,6 +379,11 @@ export class RoomController extends EventEmitter implements FixtureController {
 
   act(name: string): void {
     throw new PatchError(`the room has nothing called "${name}"`);
+  }
+
+  /** The blackout of the console or of the room alone. */
+  private dark(): boolean {
+    return this.blackout || this.state.blackout;
   }
 
   setBlackout(blackout: boolean): void {
@@ -506,8 +525,12 @@ export class RoomController extends EventEmitter implements FixtureController {
       'zones',
       'effect',
       'colour',
+      'blackout',
     ]) as StatePatch;
     if (only !== undefined) {
+      if (patch.blackout !== undefined) {
+        throw new PatchError('the "blackout" of the room is part of no scene');
+      }
       for (const key of ['levels', 'fade', 'effect', 'colour'] as const) {
         if (patch[key] !== undefined && KEPT_BY[key] !== only) {
           throw new PatchError(`"${key}" is not part of a ${only} scene`);
@@ -735,13 +758,13 @@ export class RoomController extends EventEmitter implements FixtureController {
     const level = this.state.levels[lamp.id] ?? 0;
     if (lamp.domain === 'switch') {
       const follows = lamp.blackout === true;
-      const on = level > 0 && !(follows && (this.blackout || this.master === 0));
+      const on = level > 0 && !(follows && (this.dark() || this.master === 0));
       return { command: switchCommand(on), on };
     }
     const colour = cells[lamp.cell] ?? WHITE;
     const peak = Math.max(colour.red, colour.green, colour.blue, colour.white);
     const zone = lamp.zone === null ? 1 : (this.state.zones[lamp.zone] ?? 1);
-    const brightness = this.blackout ? 0 : peak * level * this.state.dimmer * zone * this.master;
+    const brightness = this.dark() ? 0 : peak * level * this.state.dimmer * zone * this.master;
     const direction: Rgbw =
       peak > 0
         ? {

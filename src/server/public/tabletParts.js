@@ -228,50 +228,133 @@ export function renderRails() {
   }
 }
 
-/** The dimmer of the room: what the fader shows while a finger is on it, and how it is sent. */
-let roomDimmer;
-let dimmerHeld = null;
-let dimmerHold;
-let dimmerSent = 0;
-let dimmerLate;
-const DIMMER_GAP_MS = 120;
-export function refreshDimmer() {
-  roomDimmer?.refresh();
+// ---- the sub dimmer: one fader, in the same place on every tab ----
+
+/**
+ * The control of a fixture that is its own master, by the kind of fixture (Jeroen, 2026-10-28: every
+ * fixture has a sub dimmer in the same place). The laser has none: its fader is there and rests.
+ */
+const SUB_KEY = { spider: 'subDimmer', room: 'dimmer' };
+
+/** The kinds of fixture that have a blackout of their own: all of them, the laser included. */
+const DARK_KINDS = new Set(['spider', 'laser', 'room']);
+
+/** The fixtures of a group that have a blackout of their own. */
+function darkFixtures(group) {
+  if (!group) return [];
+  return group.fixtures
+    .map((id) => shell.fixtures.find((fixture) => fixture.id === id))
+    .filter((fixture) => fixture && DARK_KINDS.has(fixture.kind));
 }
 
-function sendDimmer(percent) {
-  const fixture = roomFixture();
-  if (!fixture) return;
+/** Whether a group is in a blackout of its own (the blackout of the console is the page's). */
+export function groupDark(group) {
+  return darkFixtures(group).some((fixture) => shell.stateOf(fixture.id)?.blackout === true);
+}
+
+/** The fixtures of a group that have a sub dimmer. */
+export function subFixtures(group) {
+  if (!group) return [];
+  return group.fixtures
+    .map((id) => shell.fixtures.find((fixture) => fixture.id === id))
+    .filter((fixture) => fixture && SUB_KEY[fixture.kind]);
+}
+
+/** The group the fader belongs to now, whether it can be moved, and what a finger put on it. */
+let subGroup;
+let subOff = true;
+let sub;
+let subHeld = null;
+let subHold;
+let subSent = 0;
+let subLate;
+const SUB_GAP_MS = 120;
+
+/** The key of the blackout of the group: lit while it is on, Lift when pressed again. */
+function drawDark() {
+  const key = $('t-sub-dark');
+  const fixtures = darkFixtures(subGroup);
+  const on = groupDark(subGroup);
+  key.disabled = fixtures.length === 0;
+  key.classList.toggle('is-on', on);
+  key.classList.toggle('is-disabled', fixtures.length === 0);
+  key.setAttribute('aria-pressed', String(on));
+  key.textContent = on ? 'Lift' : 'Blackout';
+  key.setAttribute(
+    'aria-label',
+    `${subGroup?.label ?? 'Group'} ${on ? 'lift blackout' : 'blackout'}`,
+  );
+}
+
+/** Shows the fader and the blackout key again from the state, for the group they belong to. */
+export function refreshSub() {
+  sub?.refresh();
+  drawDark();
+}
+
+function sendSub(percent) {
+  const fixtures = subFixtures(subGroup);
+  if (fixtures.length === 0) return;
   const send = () => {
-    dimmerSent = performance.now();
-    ask(`/api/fixtures/${fixture.id}/update`, { dimmer: percent / 100 });
+    subSent = performance.now();
+    for (const fixture of fixtures) {
+      ask(`/api/fixtures/${fixture.id}/update`, { [SUB_KEY[fixture.kind]]: percent / 100 });
+    }
   };
   // At most one request in a gap, and the last position always goes.
-  clearTimeout(dimmerLate);
-  const wait = DIMMER_GAP_MS - (performance.now() - dimmerSent);
+  clearTimeout(subLate);
+  const wait = SUB_GAP_MS - (performance.now() - subSent);
   if (wait <= 0) send();
-  else dimmerLate = setTimeout(send, wait);
+  else subLate = setTimeout(send, wait);
 }
 
-export function buildRoom() {
-  roomDimmer = fader({
-    id: 't-room-dimmer-level',
-    label: 'Room dimmer',
-    read: () =>
-      dimmerHeld ?? Math.round(100 * (shell.stateOf(roomFixture()?.id ?? '')?.dimmer ?? 1)),
+/** Points the fader at a group: its name, and whether the group has anything to dim. */
+export function renderSub(group) {
+  if (subGroup?.id !== group?.id) {
+    subHeld = null;
+    clearTimeout(subHold);
+    clearTimeout(subLate);
+  }
+  subGroup = group;
+  subOff = subFixtures(group).length === 0;
+  const name = group ? `${group.label} dimmer` : 'Dimmer';
+  sub.querySelector('.fl').textContent = name;
+  sub.input.setAttribute('aria-label', name);
+  sub.title = subOff ? `${group?.label ?? 'This group'} has no dimmer` : '';
+  refreshSub();
+}
+
+export function buildSub() {
+  sub = fader({
+    id: 't-sub-level',
+    label: 'Dimmer',
+    format: (number) => (subOff ? '–' : String(number)),
+    read: () => {
+      if (subOff) return null;
+      const first = subFixtures(subGroup)[0];
+      const key = SUB_KEY[first.kind];
+      return subHeld ?? Math.round(100 * (shell.stateOf(first.id)?.[key] ?? 1));
+    },
     write: (number) => {
       // The stream tells of an older position after a newer one is sent: the fader stays where
       // the finger put it until the finger has been away for a moment.
-      dimmerHeld = number;
-      clearTimeout(dimmerHold);
-      dimmerHold = setTimeout(() => {
-        dimmerHeld = null;
-        roomDimmer.refresh();
+      subHeld = number;
+      clearTimeout(subHold);
+      subHold = setTimeout(() => {
+        subHeld = null;
+        sub.refresh();
       }, 700);
-      sendDimmer(number);
+      sendSub(number);
     },
   });
-  $('t-room-dimmer').append(roomDimmer);
+  $('t-sub-dimmer').append(sub);
+  // The blackout of this group alone: dark with everything kept, and a second press lifts it.
+  $('t-sub-dark').addEventListener('click', () => {
+    const on = groupDark(subGroup);
+    for (const fixture of darkFixtures(subGroup)) {
+      ask(`/api/fixtures/${fixture.id}/update`, { blackout: !on });
+    }
+  });
 }
 
 // The app can be installed (manifest.webmanifest). The service worker (sw.js) keeps the page itself,

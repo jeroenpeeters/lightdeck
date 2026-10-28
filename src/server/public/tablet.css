@@ -185,7 +185,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 12px 12px 12px 14px;
+  padding: 0 12px 12px 14px;
   overflow-y: auto;
   scrollbar-width: none;
   background: var(--s1);
@@ -193,6 +193,15 @@
 }
 .t-tray::-webkit-scrollbar {
   display: none;
+}
+/* The head, with the key All, stays at the top while the tray is scrolled. */
+.t-tray-head {
+  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 12px 0 8px;
+  background: var(--s1);
 }
 .t-tray-head h3 {
   margin: 0;
@@ -247,16 +256,25 @@
   border-color: var(--on);
 }
 
-/* ---- the lamps of the room ---- */
+/* ---- the sub dimmer, and the rails of the room ---- */
 
-.t-room {
+.t-sub {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.t-room-dimmer {
-  flex: 1 1 0;
+.t-sub-dimmer {
+  /* The same size on every tab, so that it is in the same place whatever else is next to it. */
+  flex: 0 0 var(--sub-w, 360px);
   min-width: 0;
+}
+/* The blackout of the group alone: the same key as the blackout of the console, smaller. */
+.t-sub-bo {
+  flex: none;
+  width: 120px;
+  padding: 0 8px;
+  font-size: var(--fs-m);
+  white-space: nowrap;
 }
 .t-rails {
   display: flex;
@@ -267,8 +285,9 @@
   border: 0;
 }
 .t-rails .key {
-  width: 96px;
+  width: 72px;
   height: 48px;
+  padding: 10px 6px;
 }
 
 /* ---- the foot: the parts of the evening ---- */
@@ -309,6 +328,10 @@
 }
 .part .narrow {
   display: none;
+}
+/* A held part: the same slab, with its place in white, so that it reads as frozen. */
+.part.is-held .place {
+  color: var(--t1);
 }
 .t-step {
   gap: 6px;
@@ -354,7 +377,7 @@
   .t-tray {
     margin-top: 12px;
     gap: 10px;
-    padding: 12px;
+    padding: 0 12px 12px;
     border-top: 1px solid var(--line);
     border-left: 0;
   }

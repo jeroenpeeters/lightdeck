@@ -50,8 +50,10 @@
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
  *   POST /api/sequence                `start`, the id of a sequence of the show, which sets its first
  *                                     step at once and goes on on the bars (it stops the one that
- *                                     runs), `next: true` (the next step now) or `stop: true`. A
- *                                     stop leaves the fixtures as they are
+ *                                     runs), `next: true` (the next step now), `hold: true` (freeze
+ *                                     it where it is: no bar is counted and nothing is set) or
+ *                                     `hold: false` (let it go on with the bars the step has
+ *                                     left), or `stop: true`. A stop leaves the fixtures as they are
  *   POST /api/playback                `group` with one of: `scene`, the id of the scene of
  *                                     lights or motion to set the fixtures of the group to
  *                                     (only the properties of the type of the scene);
@@ -444,12 +446,22 @@ export function createHttpServer(options: HttpOptions): Server {
 
     if (req.method === 'POST' && path === '/api/sequence') {
       const { change } = split(await readJson(req));
-      const { start, stop, next } = readObject(change, 'the sequence', ['start', 'stop', 'next']);
-      if ([start, stop, next].filter((given) => given !== undefined).length !== 1) {
-        throw new PatchError('say which sequence to start, or stop: true, or next: true');
+      const { start, stop, next, hold } = readObject(change, 'the sequence', [
+        'start',
+        'stop',
+        'next',
+        'hold',
+      ]);
+      if ([start, stop, next, hold].filter((given) => given !== undefined).length !== 1) {
+        throw new PatchError(
+          'say which sequence to start, or stop: true, or next: true, or hold: true or false',
+        );
       }
       if (start !== undefined) {
         rig.sequencer.start(start);
+      } else if (hold !== undefined) {
+        if (typeof hold !== 'boolean') throw new PatchError('"hold" can only be true or false');
+        rig.sequencer.hold(hold);
       } else if (next !== undefined) {
         if (next !== true) throw new PatchError('"next" can only be true');
         rig.sequencer.next();

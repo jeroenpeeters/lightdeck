@@ -161,9 +161,10 @@ Go to `http://<computer-ip>:8080` on the tablet. The console has:
 - **Tablet** (`/tablet`, the old `/moods` goes there): the page for a tablet at the side of the
   dance floor, built after the design in [design/](design/HANDOFF.md) (every page has it: a lighting-console look,
   dark, IBM Plex, a rail of the groups with what each shows right now), with few, big controls: tap the tempo, the master and its speed, the parts of the
-  evening (sequences, with Next and Hold), the looks of a group by mood with a tray under them to
-  vary the look (palette, effect, movement, zone), the lamps of the room (a dimmer, and a switch
-  per rail), the blackout, the state of the bridge, the LR512 and Home Assistant, and last a tab
+  evening (sequences, with Next and Hold, which freezes a part and lets it go on when pressed again), the looks of a group by mood with a tray under them to
+  vary the look (palette, effect, movement, zone), a dimmer and a blackout for each group in
+  the same place on every tab (the laser has no dimmer, so there it rests) and a switch per rail for
+  the room, the blackout of everything, the state of the bridge, the LR512 and Home Assistant, and last a tab
   Video wall: play what the player has (playlists, videos, effects, texts), its blackout, and the
   text of the track.
 - **Video wall** (`/videowall`): the same video wall controls on a page of their own.

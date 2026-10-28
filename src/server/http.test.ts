@@ -230,7 +230,7 @@ describe('HTTP server', () => {
     expect((await post('/api/fixtures/spider/update', 'not json')).status).toBe(400);
     expect((await post('/api/fixtures/spider/update', '[1]')).status).toBe(400);
     expect((await post('/api/fixtures/spider/update', { raw: { reset: 255 } })).status).toBe(400);
-    expect((await post('/api/fixtures/spider/update', { blackout: true })).status).toBe(400);
+    expect((await post('/api/fixtures/spider/update', { blackout: 'yes' })).status).toBe(400);
     expect((await post('/api/fixtures/laser/update', { raw: { mode: 300 } })).status).toBe(400);
     expect((await post('/api/fixtures/laser/update', { levels: { mode: 1 } })).status).toBe(400);
     expect(output.frames).toHaveLength(before);

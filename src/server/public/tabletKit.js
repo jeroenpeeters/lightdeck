@@ -95,7 +95,14 @@ export function drawLook(key, { state, number, name, colours, meta, next, title 
   const tag = state === 'changed' ? 'var' : state === 'idle' && next ? 'next' : '';
   parts.tag.className = tag ? `tag ${tag}` : 'tag';
   parts.tag.hidden = tag === '';
-  parts.tag.textContent = tag === 'var' ? 'Varied' : tag === 'next' ? `Next · ${next.bars}` : '';
+  parts.tag.textContent =
+    tag === 'var'
+      ? 'Varied'
+      : tag === 'next'
+        ? next.bars === null
+          ? 'Next'
+          : `Next · ${next.bars}`
+        : '';
   fillStrip(parts.strip, colours);
   parts.meta.textContent = meta;
   key.title = title;

@@ -12,6 +12,8 @@ export interface Sequence {
 }
 export interface SequenceState {
   running: string | null;
+  /** True while the sequence is held. */
+  held?: boolean;
   step: number;
   barsLeft: number;
 }

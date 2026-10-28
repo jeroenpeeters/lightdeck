@@ -82,7 +82,7 @@ describe('SpiderController', () => {
       { raw: { function: 300 } },
       { raw: { dimmer: 10 } },
       { raw: [1] },
-      { levels: { dimmer: 1 }, blackout: true },
+      { levels: { dimmer: 1 }, blackout: 'yes' },
       { levels: { dimmer: 1 }, bpm: 120 },
       'dimmer',
       null,
@@ -92,8 +92,7 @@ describe('SpiderController', () => {
     expect(output.frames).toHaveLength(1);
   });
 
-  it("says that the blackout and the tempo are not the spider's to set", () => {
-    expect(() => controller.update({ blackout: true })).toThrow(/cannot set "blackout"/);
+  it("says that the tempo is not the spider's to set", () => {
     expect(() => controller.update({ effect: { bpm: 120 } })).toThrow(/cannot set "bpm"/);
   });
 
@@ -199,6 +198,111 @@ describe('SpiderController', () => {
     expect([sent(1, 1), sent(1, 0.5), sent(1, 0)]).toEqual([255, 128, 0]);
     expect([sent(0.5, 1), sent(0.5, 0.5), sent(0.5, 0)]).toEqual([128, 64, 0]);
     expect(sent(0, 1)).toBe(0);
+  });
+
+  describe('the blackout of this fixture alone', () => {
+    it('is dark with everything kept, and comes back as it was', () => {
+      controller.update({ levels: { dimmer: 0.8, strobe: 0.5, red1: 1, tilt1: 1 } });
+      expect(controller.getState().blackout).toBe(false);
+      controller.update({ blackout: true });
+      expect(controller.getState().blackout).toBe(true);
+      expect(ch(output, 6)).toBe(0);
+      expect(ch(output, 39)).toBe(0);
+      expect(ch(output, 7)).toBe(255);
+      expect(ch(output, 1)).toBe(255);
+      expect(controller.getState().levels.dimmer).toBe(0.8);
+      controller.update({ blackout: false });
+      expect(ch(output, 6)).toBe(204);
+    });
+
+    it('and the blackout of the console do not undo each other', () => {
+      controller.update({ levels: { dimmer: 1 }, blackout: true });
+      controller.setBlackout(true);
+      controller.setBlackout(false);
+      expect(ch(output, 6)).toBe(0);
+      controller.update({ blackout: false });
+      expect(ch(output, 6)).toBe(255);
+      controller.setBlackout(true);
+      controller.update({ blackout: true });
+      controller.update({ blackout: false });
+      expect(ch(output, 6)).toBe(0);
+    });
+
+    it('is part of no scene, and must be true or false', () => {
+      controller.update({ blackout: true });
+      for (const type of ['lights', 'colour', 'motion', 'zone'] as const) {
+        expect(JSON.stringify(controller.snapshot(type))).not.toContain('lackout');
+      }
+      controller.recall('lights', { levels: { dimmer: 1 } });
+      expect(controller.getState().blackout).toBe(true);
+      expect(() => controller.check('lights', { blackout: false })).toThrow(/no scene/);
+      expect(() => controller.update({ blackout: 1 })).toThrow(PatchError);
+      expect(controller.getState().blackout).toBe(true);
+    });
+  });
+
+  describe('the sub dimmer', () => {
+    it('starts at full, and scales the dimmer on top of the master and nothing else', () => {
+      expect(controller.getState().subDimmer).toBe(1);
+      controller.update({ levels: { dimmer: 1, strobe: 0.5, red1: 1, tilt1: 0.5 } });
+      const full = controller.getDmx();
+      controller.update({ subDimmer: 0.5 });
+      expect(ch(output, 6)).toBe(128);
+      expect(controller.getDmx().filter((_, index) => index !== 5)).toEqual(
+        full.filter((_, index) => index !== 5),
+      );
+      controller.setMaster(0.5);
+      expect(ch(output, 6)).toBe(64);
+      controller.update({ subDimmer: 0 });
+      expect(ch(output, 6)).toBe(0);
+    });
+
+    it('leaves what is set alone, and tells the listeners', () => {
+      const seen: SpiderState[] = [];
+      controller.on('state', (state) => seen.push(state));
+      controller.update({ levels: { dimmer: 0.8 } });
+      controller.update({ subDimmer: 0.25 }, 'tablet');
+      expect(seen.at(-1)?.subDimmer).toBe(0.25);
+      expect(seen.at(-1)?.levels.dimmer).toBe(0.8);
+      controller.update({ levels: { dimmer: 1 } });
+      expect(controller.getState().subDimmer).toBe(0.25);
+    });
+
+    it('is part of no scene: not kept, not set, not undone by a recall, and refused in one', () => {
+      controller.update({ levels: { dimmer: 0.7 }, effect: { id: 'wave' }, subDimmer: 0.3 });
+      for (const type of ['lights', 'colour', 'motion', 'zone'] as const) {
+        expect(JSON.stringify(controller.snapshot(type))).not.toContain('ubDimmer');
+      }
+      controller.recall('lights', { levels: { dimmer: 1 } });
+      expect(controller.getState().subDimmer).toBe(0.3);
+      controller.recall('lights', undefined);
+      expect(controller.getState().subDimmer).toBe(0.3);
+      expect(() => controller.check('lights', { subDimmer: 0.5 })).toThrow(PatchError);
+      expect(() => controller.recall('lights', { subDimmer: 0.5 })).toThrow(/no scene/);
+    });
+
+    it('is a number from 0 to 1, and a refused change changes nothing', () => {
+      controller.update({ subDimmer: 7 });
+      expect(controller.getState().subDimmer).toBe(1);
+      controller.update({ subDimmer: -3 });
+      expect(controller.getState().subDimmer).toBe(0);
+      controller.update({ subDimmer: 0.4 });
+      expect(() => controller.update({ subDimmer: 'half' })).toThrow(PatchError);
+      expect(() => controller.update({ subDimmer: Number.NaN })).toThrow(PatchError);
+      expect(() => controller.update({ levels: { dimmer: 0.9 }, subDimmer: null })).toThrow(
+        PatchError,
+      );
+      expect(controller.getState().subDimmer).toBe(0.4);
+      expect(controller.getState().levels.dimmer).toBe(0);
+    });
+
+    it('does not move while the blackout is on or off', () => {
+      controller.update({ levels: { dimmer: 1 }, subDimmer: 0.5 });
+      controller.setBlackout(true);
+      expect(ch(output, 6)).toBe(0);
+      controller.setBlackout(false);
+      expect(ch(output, 6)).toBe(128);
+    });
   });
 
   it('starts with the master at full', () => {

@@ -941,10 +941,12 @@ function renderSequence() {
   let status = '';
   if (sequence) {
     if (running) {
-      state = now.paused ? 'waiting' : 'running';
-      status = now.paused
-        ? `Step ${now.step + 1} of ${now.steps}. Waiting: the music has stopped.`
-        : `Step ${now.step + 1} of ${now.steps}, ${count(now.barsLeft, 'bar')} to go.`;
+      state = now.held ? 'held' : now.paused ? 'waiting' : 'running';
+      status = now.held
+        ? `Step ${now.step + 1} of ${now.steps}. Held: no bar is counted. Let it go on the tablet page.`
+        : now.paused
+          ? `Step ${now.step + 1} of ${now.steps}. Waiting: the music has stopped.`
+          : `Step ${now.step + 1} of ${now.steps}, ${count(now.barsLeft, 'bar')} to go.`;
       if (now.problem) status += ` ${sentence(now.problem)}`;
     } else {
       state = now.running ? 'another runs' : 'stopped';

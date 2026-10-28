@@ -34,20 +34,20 @@ export function makeTile(kind, onPress) {
 }
 
 /**
- * Draws a tile. `tile` is `{ name, status, lit, selected, mini }`: `lit` says the words are of
- * something that is on (amber, or red for the laser), `mini` is what the kind shows:
+ * Draws a tile. `tile` is `{ name, status, lit, alarm, selected, mini }`: `lit` says the words are of
+ * something that is on (amber, or red for the laser), `alarm` makes them red (a blackout of the group), `mini` is what the kind shows:
  * `{ colours }` for lenses (a CSS colour each, '' for dark), `{ open }` for the laser, `{ rails }`
  * (`{ level, colour }` each) for the room, and nothing for the wall.
  */
-export function drawTile(tile, { name, status, lit, selected, mini }) {
+export function drawTile(tile, { name, status, lit, alarm = false, selected, mini }) {
   const { parts } = tile;
-  const words = `${name}\n${status}\n${lit}\n${selected}\n${Boolean(mini?.open)}`;
+  const words = `${name}\n${status}\n${lit}\n${alarm}\n${selected}\n${Boolean(mini?.open)}`;
   if (parts.words !== words) {
     parts.words = words;
     parts.name.textContent = name;
     parts.status.textContent = status;
-    parts.status.classList.toggle('amber', lit && parts.kind !== 'laser');
-    parts.status.classList.toggle('red', lit && parts.kind === 'laser');
+    parts.status.classList.toggle('amber', lit && !alarm && parts.kind !== 'laser');
+    parts.status.classList.toggle('red', alarm || (lit && parts.kind === 'laser'));
     tile.classList.toggle('is-sel', selected);
     tile.classList.toggle('armed', parts.kind === 'laser' && Boolean(mini?.open));
     tile.setAttribute('aria-selected', String(selected));
