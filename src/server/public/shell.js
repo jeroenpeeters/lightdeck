@@ -211,7 +211,7 @@ export async function start({ page = 'fixture', bare = false } = {}) {
     if ($('where')) {
       $('where').textContent =
         fixture.protocol === 'hass'
-          ? `Home Assistant, ${fixture.details.lamps.length} lamps and switches`
+          ? `Home Assistant, ${(fixture.details.lamps ?? fixture.details.switches ?? []).length} lamps and switches`
           : `Port ${fixture.universe + 1}, address ${fixture.address}, ${fixture.footprint} channels`;
     }
   }

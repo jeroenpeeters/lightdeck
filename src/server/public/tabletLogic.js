@@ -128,3 +128,68 @@ export function roomRails(state, zones) {
     };
   });
 }
+
+// ---- the decor: switches that no scene keeps ----
+
+/** The fixtures of a group that are switches of the decor. `fixtures` is what /api/state lists. */
+export function decorOf(fixtures, group) {
+  if (!group) return [];
+  return group.fixtures
+    .map((id) => fixtures.find((fixture) => fixture.id === id))
+    .filter((fixture) => fixture?.kind === 'switches');
+}
+
+/** Whether a group is the decor: it has fixtures and every one of them is a switches fixture. */
+export function isDecorGroup(fixtures, group) {
+  return (
+    Boolean(group) &&
+    group.fixtures.length > 0 &&
+    decorOf(fixtures, group).length === group.fixtures.length
+  );
+}
+
+/** How long a switch may differ from what Home Assistant says before it is called a difference. */
+export const DIFFERS_MS = 5000;
+
+/**
+ * What one switch of the decor shows: whether it is on (set on, and not dark), the word for it
+ * (On, Off, or Blackout when it is set on and dark), whether it follows the blackout of the console,
+ * and what Home Assistant says as a line, with `warn` when that is a problem (a refused command, an
+ * unavailable switch, or a difference that has lasted `DIFFERS_MS`). `consoleDark` is the blackout of
+ * the console, `now` a clock in ms and `since` by switch the moment its difference began.
+ */
+export function switchView(state, id, consoleDark, now = 0, since = {}) {
+  const set = state?.on?.[id] === true;
+  const follows = state?.follows?.[id] === true;
+  const dark = state?.blackout === true || (consoleDark && follows);
+  const on = set && !dark;
+  const reported = state?.reported?.[id] ?? null;
+  const problem = state?.problems?.[id] ?? null;
+  let note = '';
+  let warn = false;
+  if (problem) {
+    note = problem;
+    warn = true;
+  } else if (reported === null) {
+    note = 'Home Assistant: nothing yet';
+  } else if (!reported.available) {
+    note = 'Home Assistant: unavailable';
+    warn = true;
+  } else if (reported.on !== on) {
+    // A switch takes a moment to report: a difference counts after a few seconds.
+    warn = now - (since[id] ?? now) >= DIFFERS_MS;
+    note = warn ? `Home Assistant says ${reported.on ? 'on' : 'off'}` : '';
+  } else {
+    note = `Home Assistant: ${reported.on ? 'on' : 'off'}`;
+  }
+  return {
+    set,
+    follows,
+    on,
+    dark: set && dark,
+    word: set && dark ? 'Blackout' : on ? 'On' : 'Off',
+    note,
+    warn,
+    differs: Boolean(reported?.available && reported.on !== on),
+  };
+}

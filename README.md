@@ -37,6 +37,10 @@ Fixtures it knows:
 - **Room Lights**: the lamps (lights) and switches that Home Assistant drives, as one fixture
   with zones, like the two bars of the spider. They follow the palettes, the grand master and
   the blackout, and have a dimmer of their own.
+- **Decor**: switches that Home Assistant drives and that are not lamps of the room, such as the
+  two UV lamps on the symbols of the cabinet. On and off only, by hand on their own tab of the
+  tablet page, apart or together; no scene, look or sequence touches them. Each one can follow the
+  blackout of the console or not, which is set on the tab while the show runs.
 
 Other fixtures need a profile of their own, see [Adding a fixture](#adding-a-fixture).
 
@@ -340,7 +344,17 @@ fixtures:
       - { id: fog, label: Fog machine, entity: switch.fog, blackout: true }
     zones:
       - { id: low, label: Low, lamps: [bar] }
+  - id: decor
+    kind: switches
+    label: Decor
+    switches:
+      - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
+      - { id: uv2, label: UV 2, entity: switch.uv_lamp_2, blackout: true }
 ```
+
+The decor is its own fixture, with switches and no lamps. It needs a group in the show file to
+get its tab on the tablet page: `groups:` `decor: { label: Decor, fixtures: [decor] }`. Its
+`blackout: true` is where "follows the blackout" starts; the tablet changes it while the show runs.
 
 The lights that are in no zone are one zone together, a switch is in no zone, and a switch goes off
 in a blackout (and with the master at 0) only when it says `blackout: true`. A lamp that a

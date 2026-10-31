@@ -1545,8 +1545,9 @@ describe('SpiderController in a scene', () => {
 
   it('gives every type its own properties and no others', () => {
     everything();
+    // The strobe (0.2 here) is held by hand and is in no scene.
     expect(controller.snapshot('lights')).toEqual({
-      levels: { dimmer: 1, strobe: 0.2 },
+      levels: { dimmer: 1 },
       raw: { effectSpeed: 40 },
       effect: { id: 'wave', speed: 0.5 },
     });
@@ -1555,6 +1556,14 @@ describe('SpiderController in a scene', () => {
       levels: { tilt1: 0.7, motorSpeed: 0.4 },
       motion: { id: 'tiltwave', speed: 2 },
     });
+  });
+
+  it('keeps the strobe in no scene: a recall leaves it and a scene that names it is refused', () => {
+    controller.update({ levels: { dimmer: 1, strobe: 0.6 } });
+    expect(controller.snapshot('lights')).toEqual({ levels: { dimmer: 1 } });
+    controller.recall('lights', { levels: { dimmer: 0.4 }, effect: { id: 'kick' } });
+    expect(controller.getState().levels.strobe).toBe(0.6);
+    expect(() => controller.check('lights', { levels: { strobe: 0.5 } })).toThrow(PatchError);
   });
 
   it('keeps the colour of a lens set by hand in no scene', () => {
@@ -1680,7 +1689,8 @@ describe('SpiderController in a scene', () => {
     controller.recall('lights', undefined);
     const state = controller.getState();
     expect(state.levels.dimmer).toBe(0);
-    expect(state.levels.strobe).toBe(0);
+    // The strobe is held by hand: off darkens through the dimmer and does not touch it.
+    expect(state.levels.strobe).toBe(0.5);
     expect(state.raw.effectSpeed).toBe(0);
     expect(state.effect.id).toBeNull();
     expect(ch(output, 6)).toBe(0);

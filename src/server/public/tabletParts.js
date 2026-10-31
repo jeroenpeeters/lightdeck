@@ -175,11 +175,12 @@ export function laneWords(group, type) {
 
 /**
  * The group of the lamps of the room: the one called room, or else the first group whose fixtures
- * are all driven by Home Assistant. Nothing when the rig has no such lamps.
+ * are all rooms (lamps driven by Home Assistant). Nothing when the rig has no such lamps.
  */
 export function roomGroup() {
   const { groups } = shell.show;
-  const driven = (id) => shell.fixtures.find((fixture) => fixture.id === id)?.protocol === 'hass';
+  // The lamps of the room only: the switches of the decor are driven by Home Assistant too.
+  const driven = (id) => shell.fixtures.find((fixture) => fixture.id === id)?.kind === 'room';
   return (
     groups.find((group) => group.id === 'room' && group.fixtures.every(driven)) ??
     groups.find((group) => group.fixtures.length > 0 && group.fixtures.every(driven))
@@ -237,7 +238,7 @@ export function renderRails() {
 const SUB_KEY = { spider: 'subDimmer', room: 'dimmer' };
 
 /** The kinds of fixture that have a blackout of their own: all of them, the laser included. */
-const DARK_KINDS = new Set(['spider', 'laser', 'room']);
+const DARK_KINDS = new Set(['spider', 'laser', 'room', 'switches']);
 
 /** The fixtures of a group that have a blackout of their own. */
 function darkFixtures(group) {
@@ -260,15 +261,81 @@ export function subFixtures(group) {
     .filter((fixture) => fixture && SUB_KEY[fixture.kind]);
 }
 
-/** The group the fader belongs to now, whether it can be moved, and what a finger put on it. */
-let subGroup;
-let subOff = true;
-let sub;
-let subHeld = null;
-let subHold;
-let subSent = 0;
-let subLate;
 const SUB_GAP_MS = 120;
+
+/**
+ * A fader that sets one level on the fixtures of the chosen group: the sub dimmer, and the strobe of the
+ * spider. `fixtures(group)` lists the fixtures it sets, `current(fixture)` reads its level as a share
+ * (0 to 1) and `body(fixture, share)` is what the update says. A finger that moves it is not overruled by
+ * an older position from the stream until it has been away for 700 ms, and a request goes at most
+ * every 120 ms, the last position always. With `plain` the bar says just `label`, not the group's name.
+ */
+function groupFader({ id, label, format, fixtures, current, body, noun, plain = false }) {
+  let group;
+  let off = true;
+  let held = null;
+  let holdTimer;
+  let sentAt = 0;
+  let lateTimer;
+  const bar = fader({
+    id,
+    label,
+    format: (number) => (off ? '–' : format(number)),
+    read: () => {
+      if (off) return null;
+      const first = fixtures(group)[0];
+      return held ?? Math.round(100 * current(first));
+    },
+    write: (number) => {
+      held = number;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(() => {
+        held = null;
+        bar.refresh();
+      }, 700);
+      const list = fixtures(group);
+      if (list.length === 0) return;
+      const send = () => {
+        sentAt = performance.now();
+        for (const fixture of list)
+          ask(`/api/fixtures/${fixture.id}/update`, body(fixture, number / 100));
+      };
+      clearTimeout(lateTimer);
+      const wait = SUB_GAP_MS - (performance.now() - sentAt);
+      if (wait <= 0) send();
+      else lateTimer = setTimeout(send, wait);
+    },
+  });
+  /** Points the fader at a group: its name, and whether the group has anything to set. */
+  bar.point = (next) => {
+    if (group?.id !== next?.id) {
+      held = null;
+      clearTimeout(holdTimer);
+      clearTimeout(lateTimer);
+    }
+    group = next;
+    off = fixtures(next).length === 0;
+    const name = next ? `${next.label} ${noun}` : label;
+    // `plain` keeps the short name on the bar (it is narrow); a reader still hears the group.
+    bar.querySelector('.fl').textContent = plain ? label : name;
+    bar.input.setAttribute('aria-label', name);
+    bar.title = off ? `${next?.label ?? 'This group'} has no ${noun}` : '';
+    bar.refresh();
+  };
+  return bar;
+}
+
+let subGroup;
+let sub;
+let strobe;
+
+/** The fixtures of a group that have a strobe to set: the spiders. */
+export function strobeFixtures(group) {
+  if (!group) return [];
+  return group.fixtures
+    .map((id) => shell.fixtures.find((fixture) => fixture.id === id))
+    .filter((fixture) => fixture?.kind === 'spider');
+}
 
 /** The key of the blackout of the group: lit while it is on, Lift when pressed again. */
 function drawDark() {
@@ -286,68 +353,46 @@ function drawDark() {
   );
 }
 
-/** Shows the fader and the blackout key again from the state, for the group they belong to. */
+/** Shows the faders and the blackout key again from the state, for the group they belong to. */
 export function refreshSub() {
   sub?.refresh();
+  strobe?.refresh();
   drawDark();
 }
 
-function sendSub(percent) {
-  const fixtures = subFixtures(subGroup);
-  if (fixtures.length === 0) return;
-  const send = () => {
-    subSent = performance.now();
-    for (const fixture of fixtures) {
-      ask(`/api/fixtures/${fixture.id}/update`, { [SUB_KEY[fixture.kind]]: percent / 100 });
-    }
-  };
-  // At most one request in a gap, and the last position always goes.
-  clearTimeout(subLate);
-  const wait = SUB_GAP_MS - (performance.now() - subSent);
-  if (wait <= 0) send();
-  else subLate = setTimeout(send, wait);
-}
-
-/** Points the fader at a group: its name, and whether the group has anything to dim. */
+/** Points the dimmer and the strobe at a group. The strobe is there for the spider only. */
 export function renderSub(group) {
-  if (subGroup?.id !== group?.id) {
-    subHeld = null;
-    clearTimeout(subHold);
-    clearTimeout(subLate);
-  }
   subGroup = group;
-  subOff = subFixtures(group).length === 0;
-  const name = group ? `${group.label} dimmer` : 'Dimmer';
-  sub.querySelector('.fl').textContent = name;
-  sub.input.setAttribute('aria-label', name);
-  sub.title = subOff ? `${group?.label ?? 'This group'} has no dimmer` : '';
-  refreshSub();
+  sub.point(group);
+  strobe.point(group);
+  $('t-sub-strobe').hidden = strobeFixtures(group).length === 0;
+  drawDark();
 }
 
 export function buildSub() {
-  sub = fader({
+  sub = groupFader({
     id: 't-sub-level',
     label: 'Dimmer',
-    format: (number) => (subOff ? '–' : String(number)),
-    read: () => {
-      if (subOff) return null;
-      const first = subFixtures(subGroup)[0];
-      const key = SUB_KEY[first.kind];
-      return subHeld ?? Math.round(100 * (shell.stateOf(first.id)?.[key] ?? 1));
-    },
-    write: (number) => {
-      // The stream tells of an older position after a newer one is sent: the fader stays where
-      // the finger put it until the finger has been away for a moment.
-      subHeld = number;
-      clearTimeout(subHold);
-      subHold = setTimeout(() => {
-        subHeld = null;
-        sub.refresh();
-      }, 700);
-      sendSub(number);
-    },
+    noun: 'dimmer',
+    format: String,
+    fixtures: subFixtures,
+    current: (fixture) => shell.stateOf(fixture.id)?.[SUB_KEY[fixture.kind]] ?? 1,
+    body: (fixture, share) => ({ [SUB_KEY[fixture.kind]]: share }),
   });
   $('t-sub-dimmer').append(sub);
+  // The strobe over whatever effect runs (Jeroen, 2026-10-30): 0 is off, more is faster flashes, within
+  // the flash limit of the fixture. It is the lights' own strobe channel, so it goes with any effect.
+  strobe = groupFader({
+    id: 't-sub-strobe-level',
+    label: 'Strobe',
+    noun: 'strobe',
+    plain: true,
+    format: (number) => (number === 0 ? 'Off' : String(number)),
+    fixtures: strobeFixtures,
+    current: (fixture) => shell.stateOf(fixture.id)?.levels?.strobe ?? 0,
+    body: (_fixture, share) => ({ levels: { strobe: share } }),
+  });
+  $('t-sub-strobe').append(strobe);
   // The blackout of this group alone: dark with everything kept, and a second press lifts it.
   $('t-sub-dark').addEventListener('click', () => {
     const on = groupDark(subGroup);

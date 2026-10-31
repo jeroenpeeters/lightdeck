@@ -1,6 +1,6 @@
 // The rail of the groups on the tablet page: a tile per group (and one for the video wall) that shows
 // what the group does right now, a little: the colours of the lenses of the spider, whether the laser
-// is open, how bright the rails of the room are. Plain browser JavaScript. It draws what it is told
+// is open, how bright the rails of the room are, which UV lamps of the decor are on. Plain browser JavaScript. It draws what it is told
 // (tablet.js works that out from the state); it keeps what it drew last, so that a frame that
 // changes nothing touches nothing.
 
@@ -16,6 +16,7 @@ const MINI = {
   laser: () => element('div', 'hazard-dim t-laser-bar'),
   rails: () => element('div', 'rails'),
   wall: () => element('div', 't-wall-bar'),
+  switches: () => element('div', 'uvs'),
 };
 
 /** A tile: its name, the mini output of its kind and a line of words. */
@@ -37,7 +38,7 @@ export function makeTile(kind, onPress) {
  * Draws a tile. `tile` is `{ name, status, lit, alarm, selected, mini }`: `lit` says the words are of
  * something that is on (amber, or red for the laser), `alarm` makes them red (a blackout of the group), `mini` is what the kind shows:
  * `{ colours }` for lenses (a CSS colour each, '' for dark), `{ open }` for the laser, `{ rails }`
- * (`{ level, colour }` each) for the room, and nothing for the wall.
+ * (`{ level, colour }` each) for the room, `{ on }` (a boolean per switch) for the decor, and nothing for the wall.
  */
 export function drawTile(tile, { name, status, lit, alarm = false, selected, mini }) {
   const { parts } = tile;
@@ -73,6 +74,14 @@ export function paintTile(tile, mini) {
     const open = Boolean(mini?.open);
     holder.classList.toggle('hazard', open);
     holder.classList.toggle('hazard-dim', !open);
+  } else if (parts.kind === 'switches') {
+    const lit = mini?.on ?? [];
+    if (holder.children.length !== lit.length) {
+      holder.replaceChildren(...lit.map(() => element('i')));
+    }
+    lit.forEach((on, index) => {
+      holder.children[index].classList.toggle('is-on', on);
+    });
   } else if (parts.kind === 'rails') {
     const rails = mini?.rails ?? [];
     if (holder.children.length !== rails.length) {

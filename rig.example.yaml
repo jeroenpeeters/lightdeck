@@ -22,3 +22,15 @@ fixtures:
     zones:
       - { id: low, label: Low, lamps: [bar, shelf] }
       - { id: high, label: High, lamps: [ceiling] }
+
+  # The decor: switches that light things of the set (here two UV lamps on the symbols of a cabinet).
+  # They have no brightness, colour or effect, and no scene, look or sequence switches them: they are
+  # on and off by hand on the tab Decor of the tablet page, apart or together. `blackout: true` is where
+  # "follows the blackout of the console" starts; the tablet changes it while the show runs. The group
+  # that gives the fixture its tab is in the show file:  groups: { decor: { label: Decor, fixtures: [decor] } }
+  - id: decor
+    kind: switches
+    label: Decor
+    switches:
+      - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
+      - { id: uv2, label: UV 2, entity: switch.uv_lamp_2, blackout: true }

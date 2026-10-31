@@ -3,7 +3,7 @@
  *
  * It is not the show file. The show is what was programmed and the deck writes it; the rig is
  * which lamps there are, and it is written by hand and read once, at startup. For now it holds
- * the fixtures that Home Assistant drives, which are the room. The spider and the laser are on
+ * the fixtures that Home Assistant drives, which are the room and the switches of the decor. The spider and the laser are on
  * flags (`src/index.ts`), and their definitions are of the same kind, so they can move here
  * later.
  *
@@ -17,6 +17,11 @@
  *       - { id: fog, label: Fog machine, entity: switch.fog, blackout: true }
  *     zones:
  *       - { id: low, label: Low, lamps: [bar] }
+ *   - id: decor
+ *     kind: switches
+ *     label: Decor
+ *     switches:
+ *       - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
  * ```
  *
  * A file that is not there is a rig without Home Assistant fixtures. A file with a mistake is
@@ -28,6 +33,7 @@ import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import type { HassFixtureDefinition } from './rig.js';
 import type { LampDefinition, ZoneDefinition } from './roomController.js';
+import type { SwitchDefinition } from './switchesController.js';
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -64,6 +70,11 @@ function lampOf(value: unknown, where: string): LampDefinition {
   return lamp;
 }
 
+function switchOf(value: unknown, where: string): SwitchDefinition {
+  if (!isObject(value)) throw new Error(`${where} must be a mapping with an id and an entity`);
+  return lampOf(value, where);
+}
+
 function zoneOf(value: unknown, where: string): ZoneDefinition {
   if (!isObject(value)) throw new Error(`${where} must be a mapping with an id and lamps`);
   only(value, ['id', 'label', 'lamps'], where);
@@ -95,18 +106,41 @@ export function parseRig(source: string, file = 'the rig file'): HassFixtureDefi
   return data.fixtures.map((each, index): HassFixtureDefinition => {
     const where = `fixture ${index + 1} of ${file}`;
     if (!isObject(each)) throw new Error(`${where} must be a mapping`);
-    only(each, ['id', 'kind', 'label', 'lamps', 'zones'], where);
+    only(each, ['id', 'kind', 'label', 'lamps', 'zones', 'switches'], where);
     const id = text(each.id, `the id of ${where}`);
-    if (each.kind !== 'room') {
+    if (each.kind !== 'room' && each.kind !== 'switches') {
       throw new Error(
-        `"${id}" in ${file} is a "${String(each.kind)}": the rig file holds fixtures of the kind room only, for now`,
+        `"${id}" in ${file} is a "${String(each.kind)}": the rig file holds fixtures of the kinds room and switches only, for now`,
+      );
+    }
+    const label = each.label === undefined ? id : text(each.label, `the label of ${where}`);
+    if (each.kind === 'switches') {
+      // The switches of the decor: on and off only, so no lamps and no zones.
+      if (each.lamps !== undefined || each.zones !== undefined) {
+        throw new Error(
+          `"${id}" in ${file} is a switches fixture: it has switches, not lamps or zones`,
+        );
+      }
+      if (!Array.isArray(each.switches)) {
+        throw new Error(`"${id}" in ${file} needs a list of switches`);
+      }
+      return {
+        id,
+        kind: each.kind,
+        label,
+        switches: each.switches.map((one, i) => switchOf(one, `switch ${i + 1} of "${id}"`)),
+      };
+    }
+    if (each.switches !== undefined) {
+      throw new Error(
+        `"${id}" in ${file} is a room: its switches are lamps (the kind "switches" has the decor)`,
       );
     }
     if (!Array.isArray(each.lamps)) throw new Error(`"${id}" in ${file} needs a list of lamps`);
     const fixture: HassFixtureDefinition = {
       id,
       kind: each.kind,
-      label: each.label === undefined ? id : text(each.label, `the label of ${where}`),
+      label,
       lamps: each.lamps.map((lamp, i) => lampOf(lamp, `lamp ${i + 1} of "${id}"`)),
     };
     if (each.zones !== undefined && each.zones !== null) {

@@ -147,7 +147,9 @@ try {
   fail(error instanceof Error ? error.message : String(error));
 }
 const lampEntities = fixtures.flatMap((fixture) =>
-  'lamps' in fixture ? fixture.lamps.map((lamp) => lamp.entity) : [],
+  'lamps' in fixture || 'switches' in fixture
+    ? [...(fixture.lamps ?? []), ...(fixture.switches ?? [])].map((lamp) => lamp.entity)
+    : [],
 );
 if (lampEntities.length > 0 && !hassSimulated) {
   if (!hassUrl)
@@ -242,11 +244,17 @@ server.listen(port, host, () => {
   log(`control pages on http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
   log(bridgeUrl ? `bridge ${bridgeUrl}` : 'no bridge: the simulator at /simulator is the output');
   for (const fixture of fixtures) {
-    log(
-      'lamps' in fixture
-        ? `${fixture.label}: ${fixture.lamps.length} lamps and switches, page /fixtures/${fixture.id}`
-        : `${fixture.label} at address ${fixture.address}, universe index ${fixture.universe}, page /fixtures/${fixture.id}`,
-    );
+    if ('address' in fixture) {
+      log(
+        `${fixture.label} at address ${fixture.address}, universe index ${fixture.universe}, page /fixtures/${fixture.id}`,
+      );
+    } else if (fixture.switches) {
+      log(`${fixture.label}: ${fixture.switches.length} switches, on the tablet page`);
+    } else {
+      log(
+        `${fixture.label}: ${fixture.lamps?.length ?? 0} lamps and switches, page /fixtures/${fixture.id}`,
+      );
+    }
   }
   if (hass) {
     log(

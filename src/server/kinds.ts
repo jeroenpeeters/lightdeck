@@ -25,6 +25,7 @@ import type { DmxFixtureController, FixtureController } from './fixture.js';
 import { LaserController } from './laserController.js';
 import { type LampDefinition, RoomController, type ZoneDefinition } from './roomController.js';
 import { SpiderController } from './spiderController.js';
+import { type SwitchDefinition, SwitchesController } from './switchesController.js';
 import type { Tempo } from './tempo.js';
 
 export interface DmxKindOptions {
@@ -51,6 +52,7 @@ export interface HassKindOptions {
   palettes: PaletteBook;
   lamps: LampDefinition[];
   zones: ZoneDefinition[];
+  switches: SwitchDefinition[];
 }
 
 /** What a fixture that Home Assistant drives is made of. */
@@ -83,5 +85,10 @@ export const FIXTURE_KINDS: Readonly<Record<string, FixtureKind>> = {
   room: {
     protocol: 'hass',
     create: (options) => new RoomController(options),
+  },
+  // The switches of the decor: the UV lamps that light the symbols on the cabinet.
+  switches: {
+    protocol: 'hass',
+    create: ({ hass, switches }) => new SwitchesController({ hass, switches }),
   },
 };

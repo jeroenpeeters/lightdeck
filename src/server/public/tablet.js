@@ -58,8 +58,11 @@
 
 import { mountMenu } from './menu.js';
 import { start } from './shell.js';
+import { mountDecor } from './tabletDecor.js';
 import { syncKeys } from './tabletKit.js';
 import {
+  decorOf,
+  isDecorGroup,
   laserOpen,
   nextLook,
   partBars,
@@ -68,6 +71,7 @@ import {
   roomRails,
   spiderLenses,
   splitNumber,
+  switchView,
 } from './tabletLogic.js';
 import {
   ask,
@@ -129,12 +133,19 @@ const tiles = new Map();
 const moodTabs = new Map();
 const looks = { grid: null, none: null, keys: new Map() };
 let tray;
+/** The tab of the decor, made in `main`. */
+let decor;
 
 // ---- what is shown ----
 
-/** The groups that have something to play: looks or scenes. */
+/** Whether a group is the decor: switches that no look or scene keeps, which have a tab of their own. */
+const decorTab = (group) => isDecorGroup(shell.fixtures, group);
+
+/** The groups that have something to play: looks or scenes, and the decor, which has its switches. */
 const groupsShown = () =>
-  shell.show.groups.filter((group) => group.looks.length > 0 || group.scenes.length > 0);
+  shell.show.groups.filter(
+    (group) => group.looks.length > 0 || group.scenes.length > 0 || decorTab(group),
+  );
 
 function remembered() {
   try {
@@ -268,6 +279,18 @@ function tileBase(group) {
       mini: { rails: roomRails(shell.stateOf(fixture?.id ?? ''), fixture?.details?.zones ?? []) },
     };
   }
+  if (decorTab(group)) {
+    const states = decorSwitches(group);
+    const lit = states.filter((each) => each.on).length;
+    return {
+      kind: 'switches',
+      ...base,
+      lit: lit > 0,
+      status:
+        lit === 0 ? 'Off' : lit === states.length ? 'All on' : `${lit} of ${states.length} on`,
+      mini: { on: states.map((each) => each.on) },
+    };
+  }
   const kind = kindOf(group);
   const fixtureId = group.fixtures.find(
     (id) => shell.fixtures.find((fixture) => fixture.id === id)?.kind === kind,
@@ -293,6 +316,16 @@ function tileBase(group) {
     };
   }
   return { kind: 'wall', ...base, status };
+}
+
+/** Every switch of the decor group, as it shows now: whether it is on once the blackouts are in. */
+function decorSwitches(group) {
+  return decorOf(shell.fixtures, group).flatMap((fixture) =>
+    (fixture.details?.switches ?? []).map((each) => ({
+      id: each.id,
+      on: switchView(shell.stateOf(fixture.id), each.id, shell.blackout).on,
+    })),
+  );
 }
 
 /** What a tile shows for a group; a group in a blackout of its own says so, in red. */
@@ -501,6 +534,7 @@ function renderSubRow(group) {
 
 /** The video wall takes the place of the looks and the tray: the page has two states. */
 function setWallShown(open) {
+  if (open) setDecorShown(false);
   $('t-main').hidden = open;
   $('m-tray').hidden = open;
   $('m-wall').hidden = !open;
@@ -529,12 +563,35 @@ function render() {
     $('m-tray').hidden = true;
     return;
   }
+  if (decorTab(group)) {
+    renderDecorTab(group);
+    return;
+  }
+  setDecorShown(false);
   $('t-lanes').hidden = false;
   renderMoodbar(group);
   renderLooks(group);
   renderLanes(group);
   renderTray(group);
   renderSubRow(group);
+}
+
+/** The decor takes the place of the looks, the lanes and the tray: it has none of them. */
+function setDecorShown(open) {
+  $('t-decor').hidden = !open;
+  $('m-looks').hidden = open;
+  $('t-lanes').hidden = open;
+  $('m-tray').hidden = open;
+  $('t-body').dataset.decor = String(open);
+}
+
+function renderDecorTab(group) {
+  setDecorShown(true);
+  // The row of the moods stays, empty, so that the dimmer and the blackout are where they are on every tab.
+  $('m-moodbar').hidden = true;
+  $('t-where').textContent = `${group.label} · switches`;
+  renderSubRow(group);
+  decor.render(group);
 }
 
 /** The controls of the video wall are made the first time the tile is shown. */
@@ -731,6 +788,7 @@ async function main() {
   const bar = mountTopBar(shell, { left: 'menu' });
   mountMenu(shell, bar);
   buildSub();
+  decor = mountDecor($('t-decor'), { shell, ask });
   build();
 
   shell.on('show', () => {
@@ -746,12 +804,20 @@ async function main() {
   // The dimmer is set from another screen too, and the lenses and the rails move on.
   shell.on('fixtures', () => {
     refreshSub();
+    const here = currentGroup();
+    if (!wallOpen && decorTab(here)) decor.render(here);
     // The rails belong to the tab of the room: on another tab they stay away.
     const group = currentGroup();
     if (!wallOpen && group && roomGroup()?.id === group.id) renderRails();
     schedulePaint();
   });
   shell.on('frames', schedulePaint);
+  // The blackout of the console moves the switches that follow it, and the tile of the decor.
+  shell.on('change', () => {
+    renderRail(groupsShown());
+    const here = currentGroup();
+    if (!wallOpen && decorTab(here)) decor.render(here);
+  });
   render();
   renderPhases();
   renderNotice();

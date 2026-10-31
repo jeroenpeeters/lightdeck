@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   chipMarks,
+  DIFFERS_MS,
+  decorOf,
+  isDecorGroup,
   laserOpen,
   nextLook,
   partBars,
@@ -9,6 +12,7 @@ import {
   roomRails,
   spiderLenses,
   splitNumber,
+  switchView,
 } from './tabletLogic.js';
 
 const sequence = {
@@ -200,5 +204,75 @@ describe('what the tiles of the rail show', () => {
       { id: 'three', level: 0.5, colour: 'rgb(0 255 0)' },
     ]);
     expect(roomRails(undefined, zones)).toEqual([]);
+  });
+});
+
+describe('the decor', () => {
+  const fixtures = [
+    { id: 'spider', kind: 'spider' },
+    { id: 'decor', kind: 'switches' },
+  ];
+
+  it('knows which fixtures and which groups are decor', () => {
+    expect(decorOf(fixtures, { fixtures: ['spider', 'decor'] }).map((each) => each.id)).toEqual([
+      'decor',
+    ]);
+    expect(isDecorGroup(fixtures, { fixtures: ['decor'] })).toBe(true);
+    expect(isDecorGroup(fixtures, { fixtures: ['spider', 'decor'] })).toBe(false);
+    expect(isDecorGroup(fixtures, { fixtures: [] })).toBe(false);
+    expect(isDecorGroup(fixtures, undefined)).toBe(false);
+  });
+
+  const state = (extra = {}) => ({
+    on: { uv1: true, uv2: false },
+    follows: { uv1: true, uv2: false },
+    blackout: false,
+    reported: { uv1: { available: true, on: true }, uv2: { available: true, on: false } },
+    problems: { uv1: null, uv2: null },
+    ...extra,
+  });
+
+  it('shows a switch that is on, and one that is off', () => {
+    expect(switchView(state(), 'uv1', false)).toMatchObject({ on: true, word: 'On', warn: false });
+    expect(switchView(state(), 'uv2', false)).toMatchObject({ on: false, word: 'Off' });
+    expect(switchView(state(), 'uv1', false).note).toBe('Home Assistant: on');
+  });
+
+  it('says Blackout for a switch that is set on and dark, and only when it follows or is dark itself', () => {
+    expect(switchView(state(), 'uv1', true)).toMatchObject({
+      on: false,
+      dark: true,
+      word: 'Blackout',
+    });
+    // uv2 does not follow the console and is off anyway; turn it on to see that it stays on.
+    const both = state({ on: { uv1: true, uv2: true } });
+    expect(switchView(both, 'uv2', true)).toMatchObject({ on: true, word: 'On', dark: false });
+    expect(switchView(state({ blackout: true }), 'uv2', false).dark).toBe(false);
+    expect(
+      switchView(state({ blackout: true, on: { uv1: true, uv2: true } }), 'uv2', false),
+    ).toMatchObject({
+      on: false,
+      dark: true,
+    });
+  });
+
+  it('does not call a difference with Home Assistant a problem until it has lasted', () => {
+    const differs = state({ reported: { uv1: { available: true, on: false }, uv2: null } });
+    const first = switchView(differs, 'uv1', false, 1000, {});
+    expect(first).toMatchObject({ differs: true, warn: false, note: '' });
+    const later = switchView(differs, 'uv1', false, 1000 + DIFFERS_MS, { uv1: 1000 });
+    expect(later).toMatchObject({ warn: true, note: 'Home Assistant says off' });
+  });
+
+  it('says what is wrong: nothing yet, unavailable, a command that did not arrive', () => {
+    expect(switchView(state(), 'uv3', false).note).toBe('Home Assistant: nothing yet');
+    const gone = state({ reported: { uv1: { available: false, on: false } } });
+    expect(switchView(gone, 'uv1', false)).toMatchObject({
+      warn: true,
+      note: 'Home Assistant: unavailable',
+    });
+    const refused = state({ problems: { uv1: 'not found' } });
+    expect(switchView(refused, 'uv1', false)).toMatchObject({ warn: true, note: 'not found' });
+    expect(switchView(undefined, 'uv1', false).word).toBe('Off');
   });
 });

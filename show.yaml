@@ -823,6 +823,10 @@ groups:
         mood: warm
         lights: low
         colour: { palette: void }
+  decor:
+    label: Decor
+    fixtures: [ decor ]
+    scenes: {}
   all:
     label: All
     fixtures: [ spider, laser ]

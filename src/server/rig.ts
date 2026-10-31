@@ -37,6 +37,7 @@ import { FIXTURE_KINDS, type FixtureKind } from './kinds.js';
 import { Playback, type PlaybackState, type ShowSummary } from './playback.js';
 import type { LampDefinition, ZoneDefinition } from './roomController.js';
 import { Sequencer, type SequenceState } from './sequencer.js';
+import type { SwitchDefinition } from './switchesController.js';
 import { readLead, Tempo, type TempoSource, type TempoState } from './tempo.js';
 import { VideoWall, type VideoWallState } from './videoWall.js';
 
@@ -58,10 +59,14 @@ export interface DmxFixtureDefinition extends FixtureNaming {
   address: number;
 }
 
-/** A fixture that Home Assistant drives: the lamps and switches of the room. */
+/**
+ * A fixture that Home Assistant drives: the lamps and switches of the room (`lamps`, `zones`), or the
+ * switches of the decor (`switches`). Which of them a fixture needs is up to its kind.
+ */
 export interface HassFixtureDefinition extends FixtureNaming {
-  lamps: LampDefinition[];
+  lamps?: LampDefinition[];
   zones?: ZoneDefinition[];
+  switches?: SwitchDefinition[];
 }
 
 export type FixtureDefinition = DmxFixtureDefinition | HassFixtureDefinition;
@@ -185,25 +190,31 @@ export class Rig extends EventEmitter {
           });
           fixtures.push({ ...(definition as DmxFixtureDefinition), protocol: 'dmx', controller });
         } else {
-          const { lamps, zones } = definition as HassFixtureDefinition;
-          if (!Array.isArray(lamps)) throw new Error(`"${id}" needs a list of lamps`);
+          const { lamps, zones, switches } = definition as HassFixtureDefinition;
+          // Which list a fixture needs is up to its kind: the room has lamps, the decor switches.
+          if (definition.kind === 'switches' ? !Array.isArray(switches) : !Array.isArray(lamps)) {
+            throw new Error(
+              `"${id}" needs a list of ${definition.kind === 'switches' ? 'switches' : 'lamps'}`,
+            );
+          }
           if (!options.hass) {
             throw new Error(
               `"${id}" is driven by Home Assistant, and lightdeck was not given a connection to it`,
             );
           }
-          for (const lamp of lamps) {
-            if (entities.has(lamp.entity)) {
-              throw new Error(`${lamp.entity} is a lamp of two fixtures, and may be of one only`);
+          for (const { entity } of [...(lamps ?? []), ...(switches ?? [])]) {
+            if (entities.has(entity)) {
+              throw new Error(`${entity} is a lamp of two fixtures, and may be of one only`);
             }
-            entities.add(lamp.entity);
+            entities.add(entity);
           }
           const controller = kind.create({
             hass: options.hass,
             tempo: this.tempo,
             palettes: this.palettes,
-            lamps,
+            lamps: lamps ?? [],
             zones: zones ?? [],
+            switches: switches ?? [],
           });
           fixtures.push({ ...(definition as HassFixtureDefinition), protocol: 'hass', controller });
         }

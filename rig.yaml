@@ -22,3 +22,10 @@ fixtures:
       - { id: rail1, label: Rail 1, lamps: [r1s1, r1s2, r1s3, r1s4, r1s5] }
       - { id: rail2, label: Rail 2, lamps: [r2s1, r2s2, r2s3, r2s4, r2d1] }
       - { id: rail3, label: Rail 3, lamps: [r3s1, r3s2, r3s3, r3s4] }
+  # The two UV lamps on the symbols of the cabinet: on and off by hand, apart or together, on the tab Decor.
+  - id: decor
+    kind: switches
+    label: Decor
+    switches:
+      - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
+      - { id: uv2, label: UV 2, entity: switch.uv_lamp_2, blackout: true }

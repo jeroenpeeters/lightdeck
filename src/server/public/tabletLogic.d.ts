@@ -50,3 +50,44 @@ export function roomRails(
     | undefined,
   zones: { id: string; lamps: string[] }[],
 ): { id: string; level: number; colour: string }[];
+
+export interface DecorFixture {
+  id: string;
+  kind: string;
+}
+export interface DecorGroup {
+  fixtures: string[];
+}
+export interface SwitchesState {
+  on?: Record<string, boolean>;
+  follows?: Record<string, boolean>;
+  blackout?: boolean;
+  reported?: Record<string, { available: boolean; on: boolean } | null>;
+  problems?: Record<string, string | null>;
+}
+export interface SwitchView {
+  set: boolean;
+  follows: boolean;
+  on: boolean;
+  dark: boolean;
+  word: string;
+  note: string;
+  warn: boolean;
+  differs: boolean;
+}
+export const DIFFERS_MS: number;
+export function decorOf<F extends DecorFixture>(
+  fixtures: readonly F[],
+  group: DecorGroup | undefined,
+): F[];
+export function isDecorGroup(
+  fixtures: readonly DecorFixture[],
+  group: DecorGroup | undefined,
+): boolean;
+export function switchView(
+  state: SwitchesState | undefined,
+  id: string,
+  consoleDark: boolean,
+  now?: number,
+  since?: Record<string, number>,
+): SwitchView;

@@ -17,7 +17,50 @@ fixtures:
       - { id: low, label: Low, lamps: [bar, shelf] }
 `;
 
+const DECOR = `
+fixtures:
+  - id: decor
+    kind: switches
+    label: Decor
+    switches:
+      - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
+      - { id: uv2, entity: switch.uv_lamp_2 }
+`;
+
 describe('parseRig', () => {
+  it('reads the switches of the decor', () => {
+    expect(parseRig(DECOR)).toEqual([
+      {
+        id: 'decor',
+        kind: 'switches',
+        label: 'Decor',
+        switches: [
+          { id: 'uv1', label: 'UV 1', entity: 'switch.uv_lamp_1', blackout: true },
+          { id: 'uv2', label: 'uv2', entity: 'switch.uv_lamp_2' },
+        ],
+      },
+    ]);
+  });
+
+  it('keeps the lamps and the switches apart', () => {
+    expect(() =>
+      parseRig('fixtures:\n  - { id: d, kind: switches, lamps: [{ id: a, entity: light.a }] }'),
+    ).toThrow(/switches, not lamps or zones/);
+    expect(() => parseRig('fixtures:\n  - { id: d, kind: switches }')).toThrow(
+      /needs a list of switches/,
+    );
+    expect(() =>
+      parseRig(
+        'fixtures:\n  - { id: r, kind: room, lamps: [{ id: a, entity: light.a }], switches: [] }',
+      ),
+    ).toThrow(/its switches are lamps/);
+    expect(() =>
+      parseRig(
+        'fixtures:\n  - { id: d, kind: switches, switches: [{ id: a, entity: x, blackout: 1 }] }',
+      ),
+    ).toThrow(/blackout of switch 1 of "d" must be true or false/);
+  });
+
   it('reads the lamps and the zones of a room', () => {
     expect(parseRig(ROOM)).toEqual([
       {
@@ -59,7 +102,9 @@ describe('parseRig', () => {
       /"fixtures" in rig.yaml must be a list/,
     );
     expect(() => parseRig('lamps: []', 'rig.yaml')).toThrow(/cannot have "lamps"/);
-    expect(() => parseRig('fixtures:\n  - { id: x, kind: spider }')).toThrow(/kind room only/);
+    expect(() => parseRig('fixtures:\n  - { id: x, kind: spider }')).toThrow(
+      /kinds room and switches only/,
+    );
     expect(() => parseRig('fixtures:\n  - { id: room, kind: room }')).toThrow(/list of lamps/);
     expect(() => parseRig(room(', colour: red'))).toThrow(/cannot have "colour"/);
     expect(() => parseRig(room(', blackout: yes please'))).toThrow(/true or false/);

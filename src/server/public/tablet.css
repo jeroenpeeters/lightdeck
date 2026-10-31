@@ -48,6 +48,10 @@
 .gtab[data-kind="lenses"] {
   --tile-h: 124px;
 }
+/* Five tiles fit in the rail at 800 px high: the decor, which has two bars to show, is the low one. */
+.gtab[data-kind="switches"] {
+  --tile-h: 88px;
+}
 .gtab .nm {
   white-space: nowrap;
 }
@@ -72,6 +76,23 @@
 }
 .rails {
   height: 28px;
+}
+/* The UV lamps of the decor on its tile: a bar each, amber while it is on. */
+.uvs {
+  display: flex;
+  gap: 4px;
+  height: 12px;
+}
+.uvs i {
+  flex: 1;
+  min-width: 0;
+  border-radius: 2px;
+  background: var(--s4);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.uvs i.is-on {
+  background: var(--on);
+  box-shadow: none;
 }
 .rails i {
   min-width: 0;
@@ -276,6 +297,13 @@
   font-size: var(--fs-m);
   white-space: nowrap;
 }
+.t-sub-strobe {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.t-sub-strobe[hidden] {
+  display: none;
+}
 .t-rails {
   display: flex;
   gap: 8px;
@@ -288,6 +316,59 @@
   width: 72px;
   height: 48px;
   padding: 10px 6px;
+}
+
+/* ---- the decor: the UV switches ---- */
+
+/* It takes the place of the looks, the lanes and the tray, so the column of the tray is its too. */
+.t-body[data-decor="true"] .t-main {
+  grid-column: 2 / 4;
+}
+.t-decor {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 12px;
+  max-width: 720px;
+}
+.t-dc {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+/* The big key keeps its size whatever it says. */
+.t-dc-key {
+  height: 128px;
+}
+.t-dc-key .nm {
+  font: 600 var(--fs-xl, 28px) / 1 var(--f-ui);
+}
+.t-dc-key .wd {
+  font: 600 var(--fs-m) / 1 var(--f-ui);
+  color: var(--t2);
+}
+.t-dc-key.is-on .wd {
+  color: var(--on-soft);
+}
+.t-dc-key .wd.red,
+.t-dc-note.red {
+  color: var(--danger);
+}
+.t-dc-follow {
+  height: 48px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+/* What Home Assistant says keeps its line, whether there is something to say or not. */
+.t-dc-note {
+  min-height: 1.2em;
+  overflow: hidden;
+  color: var(--t3);
+  font: 500 var(--fs-xs) / 1.2 var(--f-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- the foot: the parts of the evening ---- */
@@ -363,6 +444,12 @@
   }
   .t-main {
     padding: 12px 12px 0;
+  }
+  .t-body[data-decor="true"] .t-main {
+    grid-column: 1;
+  }
+  .t-decor {
+    max-width: none;
   }
   .t-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -56,6 +56,8 @@
             <button type="button" class="bo t-sub-bo" id="t-sub-dark" aria-pressed="false">
               Blackout
             </button>
+            <!-- The strobe of the spider over any effect: only on a tab that has a spider. -->
+            <div class="t-sub-strobe" id="t-sub-strobe" hidden></div>
             <fieldset class="t-rails" id="t-rails" aria-label="Rails" hidden></fieldset>
           </section>
 
@@ -63,6 +65,13 @@
             <p class="t-none" id="m-looks-none" hidden></p>
             <div class="t-grid" id="m-grid"></div>
           </div>
+
+          <!--
+            The tab of the decor (the UV lamps that light the symbols on the cabinet): a key per switch
+            and one for both, each with whether it goes off with the blackout. It takes the place of the
+            looks and the tray (tabletDecor.js).
+          -->
+          <section class="t-decor" id="t-decor" aria-label="Decor" hidden></section>
 
           <!-- What each lane of the group does right now. A lane the group has nothing for is left out. -->
           <div class="panel t-lanes" id="t-lanes">
