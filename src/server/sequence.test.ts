@@ -219,6 +219,7 @@ describe('the sequence API', () => {
       steps: 0,
       barsLeft: 0,
       paused: false,
+      held: false,
       problem: null,
     });
   });
@@ -254,6 +255,26 @@ describe('the sequence API', () => {
     expect((await state()).sequence.running).toBeNull();
   });
 
+  it('holds the sequence and lets it go, as a toggle that keeps the step', async () => {
+    await post('/api/sequence', { start: 'night' });
+    const held = await post('/api/sequence', { hold: true });
+    expect(held.status).toBe(200);
+    expect((await state()).sequence).toMatchObject({ running: 'night', step: 0, held: true });
+    // What is held is not moved by a next, and it says why.
+    const skipped = await post('/api/sequence', { next: true });
+    expect(skipped.status).toBe(400);
+    expect(((await skipped.json()) as { error: string }).error).toMatch(/on hold/);
+    expect((await state()).sequence).toMatchObject({ running: 'night', step: 0, held: true });
+    const released = await post('/api/sequence', { hold: false });
+    expect(released.status).toBe(200);
+    expect((await state()).sequence).toMatchObject({ running: 'night', step: 0, held: false });
+    // Without a sequence there is nothing to hold, and a hold must be true or false.
+    await post('/api/sequence', { stop: true });
+    expect((await post('/api/sequence', { hold: true })).status).toBe(400);
+    await post('/api/sequence', { start: 'night' });
+    expect((await post('/api/sequence', { hold: 'yes' })).status).toBe(400);
+  });
+
   it('stops the sequence that runs when another is started', async () => {
     await post('/api/sequence', { start: 'night' });
     await post('/api/sequence', { start: 'other' });
@@ -265,8 +286,11 @@ describe('the sequence API', () => {
     for (const [body, message] of [
       [{ start: 'nope' }, 'there is no sequence called "nope"'],
       [{ start: 3 }, 'say which sequence, by its id'],
-      [{}, 'say which sequence to start, or stop: true, or next: true'],
-      [{ start: 'night', stop: true }, 'say which sequence to start, or stop: true, or next: true'],
+      [{}, 'say which sequence to start, or stop: true, or next: true, or hold: true or false'],
+      [
+        { start: 'night', stop: true },
+        'say which sequence to start, or stop: true, or next: true, or hold: true or false',
+      ],
       [{ stop: false }, '"stop" can only be true'],
       [{ next: false }, '"next" can only be true'],
       [{ halt: true }, /halt/],

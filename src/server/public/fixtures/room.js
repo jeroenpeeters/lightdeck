@@ -13,6 +13,12 @@
 // 128 beats (about a minute). A colour set by hand per lamp shows only while there is no palette.
 //
 // Tempo, blackout, the master and the master speed are not the room's: they are in the shell.
+//
+// The look is the console's (design/, lightdeck.css, chrome.css): the lamps in the main column (the
+// room dimmer, then a panel per zone with its Switch, On and Off keys and a fader and a Colour key per
+// lamp, one colour editor open at a time), the scenery in the side panel (palette, pace, effect, speed,
+// fade). A state only swaps classes, so no key changes size; the line under a lamp that says what Home
+// Assistant reports keeps its height. The head has the effect that runs and the keys for the whole room.
 
 import { start } from '../shell.js';
 import { $, button, element, percent, sentence, slider, speedKeys, speedName } from '../ui.js';
@@ -136,8 +142,8 @@ function build() {
 
   const whole = $('whole-room');
   whole.append(
-    button('key', 'All lamps on', () => setAll(lights(), 1)),
-    button('key', 'All off', () => setAll(lamps, 0)),
+    button('key c wide', 'All lamps on', () => setAll(lights(), 1)),
+    button('key c wide', 'All off', () => setAll(lamps, 0)),
   );
 
   dimmerRow = slider({
@@ -162,7 +168,7 @@ function build() {
 }
 
 function buildZone(label, members, id) {
-  const section = element('section', 'zone');
+  const section = element('section', 'panel zone');
   section.dataset.zone = id;
   const head = element('div', 'zone-head');
   head.append(element('h3', '', label));
@@ -170,7 +176,7 @@ function buildZone(label, members, id) {
   const switchesOnly = members.every((lamp) => lamp.kind === 'switch');
   if (!switchesOnly) {
     // The switch of the zone: dimmer 0 or 1 for the lights in it, apart from every scene and look.
-    const onOff = button('pick zone-switch', 'Switch', () =>
+    const onOff = button('key c zone-switch', 'Switch', () =>
       setZone(id, (state.zones?.[id] ?? 1) <= 0),
     );
     onOff.title = 'Switch this zone on or off. A scene, a look or an effect does not change it.';
@@ -179,8 +185,8 @@ function buildZone(label, members, id) {
     keys.append(onOff);
   }
   keys.append(
-    button('pick', switchesOnly ? 'All on' : 'On', () => setAll(members, 1)),
-    button('pick', 'Off', () => setAll(members, 0)),
+    button('key c', switchesOnly ? 'All on' : 'On', () => setAll(members, 1)),
+    button('key c', 'Off', () => setAll(members, 0)),
   );
   head.append(keys);
   const list = element('ul', 'lamp-list');
@@ -206,20 +212,20 @@ function buildLamp(lamp) {
       read: () => percent(state.levels[lamp.id] ?? 0),
       write: (number) => setLevels({ [lamp.id]: number / 100 }),
     });
-    made.colourKey = button('pick colour-key', 'Colour', () => toggle(lamp.id));
+    made.colourKey = button('key c colour-key', 'Colour', () => toggle(lamp.id));
     made.colourKey.setAttribute('aria-label', `Colour of ${lamp.label}`);
     made.colourKey.setAttribute('aria-expanded', 'false');
     row.append(swatch, made.level, made.colourKey, note, buildEditor(lamp, made));
   } else {
-    const name = element('p', 'switch-name', lamp.label);
-    made.switchKey = button('pick switch-key', 'Off', () =>
+    // A switch is one key: its name, and On or Off under it.
+    made.switchKey = button('key switch-key', '', () =>
       setLevels({ [lamp.id]: (state.levels[lamp.id] ?? 0) > 0 ? 0 : 1 }),
     );
     made.switchKey.setAttribute('aria-label', lamp.label);
-    row.append(swatch, name, made.switchKey, note);
-    if (lamp.blackout) {
-      name.append(element('span', 'switch-mark', 'follows blackout'));
-    }
+    made.switchState = element('span', 'sub');
+    made.switchKey.append(element('span', 'switch-name', lamp.label), made.switchState);
+    made.follows = lamp.blackout ? ' · follows blackout' : '';
+    row.append(made.switchKey, note);
   }
   parts.set(lamp.id, made);
   return row;
@@ -231,7 +237,7 @@ function buildEditor(lamp, made) {
   editor.hidden = true;
   made.editor = editor;
   made.colourRows = [];
-  const sliders = element('div', 'sliders');
+  const sliders = element('div', 'col');
   for (const { key, label, tone } of COLOUR_PARTS) {
     const row = slider({
       id: `s-${lamp.id}-${key}`,
@@ -243,7 +249,7 @@ function buildEditor(lamp, made) {
     made.colourRows.push(row);
     sliders.append(row);
   }
-  const copy = button('key', 'Give this colour to all lamps', () => {
+  const copy = button('key c', 'Give this colour to all lamps', () => {
     const colour = state.colours[lamp.id];
     const patch = Object.fromEntries(lights().map((each) => [each.id, { ...colour }]));
     state.colours = { ...state.colours, ...patch };
@@ -263,17 +269,21 @@ function toggle(id) {
 
 function buildEffects() {
   for (const effect of fixture.details.effects) {
-    const made = button('effect', effect.name, () => setEffect({ id: effect.id }));
+    const made = button('chip', '', () => setEffect({ id: effect.id }));
+    made.append(element('span', '', effect.name));
     made.dataset.effect = effect.id;
     $('effect-list').append(made);
   }
-  $('effect-stop').addEventListener('click', () => setEffect({ id: null }));
+  const none = button('chip', '', () => setEffect({ id: null }));
+  none.id = 'effect-stop';
+  none.append(element('span', '', 'No effect'));
+  $('effect-list').prepend(none);
   showSpeed = speedKeys($('effect-speed'), fixture.details.speeds, (speed) => setEffect({ speed }));
   // The pace of a cycling palette: one of the speeds, or its own.
   showPaceSpeed = speedKeys($('palette-speed'), fixture.details.speeds, (speed) =>
     setColour({ speed }),
   );
-  const own = button('pick', 'Normal', () => setColour({ speed: null }));
+  const own = button('', 'Normal', () => setColour({ speed: null }));
   own.id = 'pace-own';
   $('palette-speed').append(own);
 }
@@ -288,7 +298,9 @@ function buildPalettes() {
   const list = $('palette-list');
   for (const old of list.querySelectorAll('.palette-key')) old.remove();
   // No palette is the colours set by hand on each lamp.
-  list.append(paletteKey(null, 'By hand', [], 'No palette, the colour of each lamp by hand'));
+  list.append(
+    paletteKey(null, 'By hand', [], 'No palette, the colour of each lamp by hand', 'no palette'),
+  );
   for (const palette of palettes) {
     const mark = palette.mode === 'cycle' ? (palette.change === 'fade' ? 'fades' : 'cycles') : '';
     list.append(paletteKey(palette, palette.label, palette.colours, undefined, mark));
@@ -296,20 +308,20 @@ function buildPalettes() {
 }
 
 function paletteKey(palette, name, colours, label, mark = '') {
-  const made = button('key palette-key', '', () => setColour({ palette: palette?.id ?? null }));
+  const made = button('chip palette-key', '', () => setColour({ palette: palette?.id ?? null }));
   made.dataset.palette = palette?.id ?? '';
-  const chips = element('span', 'palette-chips');
-  chips.setAttribute('aria-hidden', 'true');
+  const head = element('span', 'palette-head');
+  head.append(element('span', 'palette-name', name));
+  if (mark) head.append(element('span', 'sub', mark));
+  // The same strip as everywhere: an entry that is off is a dark slot, a hatched one.
+  const strip = element('span', 'strip');
+  strip.setAttribute('aria-hidden', 'true');
   for (const entry of colours) {
-    const chip = element('span', 'palette-chip');
-    if (entry === 'off') chip.dataset.off = 'true';
-    else chip.style.setProperty('--chip', chipColour(entry));
-    chips.append(chip);
+    const chip = element('span', entry === 'off' ? 'dark' : '');
+    if (entry !== 'off') chip.style.background = chipColour(entry);
+    strip.append(chip);
   }
-  const text = element('span', 'palette-label');
-  text.append(element('span', 'palette-name', name));
-  if (mark) text.append(element('span', 'palette-mark', mark));
-  made.append(chips, text);
+  made.append(head, strip);
   made.setAttribute(
     'aria-label',
     label ?? `${name}, ${mark === '' ? 'static' : mark === 'fades' ? 'cycles and fades' : mark}`,
@@ -372,6 +384,7 @@ function renderZones() {
     const switchKey = section.zoneSwitch;
     if (!switchKey) continue;
     const on = (state.zones?.[section.dataset.zone] ?? 1) > 0;
+    switchKey.classList.toggle('is-on', on);
     switchKey.setAttribute('aria-pressed', String(on));
     section.dataset.off = String(!on);
   }
@@ -399,8 +412,8 @@ function renderLamps() {
           : 'A palette is chosen, so this colour is not used. Choose By hand to use it.';
       }
     } else {
-      made.swatch.style.setProperty('--chip', level > 0 ? 'var(--signal)' : 'transparent');
-      made.switchKey.textContent = level > 0 ? 'On' : 'Off';
+      made.switchState.textContent = `${level > 0 ? 'On' : 'Off'}${made.follows}`;
+      made.switchKey.classList.toggle('is-on', level > 0);
       made.switchKey.setAttribute('aria-pressed', String(level > 0));
     }
     const { text, level: tone } = noteOf(lamp);
@@ -412,11 +425,15 @@ function renderLamps() {
 
 function renderScenery() {
   const effect = runningEffect();
-  for (const made of document.querySelectorAll('.effect[data-effect]')) {
-    made.setAttribute('aria-pressed', String(made.dataset.effect === state.effect.id));
+  for (const made of document.querySelectorAll('#effect-list .chip[data-effect]')) {
+    const on = made.dataset.effect === state.effect.id;
+    made.classList.toggle('is-on', on);
+    made.setAttribute('aria-pressed', String(on));
   }
+  $('effect-stop').classList.toggle('is-on', !effect);
   $('effect-stop').setAttribute('aria-pressed', String(!effect));
   $('running').dataset.on = String(Boolean(effect));
+  $('running').className = effect ? 'tag on' : 'tag mute';
   $('running').textContent = effect ? effect.name : 'No effect';
   $('effect-hint').textContent = effect
     ? effect.description
@@ -433,11 +450,14 @@ function renderScenery() {
 
   const palette = chosenPalette();
   for (const made of document.querySelectorAll('.palette-key')) {
-    made.setAttribute('aria-pressed', String(made.dataset.palette === (palette?.id ?? '')));
+    const on = made.dataset.palette === (palette?.id ?? '');
+    made.classList.toggle('is-on', on);
+    made.setAttribute('aria-pressed', String(on));
   }
   const cycles = palette?.mode === 'cycle' && palette.colours.length > 1;
   const pace = state.colour.speed;
   showPaceSpeed(pace);
+  $('pace-own').classList.toggle('is-on', pace === null);
   $('pace-own').setAttribute('aria-pressed', String(pace === null));
   $('palette-speed').disabled = !cycles;
   if (cycles) {

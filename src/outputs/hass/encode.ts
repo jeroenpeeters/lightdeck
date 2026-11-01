@@ -71,6 +71,55 @@ export function switchCommand(on: boolean): HassCommand {
   return { domain: 'switch', service: on ? 'turn_on' : 'turn_off' };
 }
 
+/**
+ * The service call for a strip of WLED (Jeroen, 2026-10-31): a light with its own colour (an RGB, no
+ * white) and an effect of WLED's own. Without an effect it is the solid colour: a light that is turned
+ * on without an `effect` keeps the one it had, so "Solid" is asked for. Never 0 for a strip that
+ * should be on, as for any light.
+ */
+export function stripCommand(look: {
+  brightness: number;
+  colour: { red: number; green: number; blue: number };
+  effect: string | null;
+  transition: number;
+}): HassCommand {
+  const transition = seconds(look.transition);
+  if (!(look.brightness > 0)) return { domain: 'light', service: 'turn_off', data: { transition } };
+  const peak = Math.max(look.colour.red, look.colour.green, look.colour.blue, 1e-9);
+  return {
+    domain: 'light',
+    service: 'turn_on',
+    data: {
+      brightness: Math.max(1, byte(look.brightness)),
+      // The colour is a direction (its brightest channel at full) and the brightness is apart from it.
+      rgb_color: [
+        byte(look.colour.red / peak),
+        byte(look.colour.green / peak),
+        byte(look.colour.blue / peak),
+      ],
+      effect: look.effect ?? 'Solid',
+      transition,
+    },
+  };
+}
+
+/** The service call that sets a `number` entity of a WLED strip (its speed or intensity), 0 to 255. */
+export function numberCommand(value: number): HassCommand {
+  return {
+    domain: 'number',
+    service: 'set_value',
+    data: { value: Math.min(255, Math.max(0, Math.round(Number.isFinite(value) ? value : 0))) },
+  };
+}
+
+/** The service call that sets the speed of a strip. */
+export const speedCommand = numberCommand;
+
+/** The service call that sets the palette of a strip: a `select` entity of WLED, by the name of the palette. */
+export function paletteCommand(name: string): HassCommand {
+  return { domain: 'select', service: 'select_option', data: { option: name } };
+}
+
 /** JSON with the keys in order, so that two commands with the same content compare equal. */
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;

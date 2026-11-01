@@ -1,0 +1,849 @@
+/*
+ * The chrome of the console: what every page has around its own content, in the tokens of lightdeck.css
+ * (the design, `design/`; that file is a verbatim copy and is never edited). A page links, in this order,
+ * plex.css (the fonts), lightdeck.css (the tokens and the keys), chrome.css (this file) and its own css,
+ * which holds only the layout of that page and what is its own.
+ *
+ *   base         the body, [hidden], the focus ring, how a press shows (the key stays the size it is)
+ *   .page        the screen as a column: top bar, page head, body (`.app.page`), and what lies over it:
+ *                the notices and the menu sheet
+ *   .top         the top bar that is always there (topbar.js), landscape and, below 56rem, portrait
+ *   faders       the console fader (ui.js `fader`, `slider`), its tones, and the two-handle range (`range`)
+ *   .page-head   the head of a setup page: title, a line of facts, actions at the right
+ *   .setup       the three columns of a setup page: .setup-nav | .setup-main | .setup-side, which becomes
+ *                one scrolling column below 56rem; .snav is the side navigation inside .setup-nav
+ *   forms        .field, .fld, .tick, .keys, the segmented control (.seg), .ticks, the readout list
+ *   notices      .notices-stack with .notice lying over the foot of the screen, taking no room
+ *   .menu-sheet  the menu of the tablet page (menu.js)
+ *
+ * A state only swaps classes: nothing here takes its size from what it says or from whether it is on, so
+ * that no key moves under a finger.
+ */
+
+/* ---- base ---- */
+
+[hidden] {
+  /* biome-ignore lint/complexity/noImportantStyles: hidden is hidden, whatever display a class gives */
+  display: none !important;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+  font-weight: 500;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+input,
+textarea,
+.field {
+  -webkit-user-select: text;
+  user-select: text;
+}
+button,
+a {
+  touch-action: manipulation;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+:focus-visible {
+  outline: 2px solid var(--t1);
+  outline-offset: 2px;
+}
+
+/* A press shows on the key without changing its size. */
+.key:active,
+.chip:active,
+.menu:active,
+.tab:active,
+.gtab:active,
+.part:active,
+.spd button:active,
+.bo:active,
+.snav button:active,
+.snav a:active,
+.nav-card:active {
+  background: var(--s4);
+  box-shadow: inset 0 0 0 2px var(--t1);
+}
+.key:disabled,
+.part:disabled {
+  cursor: default;
+}
+.key.is-disabled:active {
+  background: transparent;
+  box-shadow: none;
+}
+.bo.is-on:active {
+  background: var(--danger);
+}
+
+/* ---- the page ---- */
+
+/*
+ * The screen as a column: the top bar, the head of the page (optional), the body, which takes what is
+ * left and scrolls inside. What lies over it (the notices, the menu sheet) is absolute and takes no room.
+ * The tablet page makes its own grid of this (tablet.css).
+ */
+.page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+/* Program mode (setup pages that store things): a blue frame over everything and a stripe under the bar. */
+.page[data-mode="program"] {
+  outline: 2px solid var(--edit);
+  outline-offset: -2px;
+}
+.prog-bar {
+  flex: none;
+  height: 6px;
+}
+
+/* ---- the top bar: always there ---- */
+
+.top {
+  position: relative;
+  z-index: 4;
+  flex: none;
+}
+.top .menu {
+  grid-area: menu;
+  flex: none;
+  justify-content: center;
+  width: 80px;
+  padding: 0 8px;
+  gap: 6px;
+}
+.menu .ic {
+  display: flex;
+}
+.menu .word {
+  display: none;
+}
+/* The Close key has the same place and size as the Menu key. */
+.menu.is-open .word {
+  display: inline;
+}
+.menu.is-open .dots {
+  display: none;
+}
+.menu[aria-expanded="true"] {
+  background: var(--s4);
+}
+.top .menu.live {
+  justify-content: flex-start;
+  width: 120px;
+  padding: 0 12px;
+  gap: 8px;
+}
+.menu.live .word {
+  display: inline;
+}
+.tb-tempo {
+  grid-area: tempo;
+}
+.tb-tap {
+  grid-area: tap;
+  flex: none;
+  width: 96px;
+  height: 48px;
+}
+.tb-master {
+  grid-area: master;
+  flex: 1 1 0;
+  max-width: 340px;
+  min-width: 0;
+}
+.tb-speed {
+  grid-area: spd;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.tb-blackout {
+  grid-area: bo;
+  flex: none;
+  width: 168px;
+  margin-left: auto;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+.tb-blackout.is-on {
+  font-size: var(--fs-m);
+}
+.bpm {
+  min-width: 3ch;
+}
+.src {
+  white-space: nowrap;
+}
+.beats i {
+  transition: none;
+}
+
+/* Upright (below 56rem): the masters get a row of their own under Menu, bpm, Tap and Blackout. */
+@media (max-width: 56rem) {
+  .top {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "menu tempo tap . bo"
+      "master master master master spd";
+    align-items: center;
+    height: auto;
+    padding: 8px 12px;
+    row-gap: 8px;
+  }
+  .tb-master {
+    max-width: none;
+  }
+}
+
+/* ---- faders ---- */
+
+/* The pointer is taken by a range input that lies over the bar and cannot be seen. */
+.fader {
+  touch-action: pan-y;
+}
+.top .fader {
+  touch-action: none;
+}
+.fader input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.top .fader input {
+  touch-action: none;
+}
+.fader input:disabled {
+  cursor: default;
+}
+.fader .fl,
+.fader .fv {
+  pointer-events: none;
+}
+.fader.is-disabled {
+  opacity: 0.45;
+}
+/* A colour channel: the bar is the gradient itself, and the fill is not drawn. */
+.fader[data-tone] .fill {
+  background: transparent;
+}
+.fader[data-tone="red"] {
+  background: linear-gradient(90deg, #000, #f00);
+}
+.fader[data-tone="green"] {
+  background: linear-gradient(90deg, #000, #0f0);
+}
+.fader[data-tone="blue"] {
+  background: linear-gradient(90deg, #000, #0040ff);
+}
+.fader[data-tone="white"] {
+  background: linear-gradient(90deg, #000, #fff3dc);
+}
+.fader[data-tone] .fl {
+  color: var(--t1);
+}
+.fader[data-tone] .hand {
+  box-shadow: 0 0 0 2px var(--ground);
+}
+.fader-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fader-row .meaning {
+  color: var(--t2);
+  font: 500 var(--fs-s) / 1.3 var(--f-ui);
+}
+
+/* The range: two handles on a rail, a window inside and a mark for the value now (ui.js `range`). */
+.lim-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0;
+}
+.lim {
+  position: relative;
+  height: 56px;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.lim.has-limit {
+  background: repeating-linear-gradient(135deg, var(--s2) 0 6px, var(--s1) 6px 12px);
+}
+.lim .ok {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--s4);
+}
+.lim .zone {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  border: 2px solid var(--t1);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.lim .h {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 10px;
+  margin-left: -5px;
+  background: var(--t1);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.lim .pos {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 3px;
+  margin-left: -1.5px;
+  background: var(--on);
+  pointer-events: none;
+}
+.lim .h.is-active,
+.lim .h:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--ground),
+    0 0 0 4px var(--t1);
+}
+.lim.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ticks {
+  display: flex;
+  justify-content: space-between;
+  color: var(--t3);
+  font: 500 var(--fs-xs) var(--f-num);
+}
+
+/* ---- the head of a setup page ---- */
+
+.page-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+.ph-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.page-head h1 {
+  flex: none;
+  font: 700 var(--fs-xl) / 1 var(--f-ui);
+}
+.page-head .meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--t2);
+  font: 500 15px var(--f-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ph-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- the body of a setup page: sidebar | main | side panel ---- */
+
+.setup {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-columns: var(--nav-w, 200px) minmax(0, 1fr) var(--side-w, 320px);
+  min-height: 0;
+}
+/* A page without a sidebar or without a side panel says so, and the column is not there. */
+.setup.no-nav {
+  --nav-w: 0px;
+}
+.setup.no-side {
+  --side-w: 0px;
+}
+.setup > * {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.setup > *::-webkit-scrollbar {
+  display: none;
+}
+.setup-nav {
+  grid-column: 1;
+  padding: 12px;
+  border-right: 1px solid var(--line);
+}
+.setup-main {
+  display: flex;
+  flex-direction: column;
+  grid-column: 2;
+  gap: 14px;
+  min-width: 0;
+  /* Room at the foot, where a notice lies over the page. */
+  padding: 12px 16px 84px;
+}
+.setup-side {
+  display: flex;
+  flex-direction: column;
+  grid-column: 3;
+  gap: 14px;
+  padding: 12px;
+  background: var(--s1);
+  border-left: 1px solid var(--line);
+}
+.setup.no-nav > .setup-nav,
+.setup.no-side > .setup-side {
+  display: none;
+}
+
+/* The side navigation: groups, lanes, views. A count or a tag sits at the right of a key. */
+.snav button,
+.snav a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 52px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  color: var(--t2);
+  font: 600 var(--fs-m) var(--f-ui);
+  text-align: left;
+}
+.snav a.is-sel {
+  background: var(--s3);
+  border-color: var(--line-2);
+  color: var(--t1);
+  box-shadow: inset 3px 0 0 var(--t1);
+}
+.snav .lbl {
+  padding: 4px 4px 6px;
+}
+.snav .lbl:not(:first-child) {
+  padding-top: 16px;
+}
+.snav .n {
+  color: var(--t3);
+  font: 500 13px var(--f-num);
+}
+.snav .tag {
+  height: 18px;
+}
+.snav.short button,
+.snav.short a {
+  height: 48px;
+}
+
+/* Upright (below 56rem): one column that scrolls as a whole; the sidebar is a row of keys on top. */
+@media (max-width: 56rem) {
+  .setup {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .setup > * {
+    flex: none;
+    overflow: visible;
+  }
+  .setup-nav {
+    padding: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .setup-nav .snav {
+    flex-flow: row wrap;
+  }
+  .snav .lbl,
+  .snav .lbl:not(:first-child) {
+    flex-basis: 100%;
+    padding: 6px 4px 0;
+  }
+  .snav button,
+  .snav a,
+  .snav.short button,
+  .snav.short a {
+    height: 48px;
+  }
+  .snav button.is-sel,
+  .snav a.is-sel {
+    box-shadow: inset 0 -3px 0 var(--t1);
+  }
+  .setup-main {
+    padding: 12px 12px 84px;
+  }
+  .setup-side {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+/* ---- forms, segmented controls, readouts ---- */
+
+.hint {
+  max-width: 52ch;
+  color: var(--t3);
+  font: 500 var(--fs-s) / 1.3 var(--f-ui);
+}
+/* A text field. `.field` of lightdeck.css is its look; this makes it work for an input. */
+input.field,
+textarea.field,
+select.field {
+  width: 100%;
+  min-width: 0;
+}
+.field:focus-visible {
+  outline: none;
+  border-color: var(--t1);
+  box-shadow: inset 0 0 0 1px var(--t1);
+}
+.field::placeholder {
+  color: var(--t3);
+}
+.field:disabled {
+  border-style: dashed;
+  color: var(--t3);
+}
+/* A label over a field: <label class="fld"><span class="lbl">Name</span><input class="field"></label> */
+.fld {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+/* A tick box that is a key: <label class="tick"><input type="checkbox"><span>Spider</span></label> */
+.tick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--k-s);
+  padding: 0 12px;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  font: 600 var(--fs-m) var(--f-ui);
+  cursor: pointer;
+}
+.tick input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--t1);
+}
+/* Keys side by side, one chosen (ui.js `choiceKeys`). */
+.keys {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 6px;
+}
+.tab {
+  white-space: nowrap;
+}
+/* A segmented control (ui.js `segmented`): Show and Program, a mode. White is where you are. */
+.tabs.seg {
+  padding: 4px;
+  background: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.seg .tab {
+  min-width: 120px;
+  justify-content: center;
+}
+.seg .tab[data-tone="edit"].is-sel {
+  color: var(--edit);
+  box-shadow: inset 0 -3px 0 var(--edit);
+}
+@media (max-width: 56rem) {
+  .seg .tab {
+    min-width: 96px;
+  }
+}
+/* The bytes that are being sent (ui.js `renderReadout`). */
+.readout {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: 500 var(--fs-s) var(--f-num);
+}
+.readout li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--t3);
+}
+.readout li[data-live="true"] {
+  color: var(--t1);
+}
+.readout .channel {
+  overflow: hidden;
+  font-family: var(--f-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- notices: over the foot of the screen, taking no room ---- */
+
+/*
+ * The notice of the shell and the one of the page, one over the other. They lie over the content, so no
+ * key moves when one comes; a click clears one (it stays away while it says the same). A page that has
+ * a foot (the parts of the evening on the tablet page) sets `--notice-bottom` above it.
+ */
+.notices-stack {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: var(--notice-bottom, 12px);
+  left: max(12px, env(safe-area-inset-left));
+  z-index: 6;
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+.notices-stack > .notice {
+  position: relative;
+  height: auto;
+  min-height: 56px;
+  padding: 8px 56px 8px 16px;
+  border-left: 4px solid var(--t3);
+  pointer-events: auto;
+  cursor: pointer;
+}
+.notices-stack > .notice[data-level="alarm"] {
+  border-left-color: var(--danger);
+}
+.notices-stack > .notice[data-dismissible="true"]::after {
+  content: "\00d7";
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  translate: 0 -50%;
+  color: var(--t2);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+/* ---- link dots with words (the menu, and any page that lists the links) ---- */
+
+.ldot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.ldot[data-state="down"] {
+  background: var(--danger);
+}
+.ldot[data-state="simulated"],
+.ldot[data-state="unknown"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--t3);
+}
+
+/* ---- the menu sheet of the tablet page (menu.js) ---- */
+
+/* The sheet covers the foot of the page too, so the notices drop to the bottom of the screen. */
+.app.menu-open {
+  --notice-bottom: 12px;
+}
+
+/* It lies over the page under the top bar, which stays: blackout and master are one press away. */
+.menu-sheet {
+  position: absolute;
+  top: var(--top-h, 64px);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-areas:
+    "main aside"
+    "foot foot";
+  grid-template-columns: minmax(0, 1fr) 400px;
+  grid-template-rows: auto 1fr;
+  gap: 24px;
+  padding: 24px max(24px, env(safe-area-inset-right)) 16px max(24px, env(safe-area-inset-left));
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: var(--ground);
+}
+.menu-sheet::-webkit-scrollbar {
+  display: none;
+}
+.ms-main {
+  display: flex;
+  flex-direction: column;
+  grid-area: main;
+  gap: 20px;
+  min-width: 0;
+}
+.ms-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ms-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.nav-card {
+  height: 112px;
+  padding: 14px 16px;
+}
+.nc-title {
+  font: 600 20px var(--f-ui);
+}
+.nc-title.big {
+  font: 700 24px var(--f-ui);
+}
+.nav-card .sub {
+  font-size: var(--fs-s);
+}
+.nav-card.is-here {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  height: 88px;
+  border-color: var(--t1);
+  box-shadow: inset 0 0 0 1px var(--t1);
+}
+.nav-card.is-laser {
+  border-color: #5a1d1f;
+}
+.nav-card.is-laser .nc-title {
+  color: var(--danger);
+}
+.ms-aside {
+  display: flex;
+  flex-direction: column;
+  grid-area: aside;
+  gap: 20px;
+  min-width: 0;
+}
+.ms-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.ms-source {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.ms-source .key:last-child {
+  font-size: var(--fs-s);
+}
+.ms-heard {
+  min-height: 1.2em;
+  color: var(--t2);
+  font: 500 var(--fs-s) / 1.2 var(--f-ui);
+}
+.ms-heard[data-state="down"] {
+  color: var(--danger);
+}
+.ms-heard[data-state="beat"] {
+  color: var(--t1);
+}
+.ms-caption {
+  min-height: 2.6em;
+  color: var(--t2);
+  font: 500 var(--fs-s) / 1.3 var(--f-ui);
+}
+.ms-nudge {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.ms-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-m);
+}
+.ms-link[data-state="down"] .t2 {
+  color: var(--danger);
+}
+.ms-foot {
+  grid-area: foot;
+  align-self: end;
+  font-size: var(--fs-s);
+}
+@media (max-width: 56rem) {
+  .menu-sheet {
+    grid-template-areas:
+      "main"
+      "aside"
+      "foot";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    gap: 20px;
+    padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
+  }
+  .ms-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

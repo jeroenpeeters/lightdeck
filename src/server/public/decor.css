@@ -1,0 +1,120 @@
+/*
+ * The decor page (decor.html, decor.js): how the pipes are put together. Written in the tokens of
+ * lightdeck.css; the keys, panels, tags and labels are those of lightdeck.css and chrome.css, and this file
+ * only lays them out. A state only swaps classes and text, so no key moves when something changes: the
+ * three keys of a row have a size of their own and the texts have the room of the longest thing they say.
+ */
+
+.dc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+/* ---- the link key ---- */
+
+.dc-link {
+  min-height: var(--k-m);
+}
+.dc-link-name {
+  font-size: var(--fs-l);
+}
+
+/* ---- one row per pipe ---- */
+
+.dc-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dc-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 64px 64px 144px;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.dc-pos {
+  font-size: var(--fs-l);
+  color: var(--t3);
+  text-align: center;
+}
+.dc-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.dc-name .nm {
+  font: 600 var(--fs-l) / 1.1 var(--f-ui);
+}
+.dc-name .sub {
+  font: 500 var(--fs-s) / 1.2 var(--f-ui);
+  color: var(--t2);
+}
+.dc-row .key {
+  min-height: var(--k-m);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.dc-row .dc-turn {
+  flex-direction: row;
+  gap: var(--sp-2);
+}
+
+/* ---- the chain as mounted ---- */
+
+.dc-chain {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  min-height: var(--k-m);
+}
+.dc-seg {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 96px;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.dc-seg .nm {
+  font: 600 var(--fs-m) / 1.1 var(--f-ui);
+}
+.dc-seg .way {
+  font: 500 var(--fs-s) / 1.2 var(--f-num);
+  color: var(--t2);
+}
+/* Linked: the pipes touch and a bar on top is the effect passing through them, in the colour of "on". */
+.dc-chain.is-linked {
+  gap: 2px;
+}
+.dc-chain.is-linked .dc-seg {
+  border-top: 4px solid var(--on);
+  border-radius: 0;
+}
+.dc-chain.is-linked .dc-seg:first-child {
+  border-top-left-radius: var(--r);
+  border-bottom-left-radius: var(--r);
+}
+.dc-chain.is-linked .dc-seg:last-child {
+  border-top-right-radius: var(--r);
+  border-bottom-right-radius: var(--r);
+}
+.dc-chain-note {
+  margin: 0;
+  min-height: 2.4em;
+}
+
+@media (max-width: 56rem) {
+  .dc-row {
+    grid-template-columns: 32px minmax(0, 1fr) 56px 56px 112px;
+  }
+}

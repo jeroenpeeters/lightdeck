@@ -1,5 +1,6 @@
 // The page that says why the tablet page can or cannot be installed as an app. Plain browser
-// JavaScript, no build step. Chrome on Android installs a page, with no bar of the browser, only
+// JavaScript, no build step. Each line is a panel with a dot and a word (Good, Not good, Waiting);
+// its look is in install.css. Chrome on Android installs a page, with no bar of the browser, only
 // when it is on https or on an address that the browser was told to trust, has a manifest with
 // icons, and has a service worker; there is no way to ask Chrome why it does not offer it, so this
 // shows the pieces one by one. It also takes the key that Chrome gives when it does offer the
@@ -8,24 +9,34 @@
 const list = document.getElementById('checks');
 const installKey = document.getElementById('install-key');
 
+const WORDS = { ok: 'Good', bad: 'Not good', wait: 'Waiting' };
+/** The dot of a state: the dots of the console, green for good, red for not good, hollow while it waits. */
+const DOTS = { ok: 'ok', bad: 'down', wait: 'unknown' };
+
 /** A line of the list: its name, whether it is good, and what it says. */
 function line(name) {
   const item = document.createElement('li');
-  item.className = 'check';
+  item.className = 'check panel';
   item.dataset.state = 'wait';
-  const mark = document.createElement('span');
-  mark.className = 'check-mark';
-  mark.textContent = '…';
+  const dot = document.createElement('span');
+  dot.className = 'ldot';
+  dot.dataset.state = DOTS.wait;
+  dot.setAttribute('aria-hidden', 'true');
   const title = document.createElement('span');
   title.className = 'check-name';
   title.textContent = name;
+  const mark = document.createElement('span');
+  mark.className = 'tag mute';
+  mark.textContent = WORDS.wait;
   const says = document.createElement('p');
   says.className = 'check-says';
-  item.append(mark, title, says);
+  item.append(dot, title, mark, says);
   list.append(item);
   return (state, text) => {
     item.dataset.state = state;
-    mark.textContent = state === 'ok' ? '✓' : state === 'bad' ? '✗' : '…';
+    dot.dataset.state = DOTS[state];
+    mark.textContent = WORDS[state];
+    mark.className = state === 'bad' ? 'tag' : 'tag mute';
     says.textContent = text;
   };
 }

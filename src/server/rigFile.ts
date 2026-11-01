@@ -3,7 +3,7 @@
  *
  * It is not the show file. The show is what was programmed and the deck writes it; the rig is
  * which lamps there are, and it is written by hand and read once, at startup. For now it holds
- * the fixtures that Home Assistant drives, which are the room. The spider and the laser are on
+ * the fixtures that Home Assistant drives, which are the room and the switches of the decor. The spider and the laser are on
  * flags (`src/index.ts`), and their definitions are of the same kind, so they can move here
  * later.
  *
@@ -17,6 +17,13 @@
  *       - { id: fog, label: Fog machine, entity: switch.fog, blackout: true }
  *     zones:
  *       - { id: low, label: Low, lamps: [bar] }
+ *   - id: decor
+ *     kind: decor
+ *     label: Decor
+ *     switches:
+ *       - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
+ *     strips:
+ *       - { id: buis1, label: Buis 1, entity: light.wled_buis1, colour: '#33ddaa' }
  * ```
  *
  * A file that is not there is a rig without Home Assistant fixtures. A file with a mistake is
@@ -26,6 +33,7 @@
 
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
+import type { PipeLookDefinition, StripDefinition, SwitchDefinition } from './decorController.js';
 import type { HassFixtureDefinition } from './rig.js';
 import type { LampDefinition, ZoneDefinition } from './roomController.js';
 
@@ -64,6 +72,76 @@ function lampOf(value: unknown, where: string): LampDefinition {
   return lamp;
 }
 
+function switchOf(value: unknown, where: string): SwitchDefinition {
+  if (!isObject(value)) throw new Error(`${where} must be a mapping with an id and an entity`);
+  return lampOf(value, where);
+}
+
+function stripOf(value: unknown, where: string): StripDefinition {
+  if (!isObject(value)) throw new Error(`${where} must be a mapping with an id and an entity`);
+  only(
+    value,
+    [
+      'id',
+      'label',
+      'entity',
+      'speed',
+      'intensity',
+      'palette',
+      'colour',
+      'draw',
+      'ip',
+      'host',
+      'leds',
+      'blackout',
+    ],
+    where,
+  );
+  const { speed, intensity, palette, colour, draw, ip, host, leds, ...rest } = value;
+  const strip: StripDefinition = lampOf(rest, where);
+  if (speed !== undefined) strip.speed = text(speed, `the speed entity of ${where}`);
+  if (intensity !== undefined)
+    strip.intensity = text(intensity, `the intensity entity of ${where}`);
+  if (palette !== undefined) strip.palette = text(palette, `the palette entity of ${where}`);
+  if (host !== undefined) strip.host = text(host, `the host of ${where}`);
+  if (ip !== undefined) strip.ip = text(ip, `the address entity of ${where}`);
+  if (draw !== undefined) {
+    if (draw !== 'lightdeck' && draw !== 'wled') {
+      throw new Error(`draw of ${where} must be lightdeck or wled`);
+    }
+    strip.draw = draw;
+  }
+  if (leds !== undefined) {
+    if (typeof leds !== 'number')
+      throw new Error(`the number of LEDs of ${where} must be a number`);
+    strip.leds = leds;
+  }
+  if (colour !== undefined) strip.colour = text(colour, `the colour of ${where}`);
+  return strip;
+}
+
+function lookOf(value: unknown, where: string): PipeLookDefinition {
+  if (!isObject(value)) throw new Error(`${where} must be a mapping with an id and an effect`);
+  only(value, ['id', 'label', 'effect', 'palette', 'colour', 'intensity', 'pace'], where);
+  const id = text(value.id, `the id of ${where}`);
+  if (!('effect' in value))
+    throw new Error(`${where} needs an effect (its name, or null for solid)`);
+  const look: PipeLookDefinition = {
+    id,
+    label: value.label === undefined ? id : text(value.label, `the label of ${where}`),
+    effect: value.effect === null ? null : text(value.effect, `the effect of ${where}`),
+  };
+  if (value.palette !== undefined) look.palette = text(value.palette, `the palette of ${where}`);
+  if (value.colour !== undefined) look.colour = text(value.colour, `the colour of ${where}`);
+  for (const key of ['intensity', 'pace'] as const) {
+    const number = value[key];
+    if (number === undefined) continue;
+    if (typeof number !== 'number') throw new Error(`the ${key} of ${where} must be a number`);
+    look[key] = number;
+  }
+  return look;
+}
+
 function zoneOf(value: unknown, where: string): ZoneDefinition {
   if (!isObject(value)) throw new Error(`${where} must be a mapping with an id and lamps`);
   only(value, ['id', 'label', 'lamps'], where);
@@ -95,18 +173,57 @@ export function parseRig(source: string, file = 'the rig file'): HassFixtureDefi
   return data.fixtures.map((each, index): HassFixtureDefinition => {
     const where = `fixture ${index + 1} of ${file}`;
     if (!isObject(each)) throw new Error(`${where} must be a mapping`);
-    only(each, ['id', 'kind', 'label', 'lamps', 'zones'], where);
+    only(each, ['id', 'kind', 'label', 'lamps', 'zones', 'switches', 'strips', 'looks'], where);
     const id = text(each.id, `the id of ${where}`);
-    if (each.kind !== 'room') {
+    if (each.kind !== 'room' && each.kind !== 'decor') {
       throw new Error(
-        `"${id}" in ${file} is a "${String(each.kind)}": the rig file holds fixtures of the kind room only, for now`,
+        `"${id}" in ${file} is a "${String(each.kind)}": the rig file holds fixtures of the kinds room and decor only, for now`,
+      );
+    }
+    const label = each.label === undefined ? id : text(each.label, `the label of ${where}`);
+    if (each.kind === 'decor') {
+      // The decor: switches and strips, no lamps and no zones.
+      if (each.lamps !== undefined || each.zones !== undefined) {
+        throw new Error(
+          `"${id}" in ${file} is a decor fixture: it has switches and strips, not lamps or zones`,
+        );
+      }
+      for (const key of ['switches', 'strips', 'looks'] as const) {
+        if (each[key] !== undefined && !Array.isArray(each[key])) {
+          throw new Error(`"${key}" of "${id}" in ${file} must be a list`);
+        }
+      }
+      const switches = (each.switches as unknown[] | undefined) ?? [];
+      const strips = (each.strips as unknown[] | undefined) ?? [];
+      const looks = (each.looks as unknown[] | undefined) ?? [];
+      if (switches.length + strips.length === 0) {
+        throw new Error(`"${id}" in ${file} needs a list of switches or strips, at least one`);
+      }
+      return {
+        id,
+        kind: each.kind,
+        label,
+        ...(switches.length > 0
+          ? { switches: switches.map((one, i) => switchOf(one, `switch ${i + 1} of "${id}"`)) }
+          : {}),
+        ...(strips.length > 0
+          ? { strips: strips.map((one, i) => stripOf(one, `strip ${i + 1} of "${id}"`)) }
+          : {}),
+        ...(looks.length > 0
+          ? { looks: looks.map((one, i) => lookOf(one, `look ${i + 1} of "${id}"`)) }
+          : {}),
+      };
+    }
+    if (each.switches !== undefined || each.strips !== undefined || each.looks !== undefined) {
+      throw new Error(
+        `"${id}" in ${file} is a room: its switches are lamps (the kind "decor" has switches and strips)`,
       );
     }
     if (!Array.isArray(each.lamps)) throw new Error(`"${id}" in ${file} needs a list of lamps`);
     const fixture: HassFixtureDefinition = {
       id,
       kind: each.kind,
-      label: each.label === undefined ? id : text(each.label, `the label of ${where}`),
+      label,
       lamps: each.lamps.map((lamp, i) => lampOf(lamp, `lamp ${i + 1} of "${id}"`)),
     };
     if (each.zones !== undefined && each.zones !== null) {

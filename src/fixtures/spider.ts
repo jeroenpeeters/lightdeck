@@ -122,7 +122,8 @@ const controls: Control[] = [
     channel: 39,
     label: 'strobe (0 and 251-255 are no strobe)',
     attribute: 'strobe',
-    part: 'lights',
+    // In no scene (Jeroen, 2026-10-30): the strobe is held by hand over whatever look and effect runs, so
+    // a press on a look or a step of a sequence neither sets it nor lets go of it.
     activeFrom: 1,
     activeTo: 250,
   },

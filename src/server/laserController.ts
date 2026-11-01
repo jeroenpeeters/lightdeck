@@ -60,6 +60,11 @@ export interface LaserState {
   motion: LaserEffectSettings;
   /** The colour setting: bytes of the single colours, in order, up to the most it can have. */
   colours: number[];
+  /**
+   * The blackout of this laser alone (Jeroen, 2026-10-28): closed, with everything it is set to
+   * kept, as the blackout of the console does for all. Part of no scene.
+   */
+  blackout: boolean;
 }
 
 export interface LaserPatch {
@@ -67,10 +72,11 @@ export interface LaserPatch {
   effect?: unknown;
   motion?: unknown;
   colours?: unknown;
+  blackout?: unknown;
 }
 
-/** What of the state a change can set: all of it. A scene keeps the part of its type. */
-type Look = LaserState;
+/** What of the state a change can set: all of it but the blackout. A scene keeps the part of its type. */
+type Look = Omit<LaserState, 'blackout'>;
 
 /** Which type of scene keeps which of the effects and the colour setting. */
 const KEPT_BY: Record<'effect' | 'motion' | 'colours', SceneType> = {
@@ -134,7 +140,9 @@ export class LaserController extends EventEmitter implements DmxFixtureControlle
   private readonly motionClock = new EffectClock();
   /** True once the controller was closed: the engine then stops asking it for frames. */
   private disposed = false;
-  private state: LaserState;
+  private state: Look;
+  /** The blackout of this laser alone. It is in the state the page gets, and in no scene. */
+  private own = false;
   /** The blackout of the console. It is not part of the state of the fixture. */
   private blackout = false;
   /** The grand master of the console, 0 to 1. It is not part of the state either. */
@@ -179,6 +187,7 @@ export class LaserController extends EventEmitter implements DmxFixtureControlle
       effect: { ...this.state.effect },
       motion: { ...this.state.motion },
       colours: [...this.state.colours],
+      blackout: this.own,
     };
   }
 
@@ -234,7 +243,13 @@ export class LaserController extends EventEmitter implements DmxFixtureControlle
    * invalid. `origin` is passed on with the event so a browser can skip its own echo.
    */
   update(change: unknown, origin?: string): void {
-    this.state = this.apply(this.state, change, 'a change of the laser');
+    const look = this.apply(this.state, change, 'a change of the laser');
+    const { blackout } = change as LaserPatch;
+    if (blackout !== undefined && typeof blackout !== 'boolean') {
+      throw new PatchError('the blackout must be true or false');
+    }
+    this.state = look;
+    if (blackout !== undefined) this.own = blackout;
     this.emit('wants');
     this.push(origin);
   }
@@ -304,7 +319,16 @@ export class LaserController extends EventEmitter implements DmxFixtureControlle
    * the change may name properties of that type of scene and no others.
    */
   private apply(base: Look, change: unknown, what: string, only?: SceneType): Look {
-    const patch = readObject(change, what, ['raw', 'effect', 'motion', 'colours']) as LaserPatch;
+    const patch = readObject(change, what, [
+      'raw',
+      'effect',
+      'motion',
+      'colours',
+      'blackout',
+    ]) as LaserPatch;
+    if (only !== undefined && patch.blackout !== undefined) {
+      throw new PatchError('the "blackout" of the laser is part of no scene');
+    }
     const raw = { ...base.raw };
     for (const key of ['effect', 'motion', 'colours'] as const) {
       if (only !== undefined && patch[key] !== undefined && KEPT_BY[key] !== only) {
@@ -493,7 +517,8 @@ export class LaserController extends EventEmitter implements DmxFixtureControlle
       }
     }
     // Open only when the master is known to be above 0, so that nothing else opens it.
-    if (this.stopped || this.blackout || !(this.master > 0)) raw[this.gate] = this.closed;
+    if (this.stopped || this.blackout || this.own || !(this.master > 0))
+      raw[this.gate] = this.closed;
     return { raw };
   }
 

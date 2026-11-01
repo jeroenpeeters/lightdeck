@@ -1,54 +1,97 @@
-// The palettes page: the colours of the show, apart from the effects. Plain browser
+// The palettes page: the colours of the show, apart from the effects (design mockup 11). Plain browser
 // JavaScript, no build step.
 //
-// A palette is a list of one to eight entries, slot 1 first. An entry is a colour (red,
-// green and blue, and a white level for the white LED of the spider) or off. A light effect
-// says how much of slot 1, 2 and 3 each lens gets, and the palette says what those are. A
-// palette is static, or it cycles: the list shifts by one slot per step, as a hard cut or
-// as a fade, at one of the speeds ÷4 to ×4 (×1 is one step per beat, ÷4 one per bar).
-// Palettes belong to the whole show. A group gets one set on the deck.
+// A palette is a list of one to eight entries, slot 1 first. An entry is a colour (red, green and blue,
+// and a white level for the white LED of the spider) or off. A light effect says how much of slot 1, 2
+// and 3 each lens gets, and the palette says what those are. A palette is static, or it cycles: the list
+// shifts by one slot per step, as a hard cut or as a fade, at one of the speeds ÷4 to ×4 (×1 is one step
+// per beat, ÷4 one per bar). Palettes belong to the whole show. A group gets one set on the deck, or
+// here with a key per group that takes palettes (`POST /api/playback` with the palette).
 //
-// The page draws what the server says: `shell.show.palettes`. A press is asked once with
-// `shell.ask`, and a colour or a level is sent when it is let go, not on every pixel of a
-// drag. What the operator is editing is kept in the page and drawn from there, so that
-// nothing jumps back: after a change of its own a palette ignores what the event stream
-// says for a moment (the answer and the events come over different connections, so an older
-// event can still be on its way) and is then drawn from the show as it is by then. A palette
-// whose input has the focus, or is being dragged, keeps that input as it is while the rest
-// is brought up to date, and no panel is ever rebuilt over an input.
+// The page: a list of the palettes at the left (name, how it runs, a strip of its colours), the chosen
+// palette in the middle (rename, duplicate, delete with a second press, its eight slots and the colour of
+// the chosen slot as four sliders R G B W, a few quick colours, a dark slot, earlier, later, remove) and
+// at the right how it runs (Static, Step or Fade, the pace, how many colours show at once) with the
+// lenses as it would spread over them. A new palette is made from the key in the head of the page.
 //
-// Its notice is kept at the bottom of the screen, with the one of the shell, so that no
-// key moves when it comes or goes.
+// The page draws what the server says: `shell.show.palettes`. A press is asked once with `shell.ask`, and
+// a colour or a level is sent when it is let go, not on every step of a drag. What the operator is
+// editing is kept in the page (a draft per palette) and drawn from there, so that nothing jumps back:
+// after a change of its own a palette ignores what the event stream says for a moment (the answer and the
+// events come over different connections, so an older event can still be on its way) and is then drawn
+// from the show as it is by then. The chosen palette is kept in the hash of the address.
+//
+// Its notice is kept at the bottom of the screen, with the one of the shell, so that no key moves when it
+// comes or goes.
 
 import { start } from './shell.js';
-import { $, button, element, sentence, slider, speedKeys } from './ui.js';
+import { $, button, choiceKeys, element, sentence, slider, speedKeys, speedName } from './ui.js';
 
-/** How long a delete key waits for the second press. */
+/** How long the delete key waits for the second press. */
 const SURE_MS = 3000;
 /** How long a palette ignores the event stream after a change of its own. */
 const SETTLE_MS = 1500;
 const MAX_COLOURS = 8;
 const NAME_LENGTH = 40;
-const ROLES = ['Main', 'Second', 'Third'];
+/** What the first slots are for, in the words of the design. */
+const ROLES = ['hits', 'backdrop', 'accent'];
 /** A colour that is added. */
-const FRESH = { off: false, rgb: '#ff0000', ww: 0 };
+const FRESH = { off: false, r: 255, g: 0, b: 0, ww: 0 };
 /** What an entry that was off from the start gets when it is switched on: the white LED. */
-const WHITE = { rgb: '#000000', ww: 255 };
-const MODES = [
-  { id: 'static', name: 'Static' },
-  { id: 'cycle', name: 'Cycle' },
+const WHITE = { r: 0, g: 0, b: 0, ww: 255 };
+/** Quick colours for the chosen slot: content, shown as they are. */
+const QUICK = [
+  { name: 'Amber', r: 255, g: 149, b: 0, ww: 0 },
+  { name: 'Copper', r: 255, g: 90, b: 31, ww: 0 },
+  { name: 'Sepia', r: 240, g: 160, b: 96, ww: 0 },
+  { name: 'Fire', r: 255, g: 42, b: 0, ww: 0 },
+  { name: 'Blue', r: 0, g: 48, b: 255, ww: 0 },
+  { name: 'Cyan', r: 0, g: 200, b: 255, ww: 0 },
+  { name: 'White', ...WHITE },
+];
+const CHANNELS = [
+  { key: 'r', label: 'R', tone: 'red', max: 255 },
+  { key: 'g', label: 'G', tone: 'green', max: 255 },
+  { key: 'b', label: 'B', tone: 'blue', max: 255 },
+  { key: 'ww', label: 'W', tone: 'white', max: 255 },
 ];
 const CHANGES = [
-  { id: 'step', name: 'Hard step' },
-  { id: 'fade', name: 'Fade' },
+  { id: 'static', label: 'Static' },
+  { id: 'step', label: 'Step' },
+  { id: 'fade', label: 'Fade' },
 ];
 
 const page = {
-  where: $('where'),
-  palettes: $('palettes'),
-  make: $('make-palette'),
-  name: $('palette-name'),
-  notices: $('notices'),
+  meta: $('meta'),
+  list: $('list'),
+  main: $('main'),
+  title: $('title'),
+  uses: $('uses'),
+  rename: $('rename'),
+  renameKey: $('rename-key'),
+  copyKey: $('copy-key'),
+  deleteKey: $('delete-key'),
+  slots: $('slots'),
+  slotTitle: $('slot-title'),
+  darkKey: $('dark-key'),
+  channels: $('channels'),
+  quick: $('quick'),
+  earlierKey: $('earlier-key'),
+  laterKey: $('later-key'),
+  removeKey: $('remove-key'),
+  room: $('room'),
+  change: $('change'),
+  pace: $('pace'),
+  paceNote: $('pace-note'),
+  shown: $('shown'),
+  shownNote: $('shown-note'),
+  lenses: $('lenses'),
+  groups: $('groups'),
+  groupsNote: $('groups-note'),
+  newOpen: $('new-open'),
+  newSheet: $('new-sheet'),
+  newName: $('new-name'),
+  newCancel: $('new-cancel'),
   notice: $('palettes-notice'),
 };
 
@@ -57,12 +100,18 @@ let shell;
 let failure = '';
 /** True when the last press did not reach lightdeck. It is not sent again. */
 let lost = false;
-/** By the id of a palette, the panel that was built for it. */
-const cards = new Map();
-/** The palettes whose editor is open. */
-const opened = new Set();
-/** The palette a delete key was pressed for once. */
-let sure = null;
+/** By the id of a palette, what the operator has made of it (see the top of the file). */
+const drafts = new Map();
+/** By the id of a palette, the key in the list. */
+const items = new Map();
+/** The id of the palette that is wanted: it may not have come from the server yet. */
+let wanted = decodeURIComponent(location.hash.slice(1));
+/** The slot that is chosen, from 0. */
+let slot = 0;
+/** True while the name of the palette is being typed. */
+let renaming = false;
+/** True when the delete key was pressed once. */
+let sure = false;
 let sureTimer;
 
 const count = (number, word) => (number === 1 ? `1 ${word}` : `${number} ${word}s`);
@@ -71,39 +120,37 @@ const count = (number, word) => (number === 1 ? `1 ${word}` : `${number} ${word}
 
 const hex = (byte) => byte.toString(16).padStart(2, '0');
 
-/** '#rrggbb', '#rrggbbww' or 'off' as an entry. A colour that is off keeps no colour. */
+/** '#rrggbb', '#rrggbbww' or 'off' as an entry. A colour that is off keeps the white LED for later. */
 function parseEntry(text) {
-  if (text === 'off') return { off: true, rgb: WHITE.rgb, ww: WHITE.ww };
-  const found = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(text);
-  if (!found) return { off: true, rgb: WHITE.rgb, ww: WHITE.ww };
+  const found = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})?$/i.exec(text);
+  if (text === 'off' || !found) return { off: true, ...WHITE };
   return {
     off: false,
-    rgb: `#${found[1].toLowerCase()}`,
-    ww: found[2] ? Number.parseInt(found[2], 16) : 0,
+    r: Number.parseInt(found[1], 16),
+    g: Number.parseInt(found[2], 16),
+    b: Number.parseInt(found[3], 16),
+    ww: found[4] ? Number.parseInt(found[4], 16) : 0,
   };
 }
 
 /** An entry as the server takes it. */
-function formatEntry({ off, rgb, ww }) {
+function formatEntry({ off, r, g, b, ww }) {
   if (off) return 'off';
-  return ww > 0 ? `${rgb}${hex(ww)}` : rgb;
+  return `#${hex(r)}${hex(g)}${hex(b)}${ww > 0 ? hex(ww) : ''}`;
 }
 
-/** The colour a lens would show, red, green and blue with the white LED mixed in. */
-function mix({ rgb, ww }) {
+/** The colour a lens would show: red, green and blue with the white LED mixed in. */
+function mix({ r, g, b, ww }) {
   const level = ww / 255;
-  const part = (from, white) =>
-    Math.min(255, Math.round(Number.parseInt(rgb.slice(from, from + 2), 16) + white * level * 255));
-  return `rgb(${part(1, 1)} ${part(3, 0.94)} ${part(5, 0.82)})`;
+  const part = (value, white) => Math.min(255, Math.round(value + white * level * 255));
+  return `rgb(${part(r, 1)} ${part(g, 0.94)} ${part(b, 0.82)})`;
 }
-
-const whitePercent = (ww) => Math.round((ww / 255) * 100);
 
 /** What a palette that steps at this speed does, in words. */
 function paceOf(speed) {
-  if (speed === 0.25) return 'one step per bar';
-  if (speed === 0.5) return 'one step per 2 beats';
-  if (speed === 1) return 'one step per beat';
+  if (speed === 0.25) return 'a step every 4 beats';
+  if (speed === 0.5) return 'a step every 2 beats';
+  if (speed === 1) return 'a step every beat';
   return speed === 2 ? 'two steps per beat' : 'four steps per beat';
 }
 
@@ -119,46 +166,111 @@ async function ask(url, body) {
 }
 
 const paletteOf = (id) => shell.show.palettes.find((each) => each.id === id);
-const held = (card) => card.busy > 0 || Date.now() < card.until;
+const held = (draft) => draft.busy > 0 || Date.now() < draft.until;
 
-/** Sends a change of a palette. The panel keeps what was changed until the show has it. */
-async function send(card, fields) {
-  card.busy += 1;
-  const answer = await ask(`/api/palettes/${card.id}/update`, fields);
-  card.busy -= 1;
-  clearTimeout(card.settle);
+/** Keeps what the draft says over what the show says, until the change is sent and the show has it. */
+function hold(draft) {
+  draft.until = Date.now() + SETTLE_MS;
+}
+
+/** The palette that is chosen: the one that is wanted, or else the first. */
+function current() {
+  const { palettes } = shell.show;
+  const draft = drafts.get(wanted) ?? drafts.get(palettes[0]?.id);
+  return draft ?? null;
+}
+
+/** Sends a change of a palette. The draft keeps what was changed until the show has it. */
+async function send(draft, fields) {
+  draft.busy += 1;
+  const answer = await ask(`/api/palettes/${draft.id}/update`, fields);
+  draft.busy -= 1;
+  clearTimeout(draft.settle);
   if (answer.ok) {
-    card.until = Date.now() + SETTLE_MS;
-    card.settle = setTimeout(() => sync(card), SETTLE_MS);
+    draft.until = Date.now() + SETTLE_MS;
+    draft.settle = setTimeout(() => sync(draft), SETTLE_MS);
   } else {
     // Refused, or not heard: the show is what is true.
-    card.until = 0;
-    sync(card);
+    draft.until = 0;
+    sync(draft);
   }
 }
 
-const sendColours = (card) => send(card, { colours: card.entries.map(formatEntry) });
+const sendColours = (draft) => send(draft, { colours: draft.entries.map(formatEntry) });
 
-async function make(event) {
-  event.preventDefault();
-  const answer = await ask('/api/palettes', { label: page.name.value });
+function choose(id) {
+  if (wanted === id) return;
+  wanted = id;
+  slot = 0;
+  stopRenaming();
+  unsure();
+  history.replaceState(null, '', `#${encodeURIComponent(id)}`);
+  render();
+  items.get(id)?.button.scrollIntoView({ block: 'nearest' });
+}
+
+// ---- the actions of the head ----
+
+function stopRenaming() {
+  renaming = false;
+}
+
+async function saveName(draft) {
+  const label = page.rename.value;
+  const answer = await ask(`/api/palettes/${draft.id}/update`, { label });
   if (!answer.ok) return;
-  if (answer.id) opened.add(answer.id);
-  page.name.value = '';
-  page.name.blur();
+  draft.label = label;
+  renaming = false;
+  render();
+}
+
+function pressRename() {
+  const draft = current();
+  if (!draft) return;
+  if (!renaming) {
+    renaming = true;
+    page.rename.value = draft.label;
+    render();
+    page.rename.focus();
+    page.rename.select();
+    return;
+  }
+  saveName(draft);
+}
+
+/** A copy is a new palette with the same colours and the same way of running. */
+async function duplicate() {
+  const draft = current();
+  if (!draft) return;
+  const label = `Copy of ${draft.label}`.slice(0, NAME_LENGTH);
+  const fields = {
+    label,
+    colours: draft.entries.map(formatEntry),
+    mode: draft.mode,
+    change: draft.change,
+    speed: draft.speed,
+  };
+  if (draft.visible !== undefined) fields.visible = draft.visible;
+  const answer = await ask('/api/palettes', fields);
+  if (answer.ok && answer.id) {
+    wanted = answer.id;
+    slot = 0;
+    history.replaceState(null, '', `#${encodeURIComponent(answer.id)}`);
+  }
   render();
 }
 
 function unsure() {
   clearTimeout(sureTimer);
-  sure = null;
+  sure = false;
 }
 
 /** The first press asks, the second one within a few seconds deletes. */
-async function remove(card) {
-  if (sure !== card.id) {
-    unsure();
-    sure = card.id;
+async function remove() {
+  const draft = current();
+  if (!draft) return;
+  if (!sure) {
+    sure = true;
     sureTimer = setTimeout(() => {
       unsure();
       render();
@@ -167,316 +279,265 @@ async function remove(card) {
     return;
   }
   unsure();
-  await ask(`/api/palettes/${card.id}/delete`);
+  const { palettes } = shell.show;
+  const at = palettes.findIndex((each) => each.id === draft.id);
+  const answer = await ask(`/api/palettes/${draft.id}/delete`);
+  if (answer.ok) {
+    wanted = (palettes[at + 1] ?? palettes[at - 1])?.id ?? '';
+    slot = 0;
+  }
   render();
 }
 
-// ---- building ----
+function openNew(open) {
+  page.newSheet.hidden = !open;
+  page.newOpen.setAttribute('aria-expanded', String(open));
+  page.newOpen.classList.toggle('is-open', open);
+  if (open) page.newName.focus();
+}
 
-/** One row of the colours of a palette: the slot, the colour, the white level and the keys. */
-function buildEntry(card, index) {
-  const row = { index };
-  row.section = element('div', 'entry');
-  row.section.setAttribute('role', 'group');
-
-  const slot = element('div', 'slot');
-  row.number = element('span', 'slot-number', String(index + 1));
-  row.role = element('span', 'slot-role');
-  slot.append(row.number, row.role);
-
-  const colour = element('div', 'colour');
-  const name = element('label', '', 'Colour');
-  row.picker = element('input', 'picker');
-  row.picker.type = 'color';
-  row.picker.id = `pal.${card.id}.${index}.colour`;
-  name.htmlFor = row.picker.id;
-  colour.append(name, row.picker);
-
-  row.white = slider({
-    id: `pal.${card.id}.${index}.white`,
-    label: 'White',
-    tone: 'white',
-    read: () => whitePercent(card.entries[index]?.ww ?? 0),
-    write: (number) => {
-      const entry = card.entries[index];
-      if (!entry) return;
-      entry.ww = Math.round((number / 100) * 255);
-      row.editing = true;
-      drawStrip(card);
-    },
-  });
-  row.whiteInput = row.white.querySelector('input');
-
-  row.picker.addEventListener('input', () => {
-    const entry = card.entries[index];
-    if (!entry) return;
-    entry.rgb = row.picker.value;
-    row.editing = true;
-    drawStrip(card);
-  });
-  // A colour and a level are sent when they are let go, not on every pixel of a drag.
-  const done = () => {
-    row.editing = false;
-    sendColours(card);
-  };
-  row.picker.addEventListener('change', done);
-  row.whiteInput.addEventListener('change', done);
-  for (const input of [row.picker, row.whiteInput]) {
-    input.addEventListener('blur', () => {
-      row.editing = false;
-    });
+async function make(event) {
+  event.preventDefault();
+  const answer = await ask('/api/palettes', { label: page.newName.value });
+  if (!answer.ok) return;
+  if (answer.id) {
+    wanted = answer.id;
+    slot = 0;
+    history.replaceState(null, '', `#${encodeURIComponent(answer.id)}`);
   }
-
-  const keys = element('div', 'entry-keys');
-  row.off = button('pick', 'Off', () => {
-    const entry = card.entries[index];
-    if (!entry) return;
-    entry.off = !entry.off;
-    draw(card);
-    sendColours(card);
-  });
-  row.up = button('key', 'Up', () => move(card, index, -1));
-  row.down = button('key', 'Down', () => move(card, index, 1));
-  row.remove = button('key', 'Remove', () => {
-    if (card.entries.length < 2) return;
-    card.entries.splice(index, 1);
-    draw(card);
-    sendColours(card);
-  });
-  keys.append(row.off, row.up, row.down, row.remove);
-
-  row.section.append(slot, colour, row.white, keys);
-  return row;
+  page.newName.value = '';
+  page.newName.blur();
+  openNew(false);
+  render();
 }
 
-function move(card, index, step) {
-  const other = index + step;
-  if (other < 0 || other >= card.entries.length) return;
-  [card.entries[index], card.entries[other]] = [card.entries[other], card.entries[index]];
-  draw(card);
-  sendColours(card);
+// ---- editing the slots ----
+
+/** Runs `change` on the entries of the chosen palette, draws, and sends the colours. */
+function edit(change) {
+  const draft = current();
+  if (!draft) return;
+  change(draft);
+  slot = Math.max(0, Math.min(slot, draft.entries.length - 1));
+  hold(draft);
+  render();
+  sendColours(draft);
 }
 
-/** A field for a name with its key. `done` gets the name and says whether it was taken. */
-function nameRow({ id, label, key, done }) {
-  const form = element('form', 'name-row');
-  const name = element('label', '', label);
-  name.htmlFor = id;
-  const field = element('input', 'field');
-  field.id = id;
-  field.type = 'text';
-  field.maxLength = NAME_LENGTH;
-  field.autocomplete = 'off';
-  const submit = element('button', 'key', key);
-  submit.type = 'submit';
-  form.append(name, field, submit);
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!(await done(field.value))) return;
-    field.blur();
+function setEntry(index, values) {
+  edit((draft) => {
+    Object.assign(draft.entries[index], { off: false }, values);
   });
-  return { form, field, submit };
 }
 
-/** A fieldset of keys that choose one of several. */
-function choice(title, keys, choose) {
-  const fieldset = element('fieldset', 'choice');
-  fieldset.append(element('legend', '', title));
-  const made = keys.map(({ id, name }) => {
-    const key = button('pick', name, () => choose(id));
-    fieldset.append(key);
-    return { id, key };
+function move(step) {
+  edit((draft) => {
+    const other = slot + step;
+    if (other < 0 || other >= draft.entries.length) return;
+    [draft.entries[slot], draft.entries[other]] = [draft.entries[other], draft.entries[slot]];
+    slot = other;
   });
-  return {
-    fieldset,
-    show: (chosen) => {
-      for (const { id, key } of made) key.setAttribute('aria-pressed', String(id === chosen));
-    },
-  };
 }
 
-/** Chooses how many of the first colours show. All is `undefined`, and is sent as null. */
-function chooseShown(card, count) {
-  card.visible = count;
-  draw(card);
-  send(card, { visible: count ?? null });
+function addSlot() {
+  edit((draft) => {
+    if (draft.entries.length >= MAX_COLOURS) return;
+    draft.entries.push({ ...FRESH });
+    slot = draft.entries.length - 1;
+  });
 }
 
-function buildCard(id) {
-  const card = {
-    id,
-    label: '',
-    entries: [],
-    mode: 'static',
-    change: 'step',
-    speed: 0.25,
-    visible: undefined,
-    rows: [],
-    busy: 0,
-    until: 0,
-    settle: 0,
-  };
-
-  card.section = element('section', 'panel palette');
-  card.title = element('h2', 'palette-name');
-  card.title.id = `pal.${id}.title`;
-  card.section.setAttribute('aria-labelledby', card.title.id);
-  card.mark = element('p', 'palette-mark');
-  card.edit = button('pick edit', 'Edit', () => {
-    if (opened.has(id)) opened.delete(id);
-    else opened.add(id);
-    draw(card);
+function removeSlot() {
+  edit((draft) => {
+    if (draft.entries.length < 2) return;
+    draft.entries.splice(slot, 1);
   });
-  card.edit.setAttribute('aria-controls', `pal.${id}.editor`);
-  const head = element('div', 'palette-head');
-  head.append(card.title, card.mark, card.edit);
+}
 
-  card.strip = element('div', 'strip');
-  card.strip.setAttribute('role', 'img');
-  card.uses = element('p', 'uses');
+function toggleDark() {
+  edit((draft) => {
+    const entry = draft.entries[slot];
+    if (entry) entry.off = !entry.off;
+  });
+}
 
-  // The editor.
-  card.editor = element('div', 'editor');
-  card.editor.id = `pal.${id}.editor`;
+/** Chooses how many of the first colours show. As many as the palette has is all, and is sent as null. */
+function chooseShown(count) {
+  const draft = current();
+  if (!draft) return;
+  const visible = count >= draft.entries.length ? undefined : count;
+  draft.visible = visible;
+  hold(draft);
+  render();
+  send(draft, { visible: visible ?? null });
+}
 
-  const colours = element('fieldset', 'colours');
-  colours.append(element('legend', '', 'Colours, slot 1 first'));
-  card.list = element('div', 'entry-list');
-  card.add = button('key', 'Add colour', () => {
-    if (card.entries.length >= MAX_COLOURS) return;
-    card.entries.push({ ...FRESH });
-    draw(card);
-    sendColours(card);
-  });
-  card.room = element('p', 'hint room');
-  const addRow = element('div', 'add-row');
-  addRow.append(card.add, card.room);
-  colours.append(card.list, addRow);
-
-  const settings = element('div', 'settings');
-  const mode = choice('Mode', MODES, (chosen) => {
-    card.mode = chosen;
-    draw(card);
-    send(card, { mode: chosen });
-  });
-  const change = choice('Change', CHANGES, (chosen) => {
-    card.change = chosen;
-    draw(card);
-    send(card, { change: chosen });
-  });
-  const speed = element('fieldset', 'choice');
-  speed.append(element('legend', '', 'Speed'));
-  const showSpeed = speedKeys(speed, shell.rates, (chosen) => {
-    card.speed = chosen;
-    draw(card);
-    send(card, { speed: chosen });
-  });
-  // How many of the first colours show; the others are the pool that a cycle draws from.
-  const shown = element('fieldset', 'choice shown');
-  shown.append(element('legend', '', 'Colours shown'));
-  card.shownKeys = [
-    { n: undefined, key: button('pick', 'All', () => chooseShown(card, undefined)) },
-  ];
-  for (let n = 1; n < MAX_COLOURS; n++) {
-    card.shownKeys.push({ n, key: button('pick', String(n), () => chooseShown(card, n)) });
+function chooseChange(id) {
+  const draft = current();
+  if (!draft) return;
+  if (id === 'static') {
+    draft.mode = 'static';
+    hold(draft);
+    render();
+    send(draft, { mode: 'static' });
+    return;
   }
-  shown.append(...card.shownKeys.map(({ key }) => key));
-  card.shownSet = shown;
-  card.showMode = mode.show;
-  card.showChange = change.show;
-  card.showSpeed = showSpeed;
-  card.changeSet = change.fieldset;
-  card.speedSet = speed;
-  card.pace = element('p', 'hint pace');
-  settings.append(mode.fieldset, change.fieldset, speed, card.pace, shown);
+  draft.mode = 'cycle';
+  draft.change = id;
+  hold(draft);
+  render();
+  send(draft, { mode: 'cycle', change: id });
+}
 
-  card.rename = nameRow({
-    id: `pal.${id}.name`,
-    label: 'Name',
-    key: 'Rename',
-    done: async (label) => {
-      const answer = await ask(`/api/palettes/${id}/update`, { label });
-      if (answer.ok) {
-        card.label = label;
-        draw(card);
+function chooseSpeed(speed) {
+  const draft = current();
+  if (draft?.mode !== 'cycle') return;
+  draft.speed = speed;
+  hold(draft);
+  render();
+  send(draft, { speed });
+}
+
+/** Sets the palette on a group, as the deck does. The look of the group turns Varied. */
+async function setOnGroup(group) {
+  const draft = current();
+  if (!draft) return;
+  await ask('/api/playback', { group: group.id, palette: draft.id });
+}
+
+// ---- building the parts that stay ----
+
+const sliders = [];
+let showChange;
+let showSpeed;
+const shownKeys = [];
+const slotKeys = [];
+const lensCells = [];
+const groupKeys = new Map();
+
+function buildSlots() {
+  for (let index = 0; index < MAX_COLOURS; index++) {
+    const made = element('button', 'slot');
+    made.type = 'button';
+    const swatch = element('span', 'c');
+    const name = element('span', 'k');
+    name.append(element('b', '', String(index + 1)), element('small'));
+    made.append(swatch, name);
+    made.addEventListener('click', () => {
+      const draft = current();
+      if (!draft) return;
+      if (index < draft.entries.length) {
+        slot = index;
+        render();
+      } else if (index === draft.entries.length) {
+        addSlot();
       }
-      return answer.ok;
-    },
-  });
-  card.remove = button('key delete', '', () => remove(card));
+    });
+    page.slots.append(made);
+    slotKeys.push({ made, swatch, small: name.lastElementChild });
+  }
+}
 
-  card.editor.append(colours, settings, card.rename.form, card.remove);
-  card.section.append(head, card.strip, card.uses, card.editor);
-  return card;
+function buildChannels() {
+  for (const { key, label, tone, max } of CHANNELS) {
+    const made = slider({
+      id: `pal-${key}`,
+      label,
+      tone,
+      min: 0,
+      max,
+      read: () => {
+        const entry = current()?.entries[slot];
+        return !entry || entry.off ? null : entry[key];
+      },
+      write: (number) => {
+        const draft = current();
+        const entry = draft?.entries[slot];
+        if (!entry || entry.off) return;
+        entry[key] = number;
+        // Held until it is let go and sent: an event about something else does not undo the drag.
+        hold(draft);
+        drawLive();
+      },
+    });
+    // A colour and a level are sent when they are let go, not on every step of a drag.
+    made.input.addEventListener('change', () => {
+      const draft = current();
+      if (draft) sendColours(draft);
+    });
+    page.channels.append(made);
+    sliders.push(made);
+  }
+}
+
+function buildQuick() {
+  for (const preset of QUICK) {
+    const made = element('button', 'rc');
+    made.type = 'button';
+    const dot = element('i');
+    dot.style.background = mix(preset);
+    made.append(dot, preset.name);
+    made.addEventListener('click', () => {
+      const { r, g, b, ww } = preset;
+      setEntry(slot, { r, g, b, ww });
+    });
+    page.quick.append(made);
+  }
+}
+
+function buildSide() {
+  showChange = choiceKeys(page.change, CHANGES, chooseChange);
+  showSpeed = speedKeys(page.pace, shell.rates, chooseSpeed);
+  page.pace.classList.add('pace-keys');
+  for (let n = 1; n <= MAX_COLOURS; n++) {
+    const made = button('key c', String(n), () => chooseShown(n));
+    page.shown.append(made);
+    shownKeys.push({ n, made });
+  }
+  for (let index = 0; index < MAX_COLOURS; index++) {
+    const cell = element('i');
+    page.lenses.append(cell);
+    lensCells.push(cell);
+  }
+}
+
+function buildItem(id) {
+  const made = element('button', 'pl');
+  made.type = 'button';
+  const name = element('span', 'n');
+  const meta = element('span', 'm');
+  const strip = element('div', 'strip');
+  made.append(name, meta, strip);
+  made.addEventListener('click', () => choose(id));
+  const item = { button: made, name, meta, strip };
+  items.set(id, item);
+  return item;
 }
 
 // ---- drawing ----
 
-/** Takes what the show says into the panel, except in the inputs that are being edited. */
-function adopt(card, palette) {
-  card.label = palette.label;
-  card.mode = palette.mode;
-  card.change = palette.change;
-  card.speed = palette.speed;
-  card.visible = palette.visible;
-  // An entry that is off keeps the colour it had, so that Off pressed again brings it back.
-  card.entries = palette.colours.map((text, index) => {
+/** Takes what the show says into the draft. */
+function adopt(draft, palette) {
+  draft.label = palette.label;
+  draft.mode = palette.mode;
+  draft.change = palette.change;
+  draft.speed = palette.speed;
+  draft.visible = palette.visible;
+  // An entry that is off keeps the colour it had, so that Dark slot pressed again brings it back.
+  draft.entries = palette.colours.map((text, index) => {
     const entry = parseEntry(text);
-    const before = card.entries[index];
-    if (entry.off && before) return { off: true, rgb: before.rgb, ww: before.ww };
+    const before = draft.entries[index];
+    if (entry.off && before)
+      return { off: true, r: before.r, g: before.g, b: before.b, ww: before.ww };
     return entry;
   });
 }
 
-function sync(card) {
-  const palette = paletteOf(card.id);
-  if (!palette || held(card)) return;
-  adopt(card, palette);
-  draw(card);
-}
-
-/** The big strip of the colours. An entry that is off is a dark chip that says so. */
-function drawStrip(card) {
-  const { strip } = card;
-  while (strip.children.length > card.entries.length) strip.lastElementChild.remove();
-  while (strip.children.length < card.entries.length) {
-    const chip = element('div', 'chip');
-    chip.append(element('span', 'chip-colour'), element('span', 'chip-slot'));
-    strip.append(chip);
-  }
-  card.entries.forEach((entry, index) => {
-    const chip = strip.children[index];
-    chip.dataset.off = String(entry.off);
-    // The colours after the ones that show are the pool a cycle draws from.
-    chip.dataset.pool = String(index >= (card.visible ?? card.entries.length));
-    chip.firstElementChild.style.background = entry.off ? '' : mix(entry);
-    chip.firstElementChild.textContent = entry.off ? 'OFF' : '';
-    chip.lastElementChild.textContent = String(index + 1);
-  });
-  card.strip.setAttribute(
-    'aria-label',
-    card.entries
-      .map((entry, index) => `${index + 1} ${entry.off ? 'off' : formatEntry(entry)}`)
-      .join(', '),
-  );
-}
-
-function drawEntry(card, row, index) {
-  const entry = card.entries[index];
-  const group = `Slot ${index + 1}, ${ROLES[index]?.toLowerCase() ?? `number ${index + 1}`}`;
-  row.section.setAttribute('aria-label', group);
-  row.number.textContent = String(index + 1);
-  row.role.textContent = ROLES[index] ?? '';
-  row.section.dataset.off = String(entry.off);
-  // An input being edited, or with the focus, keeps what it shows.
-  if (document.activeElement !== row.picker && !row.editing) row.picker.value = entry.rgb;
-  if (document.activeElement !== row.whiteInput && !row.editing) row.white.refresh();
-  row.picker.disabled = entry.off;
-  row.whiteInput.disabled = entry.off;
-  row.off.setAttribute('aria-pressed', String(entry.off));
-  row.up.disabled = index === 0;
-  row.down.disabled = index === card.entries.length - 1;
-  row.remove.disabled = card.entries.length < 2;
+function sync(draft) {
+  const palette = paletteOf(draft.id);
+  if (!palette || held(draft)) return;
+  adopt(draft, palette);
+  render();
 }
 
 /** Which groups have this palette on, and which have a look that uses it. */
@@ -490,113 +551,212 @@ function usesOf(id) {
   return { on, looks };
 }
 
-function draw(card) {
-  const { id } = card;
-  const open = opened.has(id);
-  card.title.textContent = card.label;
-  card.mark.textContent =
-    card.mode === 'static'
-      ? 'Static'
-      : `Cycle · ${card.change === 'fade' ? 'Fade' : 'Hard step'} · ${speedText(card.speed)}`;
-  if (card.visible !== undefined) {
-    card.mark.textContent += ` · shows ${card.visible} of ${card.entries.length}`;
-  }
-  card.edit.setAttribute('aria-pressed', String(open));
-  card.edit.setAttribute('aria-expanded', String(open));
-  card.editor.hidden = !open;
-
-  const { on, looks } = usesOf(id);
-  const parts = [];
-  if (on.length > 0) parts.push(`On in ${on.join(', ')}`);
-  if (looks.length > 0) parts.push(`In a look of ${looks.join(', ')}`);
-  card.uses.textContent = parts.length > 0 ? parts.join(' · ') : 'Not on in any group';
-  card.section.dataset.on = String(on.length > 0);
-
-  drawStrip(card);
-  if (!open) return;
-
-  while (card.rows.length > card.entries.length) card.rows.pop().section.remove();
-  while (card.rows.length < card.entries.length) {
-    const row = buildEntry(card, card.rows.length);
-    card.rows.push(row);
-    card.list.append(row.section);
-  }
-  card.rows.forEach((row, index) => {
-    drawEntry(card, row, index);
+/** Fills a strip with a span per entry. An entry that is off is a hatched dark one. */
+function fillStrip(strip, draft) {
+  while (strip.children.length > draft.entries.length) strip.lastElementChild.remove();
+  while (strip.children.length < draft.entries.length) strip.append(element('span'));
+  draft.entries.forEach((entry, index) => {
+    const span = strip.children[index];
+    span.classList.toggle('dark', entry.off);
+    span.style.background = entry.off ? '' : mix(entry);
   });
-
-  const full = card.entries.length >= MAX_COLOURS;
-  card.add.disabled = full;
-  card.room.textContent = full
-    ? `${card.entries.length} of ${MAX_COLOURS} colours. Remove one to add another.`
-    : card.entries.length === 1
-      ? `1 of ${MAX_COLOURS} colours. A palette keeps at least one.`
-      : `${card.entries.length} of ${MAX_COLOURS} colours.`;
-
-  const cycles = card.mode === 'cycle';
-  card.showMode(card.mode);
-  card.showChange(card.change);
-  card.showSpeed(card.speed);
-  card.changeSet.disabled = !cycles;
-  card.speedSet.disabled = !cycles;
-  card.shownSet.hidden = card.entries.length < 2;
-  for (const { n, key } of card.shownKeys) {
-    // Showing as many as the palette has is All.
-    key.hidden = n !== undefined && n >= card.entries.length;
-    key.setAttribute('aria-pressed', String(n === card.visible));
-  }
-  card.pace.textContent = cycles
-    ? `${card.change === 'fade' ? 'Fades' : 'Cuts'} to the next colour, ${paceOf(card.speed)}.`
-    : 'Static: the colours stay as they are. Change and speed are for a cycle.';
-
-  card.rename.field.disabled = false;
-  // A name that is being typed stays.
-  if (
-    document.activeElement !== card.rename.field &&
-    card.rename.field.dataset.for !== card.label
-  ) {
-    card.rename.field.value = card.label;
-    card.rename.field.dataset.for = card.label;
-  }
-  const isSure = sure === id;
-  card.remove.dataset.sure = String(isSure);
-  card.remove.textContent = isSure ? `Press again to delete "${card.label}"` : 'Delete palette';
 }
 
-function speedText(speed) {
-  return speed >= 1 ? `×${speed}` : `÷${1 / speed}`;
+/** How a palette runs, in two or three characters of the list: Static, Step ÷4, Fade ×1. */
+function runsAs(draft) {
+  if (draft.mode === 'static') return 'Static';
+  return `${draft.change === 'fade' ? 'Fade' : 'Step'} ${speedName(draft.speed)}`;
+}
+
+function drawList() {
+  const { palettes } = shell.show;
+  const chosen = current();
+  palettes.forEach((palette, index) => {
+    const draft = drafts.get(palette.id);
+    const item = items.get(palette.id) ?? buildItem(palette.id);
+    const { on } = usesOf(palette.id);
+    item.name.textContent = draft.label;
+    item.meta.textContent = on.length > 0 ? `On in ${on.join(', ')}` : runsAs(draft);
+    item.button.classList.toggle('is-on', on.length > 0);
+    item.button.classList.toggle('is-sel', draft === chosen);
+    item.button.setAttribute('aria-current', String(draft === chosen));
+    fillStrip(item.strip, draft);
+    if (page.list.children[index] !== item.button) {
+      page.list.insertBefore(item.button, page.list.children[index] ?? null);
+    }
+  });
+}
+
+/** The lenses as the palette would spread over them: lens n takes the slot n of those that show. */
+function drawLenses(draft) {
+  const shown = Math.max(1, Math.min(draft.visible ?? draft.entries.length, draft.entries.length));
+  lensCells.forEach((cell, index) => {
+    const entry = draft.entries[index % shown];
+    cell.className = entry.off ? 'dark' : '';
+    cell.style.background = entry.off ? '' : mix(entry);
+  });
+}
+
+function drawSlots(draft) {
+  const shown = draft.visible ?? draft.entries.length;
+  slotKeys.forEach(({ made, swatch, small }, index) => {
+    const entry = draft.entries[index];
+    const real = index < draft.entries.length;
+    const add = index === draft.entries.length && index < MAX_COLOURS;
+    made.disabled = !real && !add;
+    made.classList.toggle('is-sel', real && index === slot);
+    made.classList.toggle('is-add', add);
+    made.classList.toggle('is-empty', !real && !add);
+    made.classList.toggle('is-pool', real && index >= shown);
+    made.setAttribute('aria-pressed', String(real && index === slot));
+    made.setAttribute(
+      'aria-label',
+      real
+        ? `Slot ${index + 1}${ROLES[index] ? `, ${ROLES[index]}` : ''}, ${entry.off ? 'off' : formatEntry(entry)}`
+        : add
+          ? 'Add a colour'
+          : `Slot ${index + 1}, empty`,
+    );
+    swatch.classList.toggle('dark', real && entry.off);
+    swatch.style.background = real && !entry.off ? mix(entry) : '';
+    swatch.textContent = add ? '+' : real && entry.off ? 'OFF' : '';
+    small.textContent = real ? (ROLES[index] ?? '') : '';
+  });
+}
+
+function drawSlotEditor(draft) {
+  const entry = draft.entries[slot];
+  page.slotTitle.textContent = `Slot ${slot + 1} · ${entry.off ? 'dark' : 'RGBW'}`;
+  page.darkKey.classList.toggle('is-sel', entry.off);
+  page.darkKey.setAttribute('aria-pressed', String(entry.off));
+  for (const made of sliders) made.refresh();
+  for (const made of page.quick.children) made.disabled = false;
+  page.earlierKey.disabled = slot === 0;
+  page.laterKey.disabled = slot === draft.entries.length - 1;
+  page.removeKey.disabled = draft.entries.length < 2;
+  page.room.textContent =
+    draft.entries.length >= MAX_COLOURS
+      ? `${draft.entries.length} of ${MAX_COLOURS} colours`
+      : draft.entries.length === 1
+        ? `1 of ${MAX_COLOURS} colours, a palette keeps one`
+        : `${draft.entries.length} of ${MAX_COLOURS} colours`;
+}
+
+function drawSide(draft) {
+  const cycles = draft.mode === 'cycle';
+  showChange(cycles ? draft.change : 'static');
+  showSpeed(draft.speed);
+  page.pace.disabled = !cycles;
+  page.paceNote.textContent = cycles
+    ? `${draft.change === 'fade' ? 'Fades' : 'Cuts'} to the next colour: ${paceOf(draft.speed)}`
+    : 'Static: the colours stay as they are';
+  const shown = draft.visible ?? draft.entries.length;
+  for (const { n, made } of shownKeys) {
+    made.classList.toggle('is-on', n === shown);
+    made.classList.toggle('is-disabled', n > draft.entries.length);
+    made.disabled = n > draft.entries.length;
+    made.setAttribute('aria-pressed', String(n === shown));
+  }
+  page.shownNote.textContent =
+    shown < draft.entries.length
+      ? `The other ${count(draft.entries.length - shown, 'colour')} are what a cycle draws from`
+      : 'All the colours show';
+  drawLenses(draft);
+
+  const takers = shell.show.groups.filter((group) => group.palettes);
+  for (const group of takers) {
+    if (groupKeys.has(group.id)) continue;
+    const made = button('key c', '', () => setOnGroup(group));
+    groupKeys.set(group.id, made);
+    page.groups.append(made);
+  }
+  for (const [id, made] of groupKeys) {
+    const group = takers.find((each) => each.id === id);
+    made.hidden = !group;
+    if (group) {
+      const on = shell.playback.groups?.[id]?.colour?.scene === draft.id;
+      made.textContent = `Set on ${group.label}`;
+      made.classList.toggle('is-on', on);
+    }
+  }
+  page.groupsNote.textContent =
+    takers.length > 0
+      ? 'Sets this palette on the group now. Its look turns Varied.'
+      : 'No group takes palettes.';
+}
+
+/** What changes while a slider is dragged: the colours, not the sliders themselves. */
+function drawLive() {
+  const draft = current();
+  if (!draft) return;
+  drawList();
+  drawSlots(draft);
+  drawLenses(draft);
 }
 
 function render() {
   const { palettes } = shell.show;
-  if (sure && !palettes.some((palette) => palette.id === sure)) unsure();
-  for (const [id, card] of cards) {
+  for (const [id, draft] of drafts) {
     if (palettes.some((palette) => palette.id === id)) continue;
-    clearTimeout(card.settle);
-    card.section.remove();
-    cards.delete(id);
-    opened.delete(id);
+    clearTimeout(draft.settle);
+    drafts.delete(id);
+    items.get(id)?.button.remove();
+    items.delete(id);
   }
-  palettes.forEach((palette, index) => {
-    let card = cards.get(palette.id);
-    if (!card) {
-      card = buildCard(palette.id);
-      cards.set(palette.id, card);
-      adopt(card, palette);
-    } else if (!held(card)) {
-      adopt(card, palette);
+  for (const palette of palettes) {
+    let draft = drafts.get(palette.id);
+    if (!draft) {
+      draft = {
+        id: palette.id,
+        label: '',
+        entries: [],
+        mode: 'static',
+        change: 'step',
+        speed: 0.25,
+        visible: undefined,
+        busy: 0,
+        until: 0,
+        settle: 0,
+      };
+      drafts.set(palette.id, draft);
+      adopt(draft, palette);
+    } else if (!held(draft)) {
+      adopt(draft, palette);
     }
-    if (page.palettes.children[index] !== card.section) {
-      page.palettes.insertBefore(card.section, page.palettes.children[index] ?? null);
-    }
-    draw(card);
-  });
+  }
 
-  const { file } = shell.show;
-  page.where.textContent =
-    `${count(palettes.length, 'palette')}` +
-    (file ? `, kept in ${file.split(/[\\/]/).pop()}` : ', kept until lightdeck stops');
-  page.where.title = file ?? '';
+  const file = shell.show.file;
+  page.meta.textContent = `${count(palettes.length, 'palette')} · ${file ? file.split(/[\\/]/).pop() : 'kept until lightdeck stops'}`;
+  page.meta.title = file ?? '';
+
+  const draft = current();
+  page.main.hidden = !draft;
+  for (const area of document.querySelectorAll('.setup-side > *')) area.hidden = !draft;
+  if (!draft) {
+    drawList();
+    return;
+  }
+  slot = Math.max(0, Math.min(slot, draft.entries.length - 1));
+  if (sure && !paletteOf(draft.id)) unsure();
+
+  drawList();
+  page.title.textContent = draft.label;
+  page.title.hidden = renaming;
+  page.uses.hidden = renaming;
+  page.rename.hidden = !renaming;
+  page.renameKey.textContent = renaming ? 'Save' : 'Rename';
+  page.deleteKey.textContent = sure ? 'Delete?' : 'Delete…';
+  page.deleteKey.classList.toggle('is-warn', sure);
+  const { on, looks } = usesOf(draft.id);
+  const parts = [];
+  if (on.length > 0) parts.push(`on in ${on.join(', ')}`);
+  if (looks.length > 0) parts.push(`in a look of ${looks.join(', ')}`);
+  page.uses.textContent = parts.length > 0 ? parts.join(' · ') : 'not on in any group';
+  page.uses.title = page.uses.textContent;
+
+  drawSlots(draft);
+  drawSlotEditor(draft);
+  drawSide(draft);
 }
 
 /** What went wrong on this page, with a place of its own beside the notice of the shell. */
@@ -617,9 +777,39 @@ async function main() {
   if (!shell) return;
   document.title = 'Palettes · Lightdeck';
 
-  // The notice of the shell joins the one of the page, where it takes no room from the keys.
-  page.notices.prepend($('notice'));
-  page.make.addEventListener('submit', make);
+  buildSlots();
+  buildChannels();
+  buildQuick();
+  buildSide();
+
+  page.renameKey.addEventListener('click', pressRename);
+  page.rename.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') pressRename();
+    if (event.key === 'Escape') {
+      stopRenaming();
+      render();
+    }
+  });
+  page.copyKey.addEventListener('click', duplicate);
+  page.deleteKey.addEventListener('click', remove);
+  page.darkKey.addEventListener('click', toggleDark);
+  page.earlierKey.addEventListener('click', () => move(-1));
+  page.laterKey.addEventListener('click', () => move(1));
+  page.removeKey.addEventListener('click', removeSlot);
+
+  page.newOpen.addEventListener('click', () => openNew(page.newSheet.hidden));
+  page.newCancel.addEventListener('click', () => openNew(false));
+  page.newSheet.addEventListener('submit', make);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !page.newSheet.hidden) openNew(false);
+  });
+  // A press outside the sheet closes it.
+  document.addEventListener('pointerdown', (event) => {
+    if (page.newSheet.hidden) return;
+    if (page.newSheet.contains(event.target) || page.newOpen.contains(event.target)) return;
+    openNew(false);
+  });
+
   shell.on('show', () => {
     failure = '';
     render();
@@ -629,6 +819,7 @@ async function main() {
   shell.on('playback', render);
   render();
   renderNotice();
+  items.get(current()?.id)?.button.scrollIntoView({ block: 'nearest' });
 }
 
 main();

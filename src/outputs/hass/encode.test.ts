@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { lightCommand, sameCommand, switchCommand } from './encode.js';
+import {
+  lightCommand,
+  numberCommand,
+  paletteCommand,
+  sameCommand,
+  speedCommand,
+  stripCommand,
+  switchCommand,
+} from './encode.js';
 
 const WHITE = { red: 0, green: 0, blue: 0, white: 1 };
 const RED = { red: 1, green: 0, blue: 0, white: 0 };
@@ -130,5 +138,70 @@ describe('sameCommand', () => {
     expect(sameCommand(a, switchCommand(true))).toBe(false);
     expect(sameCommand(a, undefined)).toBe(false);
     expect(sameCommand(undefined, undefined)).toBe(true);
+  });
+});
+
+describe('stripCommand', () => {
+  const look = {
+    brightness: 0.5,
+    colour: { red: 0, green: 0.5, blue: 1 },
+    effect: 'Flow',
+    transition: 0.4,
+  };
+
+  it('turns a strip on with its colour as a direction, its brightness, its effect and a transition', () => {
+    expect(stripCommand(look)).toEqual({
+      domain: 'light',
+      service: 'turn_on',
+      data: { brightness: 128, rgb_color: [0, 128, 255], effect: 'Flow', transition: 0.4 },
+    });
+  });
+
+  it('asks for the solid colour without an effect, because a light keeps the effect it had', () => {
+    expect(stripCommand({ ...look, effect: null }).data?.effect).toBe('Solid');
+  });
+
+  it('never sends 0 for a strip that is on, and turns it off at 0', () => {
+    expect(stripCommand({ ...look, brightness: 0.0001 }).data?.brightness).toBe(1);
+    expect(stripCommand({ ...look, brightness: 0, transition: 0 })).toEqual({
+      domain: 'light',
+      service: 'turn_off',
+      data: { transition: 0 },
+    });
+  });
+
+  it('keeps a black colour from dividing by nothing', () => {
+    expect(
+      stripCommand({ ...look, colour: { red: 0, green: 0, blue: 0 } }).data?.rgb_color,
+    ).toEqual([0, 0, 0]);
+  });
+});
+
+describe('speedCommand', () => {
+  it('sets the value of a number entity, whole and from 0 to 255', () => {
+    expect(speedCommand(126.4)).toEqual({
+      domain: 'number',
+      service: 'set_value',
+      data: { value: 126 },
+    });
+    expect(speedCommand(900).data?.value).toBe(255);
+    expect(speedCommand(-4).data?.value).toBe(0);
+    expect(speedCommand(Number.NaN).data?.value).toBe(0);
+  });
+});
+
+describe('paletteCommand and numberCommand', () => {
+  it('selects a palette of a WLED strip by name', () => {
+    expect(paletteCommand('Orange & Teal')).toEqual({
+      domain: 'select',
+      service: 'select_option',
+      data: { option: 'Orange & Teal' },
+    });
+  });
+
+  it('sets a number entity whole, between 0 and 255; the speed is one of them', () => {
+    expect(numberCommand(40.6).data?.value).toBe(41);
+    expect(numberCommand(300).data?.value).toBe(255);
+    expect(speedCommand(10)).toEqual(numberCommand(10));
   });
 });

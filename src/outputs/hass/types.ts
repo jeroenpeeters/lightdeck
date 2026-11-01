@@ -14,10 +14,13 @@ export type HassStatus = 'down' | 'refused' | 'connected' | 'simulated';
 
 /** A service call for one entity. The entity itself is given beside it. */
 export interface HassCommand {
-  /** The domain of the entity: `light` or `switch`. */
-  domain: 'light' | 'switch';
-  service: 'turn_on' | 'turn_off';
-  /** The service data besides the entity: `brightness`, `rgbw_color`, `transition`. */
+  /**
+   * The domain of the entity: `light` or `switch`, or for a WLED strip `number` (its speed and
+   * intensity) and `select` (its palette).
+   */
+  domain: 'light' | 'switch' | 'number' | 'select';
+  service: 'turn_on' | 'turn_off' | 'set_value' | 'select_option';
+  /** The service data besides the entity: `brightness`, `rgbw_color`, `transition`, `effect`, `value`, `option`. */
   data?: Record<string, unknown>;
 }
 
@@ -28,6 +31,14 @@ export interface EntityReport {
   on: boolean;
   /** `supported_color_modes` of a light, empty for a switch. */
   colourModes: string[];
+  /** The effects a light offers (`effect_list`, a WLED strip), when it says so. */
+  effects?: string[];
+  /** The effect a light shows now (`effect`), when it says so. */
+  effect?: string | null;
+  /** The options a `select` entity offers (the palettes of a WLED strip), when it says so. */
+  options?: string[];
+  /** The state as Home Assistant writes it, for a `sensor` (the address of a WLED strip). */
+  value?: string;
 }
 
 export interface HassOutput {

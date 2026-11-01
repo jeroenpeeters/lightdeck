@@ -1,296 +1,478 @@
 /*
- * What belongs to the video wall page: the switch, three lines that say what is going on, and the
- * settings with a sketch of the wall.
+ * The video wall controls (videowallPanel.js), in the design of the console (design/mockups/05): in the
+ * tab Video wall of the tablet page (`.wl-live`: the library and, at the right, "On the wall") and on
+ * the setup page /videowall (`.wl-setup`: the settings and the library, with "On the wall" in the side
+ * panel). Written in the tokens of lightdeck.css; the keys, chips, tabs, tags, panels and faders are
+ * those of lightdeck.css and chrome.css, and this file only lays them out.
  *
- * Nothing here takes its size from what it says: the three lines keep their height, the keys have
- * a width of their own, and the sketch keeps its shape, so that no key moves when the text changes.
+ * A state only swaps classes: the tag "On" of an item keeps its room, the lines keep their height and
+ * the pictures keep their shape, so that no key moves when something changes.
  */
 
-.wall-hint {
-  max-width: 80ch;
-}
-.wall-hint code {
-  font-size: 0.95em;
-}
-.console > .wall-hint {
-  margin-bottom: var(--gap);
-}
-/* The panels of the controls, on the page of their own and in the tab of the tablet. */
-.wall-root {
+/* ---- the library ---- */
+
+.wl-library {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  gap: 12px;
   min-width: 0;
+  min-height: 0;
 }
-
-.wall-switch {
-  display: block;
-  width: 100%;
-  max-width: 28rem;
-  min-height: 4rem;
-  padding: 0 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  font-size: var(--large);
-  font-weight: 500;
-  text-align: left;
-}
-.wall-switch:active {
-  background: var(--key-down);
-}
-.wall-switch[aria-pressed="true"] {
-  border-color: var(--signal);
-  background: var(--signal);
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.wall-lines {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 0.4rem 1rem;
-  margin: 1rem 0;
-}
-.wall-lines dt {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 400;
-}
-.wall-lines dd {
-  min-height: 1.35em;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wall-lines dd[data-bad="true"] {
-  color: var(--stop);
-}
-
-.wall-result {
-  min-height: 1.35em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--dim);
-  font-size: var(--small);
-}
-
-.wall-actions {
+.wl-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.wall-actions .key {
-  width: 11rem;
-}
-
-.wall-settings {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.5rem;
-  margin-top: 0.75rem;
-}
-@media (min-width: 56rem) {
-  .wall-settings {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-}
-.wall-form,
-.wall-where {
-  display: grid;
-  align-content: start;
-  gap: 1rem;
-}
-.wall-row {
-  display: grid;
-  gap: 0.4rem;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.wall-row > span:first-child,
-.wall-row > legend {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 400;
-}
-.wall-pin,
-.wall-duration {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-.wall-pin .field {
-  flex: 1 1 10rem;
-}
-#wall-pin-clear,
-.wall-pin .key {
-  width: 9rem;
-}
-.wall-duration .field {
-  width: 6rem;
-}
-.wall-presets,
-.wall-choice {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.wall-presets .pick {
-  min-width: 4.5rem;
-  padding: 0 0.5rem;
-}
-.wall-choice .pick {
-  width: 10rem;
-}
-.wall-colour {
-  width: 6rem;
-  height: var(--touch);
-  padding: 0.2rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--ground);
-}
-
-.wall-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 5.5rem);
-  gap: 0.5rem;
-}
-.wall-grid .pick {
-  padding: 0;
-}
-
-.wall-preview {
-  container-type: size;
-  position: relative;
-  width: 100%;
-  max-width: 28rem;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #000;
-}
-.wall-preview-text {
-  position: absolute;
-  max-width: 96%;
-  padding: 0 2%;
-  font-size: calc(var(--wall-size, 6) * 1cqh);
-  font-weight: 600;
-  line-height: 1.1;
-  text-shadow: 0 0 0.15em rgba(0, 0, 0, 0.8);
-  white-space: pre-line;
-}
-
-/* ---- the player: what plays, the blackout and the library ---- */
-
-.wall-player-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 1rem 2rem;
-  margin-bottom: 1rem;
-}
-.wall-blackout {
-  width: 11rem;
-  min-height: 3.5rem;
-}
-.wall-blackout[aria-pressed="true"] {
-  border-color: var(--stop);
-  background: var(--stop);
-  color: var(--ink);
-  font-weight: 600;
-}
-.wall-player-controls .pick,
-.wall-library-head .pick {
-  min-width: 5rem;
-  min-height: 3.5rem;
-  padding: 0 0.75rem;
-}
-.wall-library-head {
-  display: flex;
-  flex-wrap: wrap;
+  flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem 1rem;
+  gap: 12px;
 }
-.wall-refresh {
-  width: 8rem;
-  min-height: 3.5rem;
+.wl-head .tabs {
+  min-width: 0;
+  overflow: hidden;
 }
-/* Keeps its height whether it says something or not, so the keys under it do not move. */
-.wall-library-note {
-  min-height: 1.5em;
-  margin: 0.75rem 0 0;
+.wl-refresh {
+  flex: none;
+  width: 112px;
 }
-.wall-library-note[hidden] {
-  display: block;
-  visibility: hidden;
+.wl-refresh:disabled,
+.wl-blackout:disabled,
+.wl-text .key:disabled {
+  opacity: 0.45;
+}
+.wl-foot {
+  flex: none;
+  min-height: 2.6em;
+  max-width: none;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.wl-error {
+  color: var(--danger);
+}
+.wl-empty {
+  grid-column: 1 / -1;
+  max-width: none;
+}
+.wl-foot a {
+  color: var(--t1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.wall-items {
+.wl-items {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  align-content: start;
 }
-/* A preview at a fixed shape, the name in two lines at most and a line for the rest. */
-.wall-item {
-  display: grid;
-  gap: 0.25rem;
+/* A preview in the shape of a screen, the name in two lines at most and a line for the rest. */
+.wl-item {
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 8px;
   min-width: 0;
-  padding: 0.4rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
-  text-align: left;
+  padding: 8px;
 }
-.wall-item:active {
-  background: var(--key-down);
+.wl-item .hd {
+  align-items: flex-start;
 }
-.wall-item[aria-pressed="true"] {
-  border-color: var(--signal);
-  box-shadow: inset 0 0 0 2px var(--signal);
+.wl-name {
+  display: -webkit-box;
+  min-width: 0;
+  height: 2.3em;
+  overflow: hidden;
+  font: 600 17px / 1.15 var(--f-ui);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
-.wall-item-picture {
+.wl-item .sub {
+  height: 1.2em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The tag has its room whether the item plays or not. */
+.wl-item .tag {
+  visibility: hidden;
+}
+.wl-item.is-on .tag {
+  visibility: visible;
+}
+.wl-thumb,
+.wl-picture {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: calc(var(--radius) / 2);
-  background: #000;
+  border-radius: 3px;
+  background: var(--ground);
 }
-.wall-item-picture img {
+.wl-thumb img,
+.wl-picture img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.wall-item-kind {
-  color: var(--dim);
-  font-size: var(--small);
+/* The outline lies over the picture, which would hide a shadow of its own. */
+.wl-thumb::after,
+.wl-picture::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  pointer-events: none;
+}
+.wl-kind {
+  color: var(--t3);
+  font: 500 13px var(--f-ui);
   text-transform: capitalize;
 }
-.wall-item-name {
-  display: -webkit-box;
-  height: 2.6em;
-  overflow: hidden;
-  font-size: var(--small);
+
+/* ---- the side: on the wall ---- */
+
+.wl-side {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+}
+legend.lbl {
+  padding: 0;
+}
+.wl-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.wl-conn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--t2);
+  font: 500 13px var(--f-ui);
+}
+.wl-picture {
+  flex: none;
+  container-type: size;
+  width: 100%;
+}
+.wl-sketch-text {
+  position: absolute;
+  z-index: 1;
+  max-width: 96%;
+  padding: 0 2%;
+  font-size: calc(var(--wall-size, 6) * 1cqh);
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.1;
+  text-shadow: 0 0 0.15em var(--ground);
+  white-space: pre-line;
+}
+
+/* The picture and what plays side by side, so that the whole side fits the height of the tab. */
+.wl-wall {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: start;
+}
+.wl-wall > .sh {
+  grid-column: 1 / -1;
+}
+.wl-now {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.wl-now-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wl-title {
+  display: -webkit-box;
+  height: 2.4em;
+  min-width: 0;
+  overflow: hidden;
+  font: 600 17px / 1.2 var(--f-ui);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.wall-item-detail {
-  height: 1.3em;
+.wl-time {
+  flex: none;
+  font-size: 14px;
+}
+.wl-bar {
+  height: 6px;
+  border-radius: 1px;
+  background: var(--s4);
   overflow: hidden;
-  color: var(--dim);
-  font-size: var(--small);
+}
+.wl-bar i {
+  display: block;
+  height: 100%;
+  background: var(--t2);
+}
+.wl-sub {
+  display: -webkit-box;
+  height: 2.4em;
+  overflow: hidden;
+  font: 500 13px / 1.2 var(--f-ui);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.wl-trans {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+.wl-trans .chip {
+  align-items: center;
+  padding: 0;
+}
+
+.wl-track {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.wl-text-keys {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 6px;
+}
+.wl-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wl-line {
+  min-height: 18px;
+  overflow: hidden;
+  color: var(--t2);
+  font: 500 14px / 1.3 var(--f-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-line[data-bad="true"] {
+  color: var(--danger);
+}
+.wl-blackout {
+  flex: none;
+  width: 100%;
+  height: 56px;
+  margin-top: auto;
+}
+
+/* ---- the tab of the tablet page: library | side ---- */
+
+.wl-live {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 384px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.wl-live > .wl-library {
+  padding: 12px;
+}
+.wl-live .wl-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.wl-live > .wl-side {
+  padding: 12px 12px 12px 14px;
+  overflow-y: auto;
+  background: var(--s1);
+  border-left: 1px solid var(--line);
+  scrollbar-width: none;
+}
+
+/* ---- the setup page ---- */
+
+.setup {
+  --side-w: 384px;
+}
+.wall-hint {
+  max-width: 80ch;
+}
+.wall-hint code {
+  color: var(--t2);
+  font: 500 0.95em var(--f-num);
+}
+.wl-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.wl-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+/* The settings of the track text, as the fifth tab of the library: they take the place of the keys. */
+.wl-live .wl-settings {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.wl-settings-tab {
+  white-space: nowrap;
+}
+
+.wl-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.wl-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+}
+.wl-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.wl-pin {
+  display: flex;
+  gap: 8px;
+}
+.wl-pin .field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.wl-pin .key {
+  flex: none;
+  width: 140px;
+}
+.wl-seconds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.wl-seconds input.field {
+  width: 96px;
+}
+.wl-seconds .keys {
+  flex: 1 1 240px;
+}
+.wl-result {
+  min-height: 1.3em;
+  overflow: hidden;
+  color: var(--t2);
+  font: 500 14px / 1.3 var(--f-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-colour {
+  align-self: flex-start;
+  width: 96px;
+  height: var(--k-s);
+  padding: 4px;
+  background: var(--ground);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.wl-colour::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.wl-colour::-webkit-color-swatch {
+  border: 0;
+  border-radius: 2px;
+}
+.wl-colour::-moz-color-swatch {
+  border: 0;
+  border-radius: 2px;
+}
+.wl-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  max-width: 420px;
+}
+.wl-grid .key {
+  min-height: 56px;
+}
+.wl-sketch {
+  max-width: 420px;
+}
+.wl-setup .wl-library {
+  gap: 12px;
+}
+.setup-side .wl-side {
+  flex: 1 1 auto;
+}
+
+/* ---- upright: below 56rem the side lies over the library and the tab scrolls as a whole ---- */
+
+@media (max-width: 56rem) {
+  .wl-live {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .wl-live > .wl-library {
+    flex: none;
+  }
+  .wl-live .wl-items {
+    flex: none;
+    overflow: visible;
+  }
+  .wl-live > .wl-side {
+    display: grid;
+    flex: none;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "wall transition"
+      "wall text"
+      "black black";
+    align-items: start;
+    order: -1;
+    overflow: visible;
+    border-bottom: 1px solid var(--line);
+    border-left: 0;
+  }
+  .wl-live > .wl-side .wl-wall {
+    grid-area: wall;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wl-live > .wl-side .wl-transition {
+    grid-area: transition;
+  }
+  .wl-live > .wl-side .wl-text {
+    grid-area: text;
+  }
+  .wl-live > .wl-side .wl-blackout {
+    grid-area: black;
+    margin-top: 0;
+  }
+  .wl-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wl-live .wl-settings {
+    flex: none;
+    overflow: visible;
+  }
 }

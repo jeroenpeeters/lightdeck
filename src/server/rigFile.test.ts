@@ -17,7 +17,157 @@ fixtures:
       - { id: low, label: Low, lamps: [bar, shelf] }
 `;
 
+const DECOR = `
+fixtures:
+  - id: decor
+    kind: decor
+    label: Decor
+    switches:
+      - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
+      - { id: uv2, entity: switch.uv_lamp_2 }
+`;
+
 describe('parseRig', () => {
+  it('reads the switches of the decor', () => {
+    expect(parseRig(DECOR)).toEqual([
+      {
+        id: 'decor',
+        kind: 'decor',
+        label: 'Decor',
+        switches: [
+          { id: 'uv1', label: 'UV 1', entity: 'switch.uv_lamp_1', blackout: true },
+          { id: 'uv2', label: 'uv2', entity: 'switch.uv_lamp_2' },
+        ],
+      },
+    ]);
+  });
+
+  it('reads the strips of WLED of the decor, with their speed entity, colour and blackout', () => {
+    const [decor] = parseRig(`
+fixtures:
+  - id: decor
+    kind: decor
+    strips:
+      - { id: buis1, label: Buis 1, entity: light.wled_buis1 }
+      - { id: buis2, entity: light.wled_buis2, speed: number.buis2_speed, colour: '#33ddaa', blackout: true }
+`);
+    expect(decor).toEqual({
+      id: 'decor',
+      kind: 'decor',
+      label: 'decor',
+      strips: [
+        { id: 'buis1', label: 'Buis 1', entity: 'light.wled_buis1' },
+        {
+          id: 'buis2',
+          label: 'buis2',
+          entity: 'light.wled_buis2',
+          speed: 'number.buis2_speed',
+          colour: '#33ddaa',
+          blackout: true,
+        },
+      ],
+    });
+  });
+
+  it('reads the looks of the pipes and the entities of a strip that are not the usual ones', () => {
+    const [decor] = parseRig(`
+fixtures:
+  - id: decor
+    kind: decor
+    strips:
+      - { id: a, entity: light.a, intensity: number.a_i, palette: select.a_p }
+    looks:
+      - { id: flow, label: Flow, effect: Flow, palette: Ocean, colour: '#00e5ff', intensity: 90, pace: 2 }
+      - { id: plain, effect: null }
+`);
+    expect(decor?.strips?.[0]).toMatchObject({ intensity: 'number.a_i', palette: 'select.a_p' });
+    expect(decor?.looks).toEqual([
+      {
+        id: 'flow',
+        label: 'Flow',
+        effect: 'Flow',
+        palette: 'Ocean',
+        colour: '#00e5ff',
+        intensity: 90,
+        pace: 2,
+      },
+      { id: 'plain', label: 'plain', effect: null },
+    ]);
+  });
+
+  it('reads the address and the LEDs of a strip that lightdeck draws', () => {
+    const [decor] = parseRig(
+      'fixtures:\n  - { id: d, kind: decor, strips: [{ id: a, entity: light.a, host: 192.168.68.32, leds: 300 }] }',
+    );
+    expect(decor?.strips?.[0]).toMatchObject({ host: '192.168.68.32', leds: 300 });
+    expect(() =>
+      parseRig(
+        'fixtures:\n  - { id: d, kind: decor, strips: [{ id: a, entity: light.a, leds: many }] }',
+      ),
+    ).toThrow(/number of LEDs/);
+  });
+
+  it('reads who draws a strip and the entity of its address', () => {
+    const [decor] = parseRig(
+      'fixtures:\n  - { id: d, kind: decor, strips: [{ id: a, entity: light.a, draw: wled }, { id: b, entity: light.b, ip: sensor.b_address }] }',
+    );
+    expect(decor?.strips?.[0]).toMatchObject({ draw: 'wled' });
+    expect(decor?.strips?.[1]).toMatchObject({ ip: 'sensor.b_address' });
+    expect(() =>
+      parseRig(
+        'fixtures:\n  - { id: d, kind: decor, strips: [{ id: a, entity: light.a, draw: neon }] }',
+      ),
+    ).toThrow(/lightdeck or wled/);
+  });
+
+  it('answers a look without an effect, or with a key it does not know', () => {
+    const one = (look: string) =>
+      parseRig(
+        `fixtures:\n  - { id: d, kind: decor, strips: [{ id: a, entity: light.a }], looks: [${look}] }`,
+      );
+    expect(() => one('{ id: x }')).toThrow(/needs an effect/);
+    expect(() => one('{ id: x, effect: Flow, nope: 1 }')).toThrow(/cannot have "nope"/);
+    expect(() => one('{ id: x, effect: Flow, pace: fast }')).toThrow(/pace.*number/);
+  });
+
+  it('needs switches or strips in the decor, and keeps strips out of the room', () => {
+    expect(() => parseRig('fixtures:\n  - { id: d, kind: decor, strips: [] }')).toThrow(
+      /switches or strips, at least one/,
+    );
+    expect(() => parseRig('fixtures:\n  - { id: d, kind: decor, strips: 3 }')).toThrow(
+      /must be a list/,
+    );
+    expect(() =>
+      parseRig(
+        'fixtures:\n  - { id: d, kind: decor, strips: [{ id: a, entity: light.a, nope: 1 }] }',
+      ),
+    ).toThrow(/cannot have "nope"/);
+    expect(() =>
+      parseRig(
+        'fixtures:\n  - { id: r, kind: room, lamps: [{ id: a, entity: light.a }], strips: [] }',
+      ),
+    ).toThrow(/its switches are lamps/);
+  });
+
+  it('keeps the lamps and the switches apart', () => {
+    expect(() =>
+      parseRig('fixtures:\n  - { id: d, kind: decor, lamps: [{ id: a, entity: light.a }] }'),
+    ).toThrow(/switches and strips, not lamps or zones/);
+    expect(() => parseRig('fixtures:\n  - { id: d, kind: decor }')).toThrow(
+      /needs a list of switches or strips/,
+    );
+    expect(() =>
+      parseRig(
+        'fixtures:\n  - { id: r, kind: room, lamps: [{ id: a, entity: light.a }], switches: [] }',
+      ),
+    ).toThrow(/its switches are lamps/);
+    expect(() =>
+      parseRig(
+        'fixtures:\n  - { id: d, kind: decor, switches: [{ id: a, entity: x, blackout: 1 }] }',
+      ),
+    ).toThrow(/blackout of switch 1 of "d" must be true or false/);
+  });
+
   it('reads the lamps and the zones of a room', () => {
     expect(parseRig(ROOM)).toEqual([
       {
@@ -59,7 +209,9 @@ describe('parseRig', () => {
       /"fixtures" in rig.yaml must be a list/,
     );
     expect(() => parseRig('lamps: []', 'rig.yaml')).toThrow(/cannot have "lamps"/);
-    expect(() => parseRig('fixtures:\n  - { id: x, kind: spider }')).toThrow(/kind room only/);
+    expect(() => parseRig('fixtures:\n  - { id: x, kind: spider }')).toThrow(
+      /kinds room and decor only/,
+    );
     expect(() => parseRig('fixtures:\n  - { id: room, kind: room }')).toThrow(/list of lamps/);
     expect(() => parseRig(room(', colour: red'))).toThrow(/cannot have "colour"/);
     expect(() => parseRig(room(', blackout: yes please'))).toThrow(/true or false/);

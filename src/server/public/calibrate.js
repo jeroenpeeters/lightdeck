@@ -10,7 +10,9 @@
 // types the seconds in. That stores a point: this motor speed turns a bar so many degrees per
 // second. The same speed is used for both bars, and a bar turns at a constant speed.
 //
-// The panel knows nothing of three.js. It works on the bars of a simulated fixture:
+// The panel knows nothing of three.js. It is drawn in the console style (the keys of lightdeck.css, the
+// fader of ui.js for the angle, `.field` for the numbers; its layout is in simulator.css). It works on
+// the bars of a simulated fixture:
 //
 //   sim.id, sim.bars[i] = { curve, base, custom, preview, tilt }
 //   curve      the points of [tilt, degrees] that are in use
@@ -26,6 +28,7 @@
 //   calibration.update(sim, look)    call on every frame while the panel is open
 
 import { curveAt, removePoint, replacePoint, setPoint, tiltDegrees } from '/spiderPose.js';
+import { fader } from '/ui.js';
 
 const ANGLE_LIMIT = 180;
 
@@ -36,7 +39,7 @@ function make(tag, className, text) {
   return made;
 }
 function key(text, onClick, label) {
-  const made = make('button', 'key', text);
+  const made = make('button', 'key c', text);
   made.type = 'button';
   if (label) made.setAttribute('aria-label', label);
   made.addEventListener('click', onClick);
@@ -202,7 +205,7 @@ export function createCalibration({ root, save, reset, resetSpeed }) {
     secondsInput.inputMode = 'decimal';
     const message = make('p', 'hint cal-message', '');
     message.setAttribute('role', 'status');
-    const storeKey = make('button', 'key', 'Store for this motor speed');
+    const storeKey = make('button', 'key c', 'Store for this motor speed');
     storeKey.type = 'submit';
     form.append(angleLabel, angleInput, secondsLabel, secondsInput, storeKey, message);
     form.addEventListener('submit', (event) => {
@@ -334,23 +337,27 @@ export function createCalibration({ root, save, reset, resetSpeed }) {
       const tilt = make('p', 'cal-line');
       tilt.append(make('span', '', 'Tilt being sent'), tiltOut);
 
-      const slider = make('input');
-      slider.type = 'range';
-      slider.min = String(-ANGLE_LIMIT);
-      slider.max = String(ANGLE_LIMIT);
-      slider.step = '1';
-      slider.id = `cal-angle-${index}`;
+      // The angle of the bar, as a console fader. While it moves the bar shows the angle of the
+      // operator (`preview`); a change stores a point when it is let go.
       const angleOut = make('output', 'cal-value', '');
-      const angleLabel = make('label', '', 'Angle of the bar');
-      angleLabel.htmlFor = slider.id;
+      const angleLabel = make('span', '', 'Angle of the bar');
       const angle = make('p', 'cal-line');
       angle.append(angleLabel, angleOut);
-
-      slider.addEventListener('input', () => {
-        bar.preview = Number(slider.value);
-        angleOut.textContent = degrees(bar.preview);
+      let shown = 0;
+      const slider = fader({
+        id: `cal-angle-${index}`,
+        label: 'Angle of the bar',
+        min: -ANGLE_LIMIT,
+        max: ANGLE_LIMIT,
+        read: () => shown,
+        write(number) {
+          bar.preview = number;
+          angleOut.textContent = degrees(bar.preview);
+        },
+        format: (number) => `${number}°`,
       });
-      slider.addEventListener('change', () => commit(row, Number(slider.value)));
+      slider.input.addEventListener('change', () => commit(row, Number(slider.input.value)));
+      slider.refresh();
       const nudge = (by) => () => {
         const now = bar.preview ?? tiltDegrees(bar.tilt, bar.curve);
         commit(row, Math.max(-ANGLE_LIMIT, Math.min(ANGLE_LIMIT, Math.round(now) + by)));
@@ -369,7 +376,13 @@ export function createCalibration({ root, save, reset, resetSpeed }) {
       });
       head.append(resetKey);
 
-      Object.assign(row, { tiltOut, angleOut, slider });
+      Object.assign(row, {
+        tiltOut,
+        angleOut,
+        slider,
+        shown: () => shown,
+        show: (n) => (shown = n),
+      });
       section.append(
         head,
         tilt,
@@ -417,7 +430,10 @@ export function createCalibration({ root, save, reset, resetSpeed }) {
         // While the slider is being moved it shows the angle of the operator, not the curve.
         if (bar.preview === null) {
           const now = tiltDegrees(bar.tilt, bar.curve);
-          row.slider.value = String(Math.round(now));
+          if (row.shown() !== Math.round(now)) {
+            row.show(Math.round(now));
+            row.slider.refresh();
+          }
           row.angleOut.textContent = degrees(now);
         }
       }

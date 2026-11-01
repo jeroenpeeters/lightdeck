@@ -1,434 +1,311 @@
 /*
- * What belongs to the deck: a row per group with a lane of looks and a lane per type (lights,
- * colour, motion) holding the keys of its scenes or, for the colour, of the palettes, and
- * what Program adds to it, the rows to name a scene, a look or a group with.
+ * What belongs to the deck (design mockups 07 and 08): the grid of keys in the middle, the pager above it,
+ * the Off key at its foot, and the side panel with the sequence (Show) and with what Program stores,
+ * picks and changes. The frame (the top bar, the head, the three columns, the nav, the fields, the
+ * notices) is chrome.css; the keys are lightdeck.css.
  *
- * In a row nothing takes its size from what it says, so that no key moves under a
- * finger when a scene goes on or off: the columns are fixed and text that changes stays
- * on one line.
+ * No key takes its size from what it says or from whether it is on: a key of the grid has a fixed height
+ * and its text stays within it, the pager is hidden and not removed, and what a state adds (a tag, a
+ * second line) has its room.
  */
 
-.deck-head {
-  align-items: center;
+.setup {
+  --side-w: 340px;
 }
-.mode {
-  margin-left: auto;
-}
-.deck-hint {
-  max-width: 80ch;
+/* Room at the foot, where a notice lies over the page. */
+.setup-side {
+  padding-bottom: 84px;
 }
 
-/* ---- the masters ---- */
+/* ---- the grid: five columns, a page of twenty keys ---- */
 
-/* The master of the brightness, and next to it the master of the speed of the effects. */
-.masters {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1rem 2.5rem;
-  align-items: end;
-}
-@media (min-width: 50rem) {
-  .masters {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-}
-/* Keys, not a fader: only halves and doubles keep an effect on the beat. */
-.master-speed {
-  margin-top: 0;
-}
-.master-speed > legend {
-  margin-bottom: 0.5rem;
-}
-.master-speed > .pick {
-  min-width: 4rem;
-  min-height: 4rem;
-  font-size: var(--large);
-  font-weight: 600;
-}
-
-/*
- * A fader for a finger in the dark: a tall handle on a thick track. It has a panel of
- * its own above the groups, and the name of the first group lies between it and the
- * keys of the scenes. Nothing in the panel changes in size when the fader moves.
- */
-.grand-master > .slider {
-  row-gap: 0.5rem;
-  align-items: center;
-}
-.grand-master label {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.grand-master output {
-  min-width: 4ch;
-  font-size: 2rem;
-}
-.grand-master input[type="range"] {
-  height: 4.5rem;
-}
-.grand-master input[type="range"]::-webkit-slider-runnable-track {
-  height: 0.75rem;
-}
-.grand-master input[type="range"]::-webkit-slider-thumb {
-  width: 2.75rem;
-  height: 4rem;
-  margin-top: -1.625rem;
-}
-.grand-master input[type="range"]::-moz-range-track,
-.grand-master input[type="range"]::-moz-range-progress {
-  height: 0.75rem;
-}
-.grand-master input[type="range"]::-moz-range-thumb {
-  width: 2.75rem;
-  height: 4rem;
-}
-
-/* ---- a group ---- */
-
-.groups {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--gap);
-}
-.group-head {
+.d-bar {
   display: flex;
-  align-items: baseline;
-  gap: 0.9rem;
-  min-width: 0;
-}
-.group-name {
-  color: var(--paper);
-  font-size: var(--large);
-  line-height: 1.1;
-  letter-spacing: 0;
-}
-.group-name,
-.group-head > .where {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/*
- * A lane for the looks and a lane per type. The name is on the left, the keys in the middle,
- * and at the end a place that only two lanes use: Off in the lights, the link to the
- * palettes in the colour. The columns are fixed, so the keys of the lanes line up and nothing
- * moves when something goes on.
- */
-.lanes {
-  margin-top: 0.25rem;
-}
-.lane {
-  display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) 7rem;
-  gap: 0.5rem;
-  align-items: start;
-  margin-top: 0.75rem;
-}
-.lane-name {
-  padding-top: 0.2rem;
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-/* The looks are above the lanes of the types, and set apart from them. */
-.lane[data-lane="look"] {
-  margin-top: 0.75rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--line);
-}
-.lane-scenes > .hint {
-  display: flex;
+  flex: none;
   align-items: center;
-  min-height: 5.5rem;
-  margin: 0;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
 }
-@media (max-width: 40rem) {
-  .lane {
-    grid-template-columns: minmax(0, 1fr) 4.5rem;
-  }
-  .lane-name {
-    grid-column: 1 / -1;
-    padding-top: 0;
-  }
+.d-pager {
+  display: flex;
+  gap: 6px;
 }
-
-/* ---- the scenes ---- */
-
-.scene-grid {
+.d-pager .key {
+  width: 56px;
+  font-size: var(--fs-xl);
+}
+/* A single page has no pager, but it keeps its room. */
+.d-pager.is-off {
+  visibility: hidden;
+}
+.d-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 0.5rem;
+  flex: none;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
 }
-.scene {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: center;
-  gap: 0.2rem;
-  min-width: 0;
-  min-height: 5.5rem;
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  line-height: 1.15;
-  text-align: left;
-  touch-action: manipulation;
+.d-grid:empty {
+  display: none;
 }
-.scene:active {
-  background: var(--key-down);
+.d-grid .key.dk {
+  height: 96px;
+  min-height: 0;
+  padding: 9px 10px;
 }
-.scene:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.scene-name {
-  font-size: var(--large);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-/* One line, whatever it says, and there when it says nothing. */
-.scene-sets {
-  min-height: 1.15em;
-  overflow: hidden;
-  color: var(--dim);
-  font-size: var(--small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/*
- * What a look names is longer than what a scene says, so it may take two lines. Every look key
- * has both, so they are the same height whatever the look names.
- */
-.lane[data-lane="look"] .scene-sets {
+.dk .nm {
   display: -webkit-box;
-  min-height: 2.3em;
+  overflow: hidden;
+  font: 600 var(--fs-m) / 1.1 var(--f-ui);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  white-space: normal;
+  line-clamp: 2;
 }
-
-/* The colours of a palette, small, between its name and the line under it. */
-.chips {
-  display: flex;
-  gap: 0.25rem;
-  height: 1rem;
+.dk .hd {
+  min-height: 20px;
 }
-.chip {
-  flex: none;
-  width: 1.4rem;
-  height: 1rem;
-  border: 1px solid var(--paper);
-  border-radius: 2px;
+.dk .hd > .nm {
+  min-width: 0;
 }
-/* An off slot is a dark chip with a dashed outline, so that it reads as a gap. */
-.chip[data-off="true"] {
-  border-style: dashed;
-  border-color: var(--dim);
-  background: var(--ground);
+.dk .no {
+  margin-right: 5px;
+  font: 500 13px var(--f-num);
 }
-.scene[data-state="set"] .chip {
-  border-color: var(--ink);
+.dk .lbl,
+.dk .meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.scene[data-state="set"] .chip[data-off="true"] {
-  border-color: var(--ink);
+.dk.is-on .lbl,
+.dk.is-varied .lbl {
+  color: var(--on-soft);
 }
-
-.off {
-  padding: 0.5rem;
-  font-size: var(--large);
-  font-weight: 600;
-  text-align: center;
+.dk.is-edit .lbl {
+  color: var(--t2);
 }
-
-/* The fixtures of the group are set to this scene. */
-.scene[data-state="set"] {
-  border-color: var(--signal);
-  background: var(--signal);
-  color: var(--ink);
-}
-.scene[data-state="set"] .scene-sets {
-  color: var(--ink);
-}
-/* They were, and have been changed by hand since: the outline stays, the fill goes. */
-.scene[data-state="changed"] {
-  border-color: var(--signal);
-  box-shadow: inset 0 0 0 1px var(--signal);
-}
-.scene[data-state="changed"] .scene-name,
-.scene[data-state="changed"] .scene-sets {
-  color: var(--signal);
-}
-/* Chosen to edit. */
-.scene[data-state="chosen"] {
-  border-color: var(--paper);
-  background: var(--paper);
-  color: var(--ink);
-}
-.scene[data-state="chosen"] .scene-sets {
-  color: var(--ink);
-}
-
-/* The link to the palettes, in the place at the end of the colour lane. */
-.edit-palettes {
+/* The empty places of Program: Store here is the first, in blue, the rest only fill the row. */
+.dk.empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: var(--touch);
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  color: var(--paper);
-  font-weight: 500;
-  line-height: 1.15;
   text-align: center;
-  text-decoration: none;
 }
-.edit-palettes:active {
-  background: var(--key-down);
+.dk.d-store,
+.dk.d-link {
+  border-color: #2f5480;
+  color: var(--edit);
 }
-.edit-palettes[hidden] {
-  display: none;
-}
-
-/* ---- naming a scene or a group ---- */
-
-.name-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.35rem 0.5rem;
-  max-width: 40rem;
-  margin-top: 1rem;
-}
-.name-row label {
-  grid-column: 1 / -1;
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-  letter-spacing: 0.02em;
+.d-link:active {
+  background: var(--s4);
 }
 
-/* ---- what Program adds to a group ---- */
-
-/* The keys that say what is stored: a scene of lights, a scene of motion, or a look. */
-.type-choice {
-  margin-top: 0.5rem;
+.d-off {
+  flex: none;
+  height: var(--k-s);
+  margin-top: auto;
+  color: var(--t2);
 }
 
-.group-program {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: 1.5rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
+/* ---- the side panel ---- */
+
+.d-sec {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 10px;
+}
+.d-program {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 18px;
+}
+.d-program + .d-seq {
+  padding-top: 14px;
   border-top: 1px solid var(--line);
 }
-.block > .name-row {
-  margin-top: 0.5rem;
-}
-.wide {
-  width: 100%;
-  margin-top: 0.5rem;
-  padding: 0.35rem 1rem;
-  /* Room for two lines, so that a name that wraps does not push the groups below it. */
-  min-height: 3.75rem;
-}
-.delete {
-  border-color: var(--stop);
-  color: var(--stop);
-}
-.delete[data-sure="true"] {
-  background: var(--stop);
-  color: var(--ink);
-  font-weight: 600;
-}
-
-/* ---- a new group ---- */
-
-.ticks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 2rem;
-  margin-top: 1rem;
-}
-.ticks > .check {
-  margin-top: 0.25rem;
-}
-.new-group > .key {
-  margin-top: 0.75rem;
-}
-
-/* ---- the sequences ---- */
-
-/*
- * A row per sequence: the key on the left, and on the right its name, its steps as chips and a
- * line that says where it is. The key has a width that fits Start and Stop, and the line is
- * there whether the sequence runs or not, so that nothing moves when one starts.
- */
-.sequences > h2 {
-  margin-bottom: 0.75rem;
-}
-.sequence-list {
+.d-pair {
   display: grid;
-  gap: 1rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }
-.sequence-row {
-  display: grid;
-  grid-template-columns: 6rem minmax(0, 1fr);
-  gap: 0.5rem 1rem;
-  align-items: start;
+.d-pair .key {
+  height: var(--k-s);
 }
-.sequence-toggle {
-  min-width: 6rem;
-  min-height: var(--touch);
-  font-weight: 600;
-}
-.sequence-name {
-  margin: 0 0 0.5rem;
-  font-size: var(--large);
-  font-weight: 600;
-}
-.sequence-steps {
+.d-form {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.d-types {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* Program is blue: what a press stores or changes. */
+.d-edit {
+  background: var(--edit-tint);
+  border-color: var(--edit);
+  color: var(--edit);
+}
+.d-edit.is-disabled {
+  background: transparent;
+  border-color: var(--line-2);
+  color: var(--t3);
+}
+#store-types .key.is-edit {
+  color: var(--t1);
+}
+.d-delete {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.d-delete.is-warn {
+  background: var(--danger-tint);
+}
+.d-delete.is-disabled {
+  border-color: var(--line-2);
+  color: var(--t3);
+}
+.d-sure {
+  min-height: 2.6em;
+  color: var(--t2);
+}
+#store-changes {
+  height: var(--k-s);
+  min-height: 0;
+  padding: 0 12px;
+}
+.d-ellipsis {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What a look or a scene keeps. The four rows are always there, so the form under it stays put. */
+.d-keeps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--ground);
+}
+.d-keep {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 20px;
+  font-size: var(--fs-m);
+}
+.d-keep-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  text-align: right;
+}
+.d-keeps-hint {
+  min-height: 1.3em;
+}
+
+.d-ticks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.d-ticks > legend {
+  grid-column: 1 / -1;
+  padding: 0 0 6px;
+}
+
+/* ---- the sequence ---- */
+
+.d-seq-state {
+  font-size: 13px;
+}
+.d-seq-tabs {
   flex-wrap: wrap;
-  gap: 0.5rem;
+}
+.d-seq-tabs .tab {
+  padding: 0 10px;
+}
+/* A sequence that runs is amber on its tab, whether or not it is the one listed. */
+.d-seq-tabs .tab.is-running {
+  color: var(--on);
+  box-shadow: inset 0 3px 0 var(--on);
+}
+.d-seq-tabs .tab.is-running.is-sel {
+  box-shadow:
+    inset 0 3px 0 var(--on),
+    inset 0 -3px 0 var(--t1);
+}
+.d-seq .d-pair .key {
+  height: var(--k-m);
+}
+.d-status {
+  min-height: 2.6em;
+  color: var(--t2);
+  font: 500 var(--fs-s) / 1.3 var(--f-ui);
+}
+/* A problem the sequencer reports (a system problem, so red is allowed). */
+.d-status[data-level="alarm"] {
+  color: var(--danger);
+}
+.d-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.sequence-step {
+/* The steps are a list to read: the server has no jump to a step, only Next. */
+.d-step {
   display: grid;
-  gap: 0.125rem;
-  padding: 0.5rem 0.75rem;
-  border: 2px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  min-width: 8rem;
+  grid-template-columns: 28px minmax(0, 1fr) 56px;
+  align-items: center;
+  height: 48px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  font: 500 15px var(--f-ui);
 }
-.sequence-step[data-state="on"] {
-  border-color: var(--signal);
+.d-step .n,
+.d-step .b {
+  color: var(--t3);
+  font: 500 13px var(--f-num);
 }
-.step-bars {
-  font-weight: 600;
+.d-step .b {
+  text-align: right;
 }
-.sequence-step[data-state="on"] .step-bars {
-  color: var(--signal);
+.d-step .what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.step-sets {
-  color: var(--dim);
-  font-size: var(--small);
+.d-step.is-now {
+  background: var(--on-tint);
+  border-color: var(--on);
+  color: var(--on);
 }
-.sequence-status {
-  margin: 0.5rem 0 0;
-  min-height: 1.5em;
-  color: var(--dim);
-  font-size: var(--small);
+.d-step.is-now .n,
+.d-step.is-now .b {
+  color: var(--on-soft);
 }
-.sequence-status[data-level="alarm"] {
-  color: var(--stop);
+.d-step.is-next {
+  border-color: var(--t1);
+  border-style: dashed;
+}
+
+/* ---- upright (below 56rem): one column, the side panel under the keys ---- */
+
+@media (max-width: 56rem) {
+  .page-head {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 8px 12px;
+  }
 }

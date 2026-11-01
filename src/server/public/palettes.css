@@ -1,276 +1,399 @@
 /*
- * What belongs to the palettes page: a panel per palette with a big strip of its colours,
- * and an editor that opens under it.
+ * What belongs to the palettes page (design mockup 11): the list of palettes at the left, the chosen
+ * palette in the middle (its slots, the colour of one slot) and how it runs at the right. In the tokens
+ * of lightdeck.css; the chrome (top bar, page head, columns, faders, notices) is chrome.css.
  *
- * Nothing here takes its size from what it says: the strip, the line under it and the
- * hint of the settings keep their room, and the keys have a width of their own, so that
- * no key moves under a finger when a palette is edited or changes its mode.
+ * Nothing here takes its size from what it says or from whether it is chosen: the list items, the slots,
+ * the keys of the head and the notes keep their room, and a state only swaps classes, so that no key
+ * moves under a finger when a palette is edited.
  */
 
-.palettes-hint {
-  max-width: 80ch;
+.setup {
+  --nav-w: 320px;
+  --side-w: 300px;
 }
 
-.palettes {
+/* ---- the new palette: a key in the head, and a sheet that lies over the page under it ---- */
+
+.ph-actions {
+  position: relative;
+  z-index: 3;
+}
+.new-key {
+  width: 160px;
+  color: var(--edit);
+  border-color: var(--edit);
+}
+.new-key.is-open {
+  background: var(--edit-tint);
+}
+.new-sheet {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  padding: 14px;
+  background: var(--s2);
+  border-color: var(--line-2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+}
+.new-keys {
+  display: flex;
+  gap: 8px;
+}
+.new-keys .key {
+  flex: 1;
+}
+
+/* ---- the list of palettes ---- */
+
+.setup-nav {
+  padding: 10px;
+}
+.pl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pl {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--gap);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: center;
+  gap: 6px 10px;
+  flex: none;
+  height: 52px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  color: var(--t1);
+  text-align: left;
 }
-
-/* ---- a palette ---- */
-
-.palette {
-  border-left: 4px solid transparent;
-}
-/* On in a group. */
-.palette[data-on="true"] {
-  border-left-color: var(--signal);
-}
-.palette-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 0 1rem;
-  align-items: center;
-}
-.palette-name {
-  min-width: 0;
+.pl .n {
   overflow: hidden;
-  color: var(--paper);
-  font-size: var(--large);
-  line-height: 1.1;
-  letter-spacing: 0;
+  font: 600 15px / 1 var(--f-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.palette-mark {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
+.pl .m {
+  font: 500 12px / 1 var(--f-ui);
+  color: var(--t3);
+  text-align: right;
   white-space: nowrap;
 }
-.edit {
-  width: 5.5rem;
+.pl .strip {
+  grid-column: 1 / -1;
+  height: 6px;
 }
-.uses {
-  min-height: 1.35em;
-  margin-top: 0.5rem;
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 400;
+.pl.is-sel {
+  background: var(--s3);
+  border-color: var(--t1);
 }
-.palette[data-on="true"] .uses {
-  color: var(--signal);
+.pl.is-sel .m {
+  color: var(--t2);
+}
+/* On in a group: the lights do this now. */
+.pl.is-on .n {
+  color: var(--on);
+}
+.pl.is-on .m {
+  color: var(--on-soft);
 }
 
-/* ---- the strip ---- */
+/* ---- the chosen palette: head ---- */
 
-.strip {
+.pal-head {
   display: flex;
-  gap: 0.35rem;
-  margin-top: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
 }
-.chip {
-  display: grid;
-  flex: 1 1 0;
-  max-width: 12rem;
-  grid-template-rows: 4rem auto;
-  gap: 0.2rem;
+.pal-title {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 12px;
   min-width: 0;
-  text-align: center;
 }
-.chip-colour {
+.pal-title h2 {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  font: 700 24px / 1.2 var(--f-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pal-title .uses {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pal-title .field {
+  flex: 1;
+  max-width: 28rem;
+  align-self: center;
+}
+.pal-keys {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+.pal-keys .key {
+  width: 104px;
+}
+#rename-key {
+  width: 96px;
+}
+#delete-key {
+  width: 96px;
+  color: var(--danger);
+}
+#delete-key.is-warn {
+  background: var(--danger-tint);
+}
+
+/* ---- the slots ---- */
+
+.slots {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+}
+.slot {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--t3);
+}
+.slot .c {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  font-size: var(--small);
-  font-weight: 600;
+  height: 72px;
+  border-radius: var(--r);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  color: var(--t2);
+  font: 600 13px var(--f-ui);
   letter-spacing: 0.08em;
 }
-/* Off is not black paint: it is a slot that is dark, and it says so. */
-/* A colour after the ones that show: it is in the pool a cycle draws from, and no lens shows it. */
-.chip[data-pool="true"] {
+.slot .c.dark {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 3px,
+    rgba(255, 255, 255, 0.16) 3px 4px
+  );
+  box-shadow: inset 0 0 0 1px var(--t3);
+}
+.slot .k {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 2.4em;
+  font: 500 13px / 1.1 var(--f-num);
+  text-align: center;
+}
+.slot .k b {
+  font-weight: 500;
+}
+.slot .k small {
+  max-width: 100%;
+  overflow: hidden;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Chosen: white, where you are. */
+.slot.is-sel .c {
+  box-shadow:
+    0 0 0 2px var(--ground),
+    0 0 0 4px var(--t1);
+}
+.slot.is-sel .k {
+  color: var(--t1);
+}
+/* A colour after the ones that show: a cycle draws from it, no lens shows it. */
+.slot.is-pool .c {
   opacity: 0.45;
 }
-.chip[data-off="true"] .chip-colour {
-  border: 2px dashed var(--dim);
-  background: var(--ground);
-  color: var(--dim);
+.slot.is-add .c,
+.slot.is-empty .c {
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  box-shadow: none;
 }
-.chip-slot {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 400;
+.slot.is-add .c {
+  border-color: var(--t3);
+  color: var(--t2);
+  font-size: 22px;
+}
+.slot:disabled {
+  opacity: 1;
 }
 
-/* ---- naming and deleting ---- */
+/* ---- the colour of the chosen slot ---- */
 
-.name-row {
+.slot-ed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+}
+.slot-ed .sh {
+  min-height: 48px;
+}
+.slot-keys {
+  flex: none;
+  gap: 6px;
+}
+.slot-keys .key {
+  width: 84px;
+}
+.slot-keys .dark-key {
+  width: 150px;
+}
+.dark-key.is-sel {
+  border-color: var(--t1);
+  box-shadow: inset 0 0 0 1px var(--t1);
+}
+.quick {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.35rem 0.5rem;
-  max-width: 40rem;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 4px;
 }
-.name-row label {
-  grid-column: 1 / -1;
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-/* ---- the editor ---- */
-
-.editor {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.5rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
-}
-.editor[hidden] {
-  display: none;
-}
-.colours {
-  padding: 0;
-  border: 0;
-}
-.entry-list {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-.entry {
-  display: grid;
-  grid-template-columns: 4.5rem 5rem minmax(10rem, 1fr) auto;
-  gap: 0.5rem 1rem;
+.rc {
+  display: flex;
   align-items: center;
-  padding: 0.5rem 0.75rem;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  height: 48px;
+  padding: 0 6px;
+  overflow: hidden;
+  background: var(--s2);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--ground);
+  border-radius: var(--r);
+  color: var(--t1);
+  font: 600 13px var(--f-ui);
+  white-space: nowrap;
 }
-@media (max-width: 44rem) {
-  .entry {
-    grid-template-columns: 4.5rem 5rem minmax(0, 1fr);
-  }
-  .entry-keys {
-    grid-column: 1 / -1;
-  }
-}
-.slot {
-  display: grid;
-  line-height: 1.15;
-}
-.slot-number {
-  font-size: var(--large);
-  font-weight: 600;
-}
-.slot-role {
-  min-height: 1.15em;
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 400;
-}
-.colour {
-  display: grid;
-  gap: 0.2rem;
-}
-.colour label {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.picker {
-  width: 100%;
-  min-width: 3rem;
-  height: var(--touch);
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--key);
-  cursor: pointer;
-}
-.picker::-webkit-color-swatch-wrapper {
-  padding: 4px;
-}
-.picker::-webkit-color-swatch {
-  border: 0;
+.rc i {
+  flex: none;
+  width: 14px;
+  height: 14px;
   border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
-.picker:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.entry .slider label {
-  color: var(--dim);
-  font-size: var(--small);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.entry .slider output {
-  font-size: var(--base);
-}
-.entry .slider input:disabled {
-  opacity: 0.4;
-}
-.entry-keys {
-  display: flex;
-  gap: 0.35rem;
-}
-.entry-keys > .pick {
-  width: 4rem;
-}
-.entry-keys > .key {
-  min-width: 4rem;
-}
-.add-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1rem;
-  margin-top: 0.5rem;
-}
-.add-row > .key {
-  width: 9rem;
+.rc:active {
+  background: var(--s4);
+  box-shadow: inset 0 0 0 2px var(--t1);
 }
 .room {
-  margin: 0;
+  font-size: 13px;
 }
 
 /* ---- how it runs ---- */
 
-.settings {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 2rem;
+.setup-side {
+  gap: 14px;
+  /* Room at the foot, where a notice lies over the page. */
+  padding-bottom: 84px;
 }
-.settings > .choice {
-  margin-top: 0;
+.side-block {
+  gap: 6px;
 }
-/* A fieldset that does not count is dimmed once, not once more for each key in it. */
-.settings > .choice:disabled .pick {
-  opacity: 1;
+.note {
+  min-height: 1.3em;
+  font-size: 13px;
+  line-height: 1.3;
 }
-.pace {
-  flex-basis: 100%;
-  max-width: none;
-  min-height: 2.8em;
-  margin-top: 0.75rem;
+/* Pace is where you are, in white; a pace that does not count rests. */
+.pace-keys button.is-on {
+  background: var(--s3);
+  border-color: var(--t1);
+  box-shadow: none;
+  color: var(--t1);
+}
+.pace-keys:disabled button {
+  border-style: dashed;
+  color: var(--t3);
+}
+.pace-keys:disabled button.is-on {
+  border-style: solid;
+  border-color: var(--line-2);
+  color: var(--t2);
+}
+.shown {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.lenses.big {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.lenses i.dark {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 3px,
+    rgba(255, 255, 255, 0.16) 3px 4px
+  );
+  box-shadow: inset 0 0 0 1px var(--t3);
+}
+#groups {
+  gap: 6px;
+}
+#groups-note {
+  min-height: 2.6em;
+}
+/* The white bar is light at its right end, where its value is. */
+.slot-ed .fader[data-tone="white"] .fv {
+  color: var(--ground);
 }
 
-.delete {
-  width: 100%;
-  border-color: var(--stop);
-  color: var(--stop);
+/* ---- upright: one column, the list a few to a row ---- */
+
+@media (max-width: 56rem) {
+  .pl-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .slots {
+    gap: 6px;
+  }
+  .pal-head {
+    flex-wrap: wrap;
+  }
+  .pal-title {
+    flex-basis: 100%;
+  }
+  .side-block {
+    max-width: 480px;
+  }
 }
-.delete[data-sure="true"] {
-  background: var(--stop);
-  color: var(--ink);
-  font-weight: 600;
-}
-#make-palette {
-  margin-top: 0.5rem;
+@media (max-width: 40rem) {
+  .quick {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .slot-ed .sh {
+    flex-wrap: wrap;
+  }
+  .pl-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pal-keys {
+    flex-wrap: wrap;
+  }
 }

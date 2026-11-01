@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#08090b" />
+    <title>Decor · Lightdeck</title>
+    <link rel="preload" href="/fonts/plex-condensed-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/plex-condensed-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/plex.css" />
+    <link rel="stylesheet" href="/lightdeck.css" />
+    <link rel="stylesheet" href="/chrome.css" />
+    <link rel="stylesheet" href="/decor.css" />
+  </head>
+  <body>
+    <!--
+      A setup page: the shell puts the top bar (the Live key, the tempo, the masters, Blackout) first in
+      .app and its notice in #notices. decor.js builds the rest: how the pipes of the decor are put
+      together, which the live page has no place for.
+    -->
+    <div class="app page" id="app">
+      <header class="page-head">
+        <div class="ph-title">
+          <h1>Decor</h1>
+          <span class="meta" id="where"></span>
+        </div>
+      </header>
+
+      <div class="setup no-nav">
+        <main class="setup-main" aria-label="Pipes">
+          <section class="panel dc-panel" aria-label="Link">
+            <span class="lbl">Pipes</span>
+            <button type="button" class="key dc-link" id="dc-link" aria-pressed="false">
+              <span class="hd"><span class="dc-link-name">One long pipe</span><span class="tag mute" id="dc-link-tag">Apart</span></span>
+              <span class="sub" id="dc-link-sub"></span>
+            </button>
+          </section>
+
+          <section class="panel dc-panel" aria-label="Order and direction">
+            <span class="lbl">Order and direction</span>
+            <ol class="dc-list" id="dc-list"></ol>
+          </section>
+
+          <section class="panel dc-panel" aria-label="As mounted">
+            <span class="lbl">As mounted</span>
+            <div class="dc-chain" id="dc-chain"></div>
+            <p class="dc-chain-note t2" id="dc-chain-note"></p>
+          </section>
+        </main>
+        <div class="setup-side">
+          <p class="hint">
+            Link the pipes and one effect runs through them one after the other, in the order set here,
+            as if they were a single pipe: it enters the first pipe and leaves the last. The effect,
+            the palette and the pace are then one for all of them, on the live page too. Switching a
+            pipe on or off and its brightness stay per pipe, and the effect goes on through a pipe
+            that is off.
+          </p>
+          <p class="hint">
+            Reverse turns a pipe the other way round, for how you hang it: the effect then enters it at
+            its last LED. It works linked or apart. Both are kept in <code>decor.json</code>, so they
+            are still there after a restart.
+          </p>
+          <p class="hint">
+            Only the pipes that lightdeck draws are here. A pipe left to the effects of WLED
+            (<code>draw: wled</code> in the rig file) cannot be part of a chain.
+          </p>
+        </div>
+      </div>
+
+      <!-- Over the foot of the screen: a notice takes no room, so no key moves when it comes. -->
+      <div class="notices-stack" id="notices">
+        <p class="notice" id="dc-notice" data-level="alarm" role="alert" hidden></p>
+      </div>
+    </div>
+
+    <script type="module" src="/decor.js"></script>
+  </body>
+</html>

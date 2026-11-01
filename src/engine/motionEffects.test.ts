@@ -55,7 +55,7 @@ const degreesOf = (frame: MotionFrame, motion: { tilt: readonly Curve[] } = REAL
   frame.tilt.map((tilt, bar) => curveAt(motion.tilt[bar] ?? [], tilt));
 
 describe('the set of motion effects', () => {
-  it('has six, each with its own id, a name and a description', () => {
+  it('has seven, each with its own id, a name and a description', () => {
     expect(MOTION_EFFECTS.map((effect) => effect.id)).toEqual([
       'tiltwave',
       'scissor',
@@ -63,6 +63,7 @@ describe('the set of motion effects', () => {
       'creep',
       'drift',
       'slice',
+      'swipe',
     ]);
     for (const effect of MOTION_EFFECTS) {
       expect(effect.name.length).toBeGreaterThan(0);

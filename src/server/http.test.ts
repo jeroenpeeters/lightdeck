@@ -158,8 +158,8 @@ describe('HTTP server', () => {
       }),
     );
     expect(spider.controls).toHaveLength(SPIDER_43CH.controls.length);
-    expect(spider.details.effects).toHaveLength(22);
-    expect(spider.details.motionEffects).toHaveLength(6);
+    expect(spider.details.effects).toHaveLength(23);
+    expect(spider.details.motionEffects).toHaveLength(7);
     expect(spider.details.layout.cells).toBe(8);
     expect(spider.state.levels.dimmer).toBe(0);
     expect(spider.state.effect.id).toBeNull();
@@ -230,7 +230,7 @@ describe('HTTP server', () => {
     expect((await post('/api/fixtures/spider/update', 'not json')).status).toBe(400);
     expect((await post('/api/fixtures/spider/update', '[1]')).status).toBe(400);
     expect((await post('/api/fixtures/spider/update', { raw: { reset: 255 } })).status).toBe(400);
-    expect((await post('/api/fixtures/spider/update', { blackout: true })).status).toBe(400);
+    expect((await post('/api/fixtures/spider/update', { blackout: 'yes' })).status).toBe(400);
     expect((await post('/api/fixtures/laser/update', { raw: { mode: 300 } })).status).toBe(400);
     expect((await post('/api/fixtures/laser/update', { levels: { mode: 1 } })).status).toBe(400);
     expect(output.frames).toHaveLength(before);

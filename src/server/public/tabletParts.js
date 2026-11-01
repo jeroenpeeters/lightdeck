@@ -1,26 +1,16 @@
-// The parts of the tablet page (tablet.js) that are not its own: the notice, the tempo, the masters,
-// the blackout, the link lamps and the controls of the lamps of the room, and the keys of looks,
-// scenes and palettes. They draw into elements with the ids of `tablet.html`. Plain browser
-// JavaScript.
+// The parts of the tablet page (tablet.js) that are not its own: the notice, the controls of the lamps of
+// the room, and the keys of looks and the chips of the tray (scenes and palettes). They draw into
+// elements with the ids of `tablet.html`, in the classes of lightdeck.css. Plain browser JavaScript. (The
+// top bar, with the tempo, the masters, the blackout and the link dots, is topbar.js, and the menu sheet
+// is menu.js: both are shared with the other pages.)
 //
 // A page calls `init(shell)` once, builds what it uses, and calls the `render` functions when the
 // shell says the state changed. A press is asked once through `ask`: when it does not reach
 // lightdeck the page says so and the operator presses again.
 
-import { masterPercent } from './shell.js';
-import { drawKey, fillStrip, makeKey, makeStrip, movesOf, stateOf, syncKeys } from './tabletKit.js';
-import {
-  $,
-  element,
-  makeDismissible,
-  sentence,
-  setNotice,
-  slider,
-  speedKeys,
-  speedName,
-} from './ui.js';
-
-const BEATS_PER_BAR = 4;
+import { drawChip, drawLook, fader, makeChip, makeLook, movesOf, stateOf } from './tabletKit.js';
+import { chipMarks, splitNumber } from './tabletLogic.js';
+import { $, element, makeDismissible, sentence, setNotice, speedName } from './ui.js';
 
 let shell;
 /** What the server answered to what could not be done. */
@@ -89,12 +79,6 @@ export function onLook(group) {
   return { item, changed: Boolean(item && on.changed) };
 }
 
-/** What a scene sets, where that says more than the group does already. */
-function setsOf(scene, group) {
-  if (scene.fixtures.length === 0) return scene.type === 'lights' ? 'Dark' : 'Nothing set';
-  return group.fixtures.length > 1 ? scene.fixtures.map(labelOf).join(', ') : '';
-}
-
 /** What a look names, in the words of the keys it points to: "Chase · Sunset · Scissor". */
 function namesOf(look, group) {
   const parts = [];
@@ -113,227 +97,90 @@ function namesOf(look, group) {
   return parts.join(' · ');
 }
 
-/**
- * Keys for the scenes of a type, or for those of `ids` in that order. A key is for a group and a
- * scene, so the id of the key says both and two groups can have keys in one grid in turn.
- */
-export function sceneItems(group, type, ids) {
-  const on = onIn(group, type);
-  const scenes = group.scenes.filter((scene) => scene.type === type);
-  const chosen = ids
-    ? ids.map((id) => scenes.find((scene) => scene.id === id)).filter((scene) => scene)
-    : scenes;
-  return chosen.map((scene) => ({
-    id: `${group.id}:${scene.id}`,
-    make: () => makeKey('scene', () => ask('/api/playback', { group: group.id, scene: scene.id })),
-    draw: (key) =>
-      drawKey(key, { state: stateOf(on, scene), label: scene.label, sets: setsOf(scene, group) }),
-  }));
+/** The id that the look that is on sets in a lane (a scene, or for the colour a palette), if any. */
+function ownOf(group, type) {
+  const look = onLook(group).item;
+  if (!look) return undefined;
+  return type === 'colour' ? look.colour?.palette : look[type];
 }
 
-/** Keys for the palettes of the show, or for those of `ids` in that order, with a strip of the colours. */
-export function paletteItems(group, ids) {
-  if (group.palettes === false) return [];
-  const on = onIn(group, 'colour');
-  const chosen = ids ? ids.map((id) => paletteOf(id)).filter((palette) => palette) : palettes();
-  return chosen.map((palette) => ({
-    id: `${group.id}:${palette.id}`,
-    make: () => {
-      const strip = makeStrip();
-      const key = makeKey(
-        'scene',
-        () => ask('/api/playback', { group: group.id, palette: palette.id }),
-        strip,
-      );
-      key.strip = strip;
-      return key;
-    },
-    draw: (key) => {
-      fillStrip(key.strip, palette.colours);
-      drawKey(key, {
-        state: stateOf(on, palette),
-        label: palette.label,
-        sets: movesOf(palette),
-        title: `${palette.label}: ${palette.colours.length === 1 ? '1 colour' : `${palette.colours.length} colours`}`,
+/**
+ * Chips for a lane of the tray: the scenes of a type, or the palettes, or those of `ids` in that order.
+ * A chip is on when the lane has it on and dashed when the look that is on sets it. A chip is for a
+ * group and a scene, so the id of the chip says both.
+ */
+export function chipItems(group, type, ids) {
+  const colour = type === 'colour';
+  if (colour && group.palettes === false) return [];
+  const on = onIn(group, type).item?.id;
+  const own = ownOf(group, type);
+  const all = colour ? palettes() : group.scenes.filter((scene) => scene.type === type);
+  const chosen = ids ? ids.map((id) => all.find((each) => each.id === id)).filter(Boolean) : all;
+  return chosen.map((item) => ({
+    id: `${group.id}:${item.id}`,
+    make: () =>
+      makeChip(
+        () => ask('/api/playback', { group: group.id, [colour ? 'palette' : 'scene']: item.id }),
+        { strip: colour },
+      ),
+    draw: (chip) => {
+      const marks = chipMarks(item.id, on, own);
+      drawChip(chip, {
+        label: item.label,
+        ...marks,
+        colours: colour ? item.colours : undefined,
+        title: colour ? `${item.label} · ${movesOf(item) || 'static'}` : item.label,
       });
     },
   }));
 }
 
 /**
- * Keys for looks (those of `chosen`, or all of the group's). With `strip` a look shows the colours of
- * its palette between its name and what it names, and `changedText` is what a look says once a lane
- * of it was changed.
+ * Keys for the looks of `chosen` (or all of the group's): the number and the name, a tag when varied
+ * or next, the colours of its palette and what it names. `next` is `{ look, bars }` for the look that
+ * the sequence that runs sets next in this group, or null.
  */
-export function lookItems(group, { chosen = group.looks, strip = false, changedText } = {}) {
+export function lookItems(group, { chosen = group.looks, next = null } = {}) {
   const on = onLook(group);
   return chosen.map((look) => ({
     id: `${group.id}:${look.id}`,
-    make: () => {
-      const colours = strip ? makeStrip() : undefined;
-      const key = makeKey(
-        'scene look',
-        () => ask('/api/playback', { group: group.id, look: look.id }),
-        ...(colours ? [colours] : []),
-      );
-      key.strip = colours;
-      return key;
-    },
+    make: () => makeLook(() => ask('/api/playback', { group: group.id, look: look.id })),
     draw: (key) => {
-      const sets = namesOf(look, group);
-      if (key.strip)
-        fillStrip(key.strip, look.colour ? paletteOf(look.colour.palette)?.colours : undefined);
-      drawKey(key, { state: stateOf(on, look), label: look.label, sets, title: sets }, changedText);
+      const meta = namesOf(look, group);
+      const { no, name } = splitNumber(look.label);
+      drawLook(key, {
+        state: stateOf(on, look),
+        number: no,
+        name,
+        colours: look.colour ? paletteOf(look.colour.palette)?.colours : undefined,
+        meta,
+        next: next?.look === look.id ? next : null,
+        title: meta,
+      });
     },
   }));
 }
 
-// ---- the top row ----
-
-/**
- * The lamps of the links stand in the menu, with their words, and the key of the menu has one dot
- * for all of them without words: green when nothing is wrong, red when a link is down. A link that
- * is not there (no bridge asked for) or made up (simulated) is not wrong.
- */
-export function renderLinks() {
-  const { bridge, device, hass } = shell.links;
-  const links = [
-    ['t-link-bridge', bridge],
-    ['t-link-device', device],
-  ];
-  // Home Assistant has a lamp only when a fixture is driven by it.
-  $('t-link-hass').hidden = hass === undefined;
-  if (hass) links.push(['t-link-hass', hass]);
-  for (const [id, link] of links) {
-    $(id).dataset.state = link.state;
-    $(id).querySelector('.link-text').textContent = link.text;
-  }
-  const wrong = links.some(([, link]) => link.state === 'down');
-  $('t-dot').dataset.state = wrong ? 'down' : 'ok';
-  $('t-menu-key').setAttribute(
-    'aria-label',
-    wrong ? 'Menu, something is not connected' : 'Menu, everything is connected',
-  );
-}
-
-/**
- * The small menu in the top row: the way to the other pages, full screen and the lamps of the links.
- * It lies over the page and takes no room, so no key moves when it opens. A press outside it, on
- * one of its keys or on Escape closes it.
- */
-export function buildMenu() {
-  const key = $('t-menu-key');
-  const menu = $('t-menu');
-  const set = (open) => {
-    menu.hidden = !open;
-    key.setAttribute('aria-expanded', String(open));
+/** What a lane has on in the group, in words, and whether it is not what it was set to. */
+export function laneWords(group, type) {
+  const { item, changed } = onIn(group, type);
+  return {
+    text: item?.label ?? '',
+    changed,
+    colours: type === 'colour' ? item?.colours : undefined,
   };
-  key.addEventListener('click', () => set(menu.hidden));
-  document.addEventListener('pointerdown', (event) => {
-    if (!menu.hidden && !menu.contains(event.target) && !key.contains(event.target)) set(false);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') set(false);
-  });
-  // Full screen does its work on the press, and the menu may go.
-  $('t-full').addEventListener('click', () => set(false));
-}
-
-/**
- * Full screen without the bar of the browser. A browser only installs a page as an app on https or
- * on localhost, so over `http://192.168...` the home screen only gets a shortcut that keeps the bar.
- * Full screen is allowed on any address, but only on a press: so the page has a key for it. It is
- * not there where the browser has none, and not when the page already is an app.
- */
-export function buildFullscreen() {
-  const key = $('t-full');
-  const root = document.documentElement;
-  const app =
-    window.matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches ||
-    // The tablet app of lightdeck (android-tablet/) is already full screen: it says so in its agent.
-    navigator.userAgent.includes('LightdeckTablet');
-  if (!root.requestFullscreen || app) return;
-  key.hidden = false;
-  const show = () => key.setAttribute('aria-pressed', String(document.fullscreenElement !== null));
-  key.addEventListener('click', () => {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else root.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
-  });
-  document.addEventListener('fullscreenchange', show);
-  show();
-}
-
-// ---- the tempo, the masters and the blackout ----
-
-let fader;
-let showSpeed = () => {};
-
-export function buildMaster() {
-  fader = slider({
-    id: 't-master-level',
-    label: 'Master',
-    read: () => masterPercent(shell.master),
-    write: (number) => shell.setMaster(number / 100),
-  });
-  $('t-master').append(fader);
-  showSpeed = speedKeys($('t-speed'), shell.rates, shell.setRate);
-}
-
-export function buildTempo() {
-  // A tap counts when the finger lands, not when it lifts. The click covers the keyboard.
-  const pad = $('t-tap');
-  pad.addEventListener('pointerdown', (event) => {
-    if (event.button === 0) shell.tap();
-  });
-  pad.addEventListener('click', (event) => {
-    if (event.detail === 0) shell.tap();
-  });
-  $('t-blackout').addEventListener('click', () => shell.setBlackout(!shell.blackout));
-}
-
-/** The masters, the tempo and the blackout moved, here or on another screen. */
-export function renderChange() {
-  fader.refresh();
-  showSpeed(shell.tempo.rate);
-  $('t-bpm').textContent = String(Math.round(shell.tempo.bpm));
-  // Rekordbox sends the beat, so there is nothing to tap.
-  $('t-tap').hidden = shell.tempo.source === 'rekordbox';
-  const on = shell.blackout;
-  const key = $('t-blackout');
-  key.setAttribute('aria-pressed', String(on));
-  key.textContent = on ? 'Lift blackout' : 'Blackout';
-}
-
-let litBeat = -1;
-/** A lamp for each beat of the bar, as the tempo desk of the shell does it. */
-function drawBeat() {
-  const { running } = shell.tempo;
-  const index = running
-    ? ((Math.floor(shell.beat()) % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR
-    : -1;
-  if (index !== litBeat) {
-    litBeat = index;
-    [...$('t-beats').children].forEach((lamp, i) => {
-      lamp.dataset.on = String(i === index);
-    });
-    $('t-beats').dataset.idle = String(!running);
-  }
-  requestAnimationFrame(drawBeat);
-}
-
-export function startBeat() {
-  requestAnimationFrame(drawBeat);
 }
 
 // ---- the lamps of the room ----
 
 /**
  * The group of the lamps of the room: the one called room, or else the first group whose fixtures
- * are all driven by Home Assistant. Nothing when the rig has no such lamps.
+ * are all rooms (lamps driven by Home Assistant). Nothing when the rig has no such lamps.
  */
 export function roomGroup() {
   const { groups } = shell.show;
-  const driven = (id) => shell.fixtures.find((fixture) => fixture.id === id)?.protocol === 'hass';
+  // The lamps of the room only: the switches of the decor are driven by Home Assistant too.
+  const driven = (id) => shell.fixtures.find((fixture) => fixture.id === id)?.kind === 'room';
   return (
     groups.find((group) => group.id === 'room' && group.fixtures.every(driven)) ??
     groups.find((group) => group.fixtures.length > 0 && group.fixtures.every(driven))
@@ -361,7 +208,7 @@ export function renderRails() {
   for (const zone of zones) {
     let key = rails.get(zone.id);
     if (!key) {
-      key = element('button', 't-rail', zone.label);
+      key = element('button', 'key c t-rail', zone.label);
       key.type = 'button';
       key.addEventListener('click', () => {
         const on = (shell.stateOf(fixture.id)?.zones?.[zone.id] ?? 1) > 0;
@@ -371,7 +218,9 @@ export function renderRails() {
       holder.append(key);
     }
     key.textContent = zone.label;
-    key.setAttribute('aria-pressed', String((current[zone.id] ?? 1) > 0));
+    const on = (current[zone.id] ?? 1) > 0;
+    key.classList.toggle('is-on', on);
+    key.setAttribute('aria-pressed', String(on));
   }
   for (const [id, key] of rails) {
     if (zones.some((zone) => zone.id === id)) continue;
@@ -380,50 +229,186 @@ export function renderRails() {
   }
 }
 
-/** The dimmer of the room: what the fader shows while a finger is on it, and how it is sent. */
-let roomDimmer;
-let dimmerHeld = null;
-let dimmerHold;
-let dimmerSent = 0;
-let dimmerLate;
-const DIMMER_GAP_MS = 120;
-export function refreshDimmer() {
-  roomDimmer?.refresh();
+// ---- the sub dimmer: one fader, in the same place on every tab ----
+
+/**
+ * The control of a fixture that is its own master, by the kind of fixture (Jeroen, 2026-10-28: every
+ * fixture has a sub dimmer in the same place). The laser has none: its fader is there and rests.
+ */
+const SUB_KEY = { spider: 'subDimmer', room: 'dimmer' };
+
+/** The kinds of fixture that have a blackout of their own: all of them, the laser included. */
+const DARK_KINDS = new Set(['spider', 'laser', 'room', 'decor']);
+
+/** The fixtures of a group that have a blackout of their own. */
+function darkFixtures(group) {
+  if (!group) return [];
+  return group.fixtures
+    .map((id) => shell.fixtures.find((fixture) => fixture.id === id))
+    .filter((fixture) => fixture && DARK_KINDS.has(fixture.kind));
 }
 
-function sendDimmer(percent) {
-  const fixture = roomFixture();
-  if (!fixture) return;
-  const send = () => {
-    dimmerSent = performance.now();
-    ask(`/api/fixtures/${fixture.id}/update`, { dimmer: percent / 100 });
-  };
-  // At most one request in a gap, and the last position always goes.
-  clearTimeout(dimmerLate);
-  const wait = DIMMER_GAP_MS - (performance.now() - dimmerSent);
-  if (wait <= 0) send();
-  else dimmerLate = setTimeout(send, wait);
+/** Whether a group is in a blackout of its own (the blackout of the console is the page's). */
+export function groupDark(group) {
+  return darkFixtures(group).some((fixture) => shell.stateOf(fixture.id)?.blackout === true);
 }
 
-export function buildRoom() {
-  roomDimmer = slider({
-    id: 't-room-dimmer-level',
-    label: 'Room dimmer',
-    read: () =>
-      dimmerHeld ?? Math.round(100 * (shell.stateOf(roomFixture()?.id ?? '')?.dimmer ?? 1)),
+/** The fixtures of a group that have a sub dimmer. */
+export function subFixtures(group) {
+  if (!group) return [];
+  return group.fixtures
+    .map((id) => shell.fixtures.find((fixture) => fixture.id === id))
+    .filter((fixture) => fixture && SUB_KEY[fixture.kind]);
+}
+
+const SUB_GAP_MS = 120;
+
+/**
+ * A fader that sets one level on the fixtures of the chosen group: the sub dimmer, and the strobe of the
+ * spider. `fixtures(group)` lists the fixtures it sets, `current(fixture)` reads its level as a share
+ * (0 to 1) and `body(fixture, share)` is what the update says. A finger that moves it is not overruled by
+ * an older position from the stream until it has been away for 700 ms, and a request goes at most
+ * every 120 ms, the last position always. With `plain` the bar says just `label`, not the group's name.
+ */
+function groupFader({ id, label, format, fixtures, current, body, noun, plain = false }) {
+  let group;
+  let off = true;
+  let held = null;
+  let holdTimer;
+  let sentAt = 0;
+  let lateTimer;
+  const bar = fader({
+    id,
+    label,
+    format: (number) => (off ? '–' : format(number)),
+    read: () => {
+      if (off) return null;
+      const first = fixtures(group)[0];
+      return held ?? Math.round(100 * current(first));
+    },
     write: (number) => {
-      // The stream tells of an older position after a newer one is sent: the fader stays where
-      // the finger put it until the finger has been away for a moment.
-      dimmerHeld = number;
-      clearTimeout(dimmerHold);
-      dimmerHold = setTimeout(() => {
-        dimmerHeld = null;
-        roomDimmer.refresh();
+      held = number;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(() => {
+        held = null;
+        bar.refresh();
       }, 700);
-      sendDimmer(number);
+      const list = fixtures(group);
+      if (list.length === 0) return;
+      const send = () => {
+        sentAt = performance.now();
+        for (const fixture of list)
+          ask(`/api/fixtures/${fixture.id}/update`, body(fixture, number / 100));
+      };
+      clearTimeout(lateTimer);
+      const wait = SUB_GAP_MS - (performance.now() - sentAt);
+      if (wait <= 0) send();
+      else lateTimer = setTimeout(send, wait);
     },
   });
-  $('t-room-dimmer').append(roomDimmer);
+  /** Points the fader at a group: its name, and whether the group has anything to set. */
+  bar.point = (next) => {
+    if (group?.id !== next?.id) {
+      held = null;
+      clearTimeout(holdTimer);
+      clearTimeout(lateTimer);
+    }
+    group = next;
+    off = fixtures(next).length === 0;
+    const name = next ? `${next.label} ${noun}` : label;
+    // `plain` keeps the short name on the bar (it is narrow); a reader still hears the group.
+    bar.querySelector('.fl').textContent = plain ? label : name;
+    bar.input.setAttribute('aria-label', name);
+    bar.title = off ? `${next?.label ?? 'This group'} has no ${noun}` : '';
+    bar.refresh();
+  };
+  return bar;
+}
+
+let subGroup;
+let sub;
+let strobe;
+
+/** The fixtures of a group that have a strobe to set: the spiders. */
+export function strobeFixtures(group) {
+  if (!group) return [];
+  return group.fixtures
+    .map((id) => shell.fixtures.find((fixture) => fixture.id === id))
+    .filter((fixture) => fixture?.kind === 'spider');
+}
+
+/** The key of the blackout of the group: lit while it is on, Lift when pressed again. */
+function drawDark() {
+  const key = $('t-sub-dark');
+  const fixtures = darkFixtures(subGroup);
+  const on = groupDark(subGroup);
+  key.disabled = fixtures.length === 0;
+  key.classList.toggle('is-on', on);
+  key.classList.toggle('is-disabled', fixtures.length === 0);
+  key.setAttribute('aria-pressed', String(on));
+  key.textContent = on ? 'Lift' : 'Blackout';
+  key.setAttribute(
+    'aria-label',
+    `${subGroup?.label ?? 'Group'} ${on ? 'lift blackout' : 'blackout'}`,
+  );
+}
+
+/** Shows the faders and the blackout key again from the state, for the group they belong to. */
+export function refreshSub() {
+  sub?.refresh();
+  strobe?.refresh();
+  drawDark();
+}
+
+/** Points the dimmer and the strobe at a group. The strobe is there for the spider only. */
+export function renderSub(group) {
+  subGroup = group;
+  sub.point(group);
+  // The decor has no dimmer of its own here: the UV lamps and the pipes have one each, in their rows (Jeroen:
+  // they are not the same at all). The place of the fader stays, empty, so the blackout key does not move.
+  const decorOnly =
+    group !== undefined &&
+    group.fixtures.length > 0 &&
+    group.fixtures.every(
+      (id) => shell.fixtures.find((fixture) => fixture.id === id)?.kind === 'decor',
+    );
+  $('t-sub-dimmer').style.visibility = decorOnly ? 'hidden' : '';
+  strobe.point(group);
+  $('t-sub-strobe').hidden = strobeFixtures(group).length === 0;
+  drawDark();
+}
+
+export function buildSub() {
+  sub = groupFader({
+    id: 't-sub-level',
+    label: 'Dimmer',
+    noun: 'dimmer',
+    format: String,
+    fixtures: subFixtures,
+    current: (fixture) => shell.stateOf(fixture.id)?.[SUB_KEY[fixture.kind]] ?? 1,
+    body: (fixture, share) => ({ [SUB_KEY[fixture.kind]]: share }),
+  });
+  $('t-sub-dimmer').append(sub);
+  // The strobe over whatever effect runs (Jeroen, 2026-10-30): 0 is off, more is faster flashes, within
+  // the flash limit of the fixture. It is the lights' own strobe channel, so it goes with any effect.
+  strobe = groupFader({
+    id: 't-sub-strobe-level',
+    label: 'Strobe',
+    noun: 'strobe',
+    plain: true,
+    format: (number) => (number === 0 ? 'Off' : String(number)),
+    fixtures: strobeFixtures,
+    current: (fixture) => shell.stateOf(fixture.id)?.levels?.strobe ?? 0,
+    body: (_fixture, share) => ({ levels: { strobe: share } }),
+  });
+  $('t-sub-strobe').append(strobe);
+  // The blackout of this group alone: dark with everything kept, and a second press lifts it.
+  $('t-sub-dark').addEventListener('click', () => {
+    const on = groupDark(subGroup);
+    for (const fixture of darkFixtures(subGroup)) {
+      ask(`/api/fixtures/${fixture.id}/update`, { blackout: !on });
+    }
+  });
 }
 
 // The app can be installed (manifest.webmanifest). The service worker (sw.js) keeps the page itself,

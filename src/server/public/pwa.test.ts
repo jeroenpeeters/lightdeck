@@ -83,9 +83,10 @@ describe('the page of the tablet', () => {
     expect(html).toContain('viewport-fit=cover');
   });
 
-  it('has a key for full screen, for where the page is not installed', () => {
-    expect(html).toContain('id="t-full"');
-    const script = read('tabletParts.js').toString();
+  it('has a key for full screen in the menu, for where the page is not installed', () => {
+    expect(html).toContain('href="/chrome.css"');
+    const script = read('menu.js').toString();
+    expect(script).toContain("id = 'menu-full'");
     expect(script).toContain('requestFullscreen');
     expect(script).toContain("navigationUI: 'hide'");
     // ... and not in the tablet app, which is full screen and says so in its user agent.
@@ -95,6 +96,18 @@ describe('the page of the tablet', () => {
       'utf8',
     );
     expect(app).toContain('LightdeckTablet/1');
+  });
+
+  it('has the design of the console, with its fonts from the app and nothing from elsewhere', () => {
+    expect(html).toContain('href="/plex.css"');
+    expect(html).toContain('href="/lightdeck.css"');
+    expect(html).toContain('href="/chrome.css"');
+    expect(html).not.toMatch(/(?:href|src)="https?:/);
+    const fonts = read('plex.css').toString();
+    for (const name of fonts.match(/\/fonts\/[a-z0-9-]+\.woff2/g) ?? []) {
+      expect(read(name.slice(1)).length, name).toBeGreaterThan(1000);
+    }
+    expect(fonts).not.toMatch(/https?:/);
   });
 
   it('registers the service worker, where the browser has one', () => {
@@ -166,14 +179,22 @@ describe('the service worker', () => {
       '/tablet.css',
       '/tabletKit.js',
       '/tabletParts.js',
+      '/tabletRail.js',
+      '/tabletLogic.js',
+      '/topbar.js',
+      '/menu.js',
+      '/chrome.css',
+      '/spiderPose.js',
       '/videowallPanel.js',
       '/videowall.css',
+      '/lightdeck.css',
+      '/plex.css',
       '/shell.js',
       '/ui.js',
       '/changes.js',
-      '/styles.css',
       '/manifest.webmanifest',
       '/fonts/barlow-500.woff2',
+      '/fonts/plex-condensed-500.woff2',
       '/icons/icon-192.png',
     ]) {
       expect(await ask(`http://lightdeck:8080${path}`), path).toBeInstanceOf(Response);

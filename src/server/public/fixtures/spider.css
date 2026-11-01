@@ -1,357 +1,463 @@
 /*
- * What belongs to the page of the spider: the output strip with its lenses and bars,
- * the master, the effects with their palettes, the colours of the lenses, the movement
- * and the reset.
+ * What belongs to the page of the spider, in the tokens of lightdeck.css (design mockups 09 and 10). The
+ * frame of a setup page (the head, the three columns, the side navigation, the faders, the two-handle
+ * range, the notices) is chrome.css; this file has only what is the spider's: the effect and palette keys,
+ * the lens monitor with its tilt marks and the side view, the colour mixer, the movement keys, the reach
+ * rails and the reset key.
+ *
+ * Nothing here changes size with a state: a key that is on, picked or resting only swaps its classes, and
+ * a text that changes with a key has the room of its longest form.
  */
 
-/* ---- layout ---- */
+/* ---- the head and the side navigation ---- */
 
-@media (min-width: 60rem) {
-  .console {
-    grid-template-columns: minmax(0, 1fr) 19rem;
-    grid-template-areas:
-      "head head"
-      "output master"
-      "work master";
-    align-items: start;
-  }
-  .console > .fixture-head {
-    grid-area: head;
-  }
-  .console > .output {
-    grid-area: output;
-  }
-  .console > .work {
-    grid-area: work;
-  }
-  .console > .master {
-    position: sticky;
-    top: 4.5rem;
-    grid-area: master;
-  }
+.ph-actions {
+  min-width: 0;
 }
-
-/* ---- output strip ---- */
-
-.strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
-  gap: 1rem 2rem;
-  margin-top: 0.75rem;
-}
-.bar-row {
-  --tilt: 0.5;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 4.5rem;
-  gap: 0.35rem 1rem;
-  align-items: center;
-}
-.bar-name {
-  grid-column: 1 / -1;
-  font-size: var(--small);
-}
-.bar {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.6rem;
-}
-
-.lens {
-  --lit: #000;
-  --mix: #000;
-  position: relative;
+.now-tags {
   display: flex;
-  align-items: flex-start;
-  min-height: 4.25rem;
-  padding: 0.3rem 0.5rem;
+  gap: 8px;
+  min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+}
+.legend {
+  font-size: 13px;
+}
+.snav .tag {
+  display: block;
+  min-width: 0;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 16px;
+}
+
+.view {
+  min-width: 0;
+}
+.view.col {
+  gap: 12px;
+}
+.between {
+  justify-content: space-between;
+}
+
+/* ---- text that changes with a key ---- */
+
+.note {
+  min-height: 1.35em;
+  color: var(--t2);
+  font: 500 var(--fs-s) / 1.35 var(--f-ui);
+}
+.desc {
+  color: var(--t2);
+  font: 500 var(--fs-s) / 1.4 var(--f-ui);
+}
+.note-2 {
+  min-height: 2.8em;
+}
+/* Text that changes with a key: every text it can say lies in one grid cell, so the cell keeps the room of
+   the longest whatever the width, and the keys below it do not move. */
+.reserved {
+  display: grid;
+}
+.reserved > * {
+  grid-area: 1 / 1;
+}
+.reserved > .ghost {
+  visibility: hidden;
+}
+.wide {
+  max-width: none;
+}
+.speed-row {
+  gap: 12px;
+}
+.speed-row .lbl {
+  width: 56px;
+}
+.speed-note {
+  flex: 1;
+  min-width: 0;
+  font: 500 var(--fs-s) / 1.35 var(--f-ui);
+}
+fieldset:disabled button {
+  opacity: 0.4;
+}
+
+/* ---- effects ---- */
+
+.view-effects {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.effect-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.fx {
+  min-height: 52px;
+  padding: 7px 10px;
+  gap: 4px;
+}
+.fx .sub {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* The colours an effect uses: filled when it uses it, hollow when it only uses it if the palette has it. */
+.fx .d {
+  display: flex;
+  gap: 3px;
+  color: var(--t2);
+}
+.fx.is-on .d {
+  color: inherit;
+}
+.d i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentcolor;
+  opacity: 0.85;
+}
+.d i.o {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentcolor;
+}
+.effect-stop {
+  grid-column: span 2;
+  min-height: 52px;
+  color: var(--t2);
+}
+.effect-stop.is-disabled {
+  color: var(--t3);
+}
+
+/* ---- palettes ---- */
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.pk-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+.pk-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-key .sub {
+  flex: none;
+  white-space: nowrap;
+}
+.palette-key.is-on .sub {
+  color: var(--on-soft);
+}
+/* The chosen pace of a palette: Own is a little wider than the speeds. */
+#palette-speed button {
+  width: 44px;
+}
+#palette-speed #pace-own {
+  width: 56px;
+}
+
+/* ---- the output at the side ---- */
+
+.bar-mon {
+  --tilt: 0;
+  gap: 6px;
+}
+.tilt-value {
+  font-size: 13px;
+}
+.lens {
+  --lit: #050607;
+  --mix: #050607;
+  position: relative;
+  height: 48px;
+  padding: 0;
+  overflow: hidden;
   background: var(--lit);
-  color: var(--paper);
-  font-weight: 600;
+  border: 0;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  color: var(--t1);
 }
 /* The colour that is set, visible even when the light is dimmed to nothing. */
 .lens::after {
   content: "";
   position: absolute;
   inset: auto 0 0;
-  height: 0.45rem;
-  border-top: 1px solid var(--ground);
+  height: 4px;
   background: var(--mix);
 }
+.lens-no {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  font: 600 var(--fs-xs) / 1 var(--f-num);
+}
 .lens[data-bright="true"] {
-  color: var(--ink);
+  color: var(--on-ink);
 }
-/*
- * Which lenses are chosen only matters while mixing colour. The gap keeps the ring
- * readable whatever colour the lens shows.
- */
-.console[data-view="colour"] .lens[aria-pressed="true"] {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
-}
-.lens:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-
-.tilt {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.3rem 0.5rem;
-  align-items: baseline;
-  font-size: var(--small);
-}
-.tilt-label {
-  color: var(--dim);
+/* Which lenses are chosen only matters while mixing colour: white is where you are. */
+.app[data-view="colour"] .lens[aria-pressed="true"] {
+  outline: 2px solid var(--t1);
+  outline-offset: -2px;
 }
 .tilt-track {
   position: relative;
-  grid-column: 1 / -1;
-  height: 0.45rem;
-  border-radius: 2px;
-  background: var(--key);
+  height: 4px;
+  margin-top: 4px;
+  background: var(--s4);
+  border-radius: 1px;
 }
-.tilt-track::after {
-  content: "";
+.tilt-track i {
   position: absolute;
-  top: -0.2rem;
-  bottom: -0.2rem;
+  top: -4px;
   left: calc(var(--tilt) * 100%);
   width: 4px;
+  height: 12px;
   margin-left: -2px;
-  border-radius: 1px;
-  background: var(--paper);
+  background: var(--t1);
 }
 
-/* ---- master ---- */
-
-@media (min-width: 40rem) and (max-width: 59.99rem) {
-  .master > .sliders {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0 1.5rem;
-  }
-}
-
-/* ---- colours ---- */
-
-.swatch {
-  --chip: #000;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0 0.9rem 0 0.5rem;
-}
-.swatch::before {
-  content: "";
-  width: 1.75rem;
-  height: 1.75rem;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: var(--chip);
-}
-.swatch[aria-pressed="true"] {
-  border-color: var(--signal);
-  box-shadow: inset 0 0 0 1px var(--signal);
-}
-
-/* ---- palettes ---- */
-
-.palette-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
-  gap: 0.5rem;
-}
-.palette-list legend {
-  grid-column: 1 / -1;
-}
-.palette-key {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: stretch;
-  gap: 0.4rem;
-  min-height: 4rem;
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-}
-.palette-key[aria-pressed="true"] {
-  border-color: var(--signal);
-  box-shadow: inset 0 0 0 1px var(--signal);
-  font-weight: 600;
-}
-.palette-chips {
-  display: flex;
-  gap: 0.15rem;
-}
-.palette-chip {
-  --chip: #000;
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: 1.25rem;
-  height: 1.1rem;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: var(--chip);
-}
-/* An entry that is off is a dark slot: drawn empty, so it is not taken for black paint. */
-.palette-chip[data-off="true"] {
-  border-style: dashed;
-  border-color: var(--dim);
-  background: transparent;
-}
-.palette-label {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-.palette-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.palette-mark {
+.side-view {
+  position: relative;
   flex: none;
-  color: var(--dim);
-  font-size: 0.75rem;
-  font-weight: 500;
+  height: 140px;
+  background: var(--ground);
+}
+.side-view .lbl {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+}
+.side-view svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.sv-housing {
+  fill: var(--line-2);
+}
+.sv-beam {
+  stroke: var(--line-2);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.sv-pivot {
+  fill: var(--t2);
+}
+.sv-text {
+  fill: var(--t3);
+  font: 500 9px var(--f-ui);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
-.palette-key[aria-pressed="true"] .palette-mark {
-  color: var(--signal);
+.faders {
+  margin-top: auto;
+}
+.side-hint {
+  flex: none;
 }
 
-/* ---- effects view ---- */
+/* ---- colour ---- */
 
-.view-effects {
+.pick-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.75rem 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 6px;
 }
-@container (min-width: 46rem) {
-  .view-effects {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
+.key.is-picked {
+  border-color: var(--t1);
+  box-shadow: inset 0 0 0 1px var(--t1);
 }
-.effects-choice .hint {
-  margin-top: 0.9rem;
+.mixer {
+  max-width: 640px;
 }
-
-.effects-settings > .choice:first-child {
-  margin-top: 0;
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
 }
-.effects-settings > .hint {
-  margin-top: 0.6rem;
+.swatch {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
 }
-/* Hints that change with a key get the room of two lines, so nothing below them moves. */
-#speed-hint,
-#pace-hint,
-#motion-speed-hint {
-  min-height: 2.7em;
-}
-#motion-effect-hint {
-  min-height: 5.4em;
-}
-#motion-hint {
-  min-height: 4.05em;
+.swatch .sw {
+  width: 28px;
+  height: 20px;
 }
 
-/* What an effect key says about the palette it takes: the colours it uses. */
-.view-effects .effect {
+/* ---- movement and zone ---- */
+
+.motion-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.motion-grid .key {
+  min-height: 56px;
+  padding: 6px;
+  font-size: 15px;
+}
+.reach {
+  padding: 14px;
+}
+.reach .sh {
+  flex-wrap: wrap;
+}
+.legend-row {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.3rem;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--t2);
+  font-size: 13px;
 }
-.cost {
+.legend-row span {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  min-height: 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  gap: 6px;
 }
-.cost-dot {
-  width: 0.6rem;
-  height: 0.6rem;
-  border: 1px solid currentcolor;
-  border-radius: 50%;
-  background: currentcolor;
+.legend-row i {
+  display: block;
 }
-/* A colour the effect only uses when the palette has it. */
-.cost-dot[data-optional="true"] {
-  background: transparent;
+.sw-limit {
+  width: 18px;
+  height: 12px;
+  background: var(--s4);
+  border-radius: 2px;
 }
-/* The chosen key is bold and a little wider: give the speed keys the room for it. */
-#effect-speed .pick,
-#palette-speed .pick,
-#motion-speed .pick {
-  min-width: 3.5rem;
+.sw-zone {
+  width: 18px;
+  height: 12px;
+  border: 2px solid var(--t1);
+  border-radius: 2px;
 }
-#palette-speed #pace-own {
-  min-width: 4.5rem;
+.sw-now {
+  width: 3px;
+  height: 14px;
+  background: var(--on);
 }
-.view-movement .effect-list {
-  margin-top: 0;
+.rail-block {
+  gap: 0;
 }
-.view-movement .choice {
-  margin-top: 1rem;
+.rail-name {
+  font: 600 var(--fs-m) var(--f-ui);
 }
-
-/* The swing limit: two sliders per bar, as wide as the tilt sliders. */
-.swing {
-  display: grid;
-  gap: 0.5rem;
-  justify-items: start;
-  margin-top: 1.5rem;
+.rail-words {
+  font-size: var(--fs-s);
 }
-.swing .hint {
-  margin: 0;
+.reach-keys .key {
+  flex: 1;
 }
-.swing .sliders {
-  width: 100%;
-  max-width: 36rem;
-  margin-top: 0;
+.tilt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.tilt-row .fader {
+  flex: 1 1 150px;
+}
+.tilt-row .key {
+  flex: 0 0 180px;
 }
 
-/* ---- fixture view ---- */
+/* ---- fixture ---- */
 
-.view-fixture .sliders {
-  max-width: 36rem;
+.programs {
+  max-width: 640px;
+}
+.programs .meaning {
+  min-height: 2.6em;
 }
 .reset {
-  margin-top: 1.5rem;
-}
-.reset .hint {
-  margin-top: 0.5rem;
+  align-items: flex-start;
 }
 .reset-button {
-  position: relative;
+  min-width: 280px;
+  min-height: 56px;
   overflow: hidden;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
-/* Fills while the button is held, so it is clear how long is left. */
-.reset-button::before {
+/* Fills while the key is held, so it is clear how long is left. */
+.reset-button::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: var(--stop);
-  opacity: 0.55;
+  background: var(--line-2);
   transform: scaleX(0);
   transform-origin: left;
 }
-.reset-button[data-holding="true"]::before {
+.reset-button[data-holding="true"]::after {
   transform: scaleX(1);
   transition: transform 1s linear;
 }
-.reset-button span {
+.reset-label {
   position: relative;
+  z-index: 1;
+}
+
+/* ---- upright: the output comes first, under the views, and the views are one column ---- */
+
+@media (max-width: 56rem) {
+  .setup-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px 16px;
+    order: 1;
+    border-top: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .setup-main {
+    order: 2;
+  }
+  .side-head,
+  .faders,
+  .side-hint {
+    grid-column: 1 / -1;
+  }
+  .faders {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    margin-top: 0;
+  }
+  .side-view {
+    height: auto;
+    min-height: 150px;
+  }
+  .view-effects {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .effect-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .palette-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .motion-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .swatch-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

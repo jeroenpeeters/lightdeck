@@ -17,13 +17,34 @@
 
 import type { HassSocketFactory, HassSocketLike } from './client.js';
 
+/** A few of the effects that WLED has, for a simulated strip: the real list comes from the strip. */
+export const WLED_PALETTES = [
+  'Default',
+  '* Color 1',
+  '* Colors 1&2',
+  'Ocean',
+  'Lava',
+  'Party',
+  'Orange & Teal',
+];
+export const WLED_EFFECTS = [
+  'Solid',
+  'Flow',
+  'Chase',
+  'Running',
+  'Colorwaves',
+  'Lake',
+  'Drip',
+  'Scan',
+];
+
 /** Commands per second that the simulated mesh answers: about what the real one took. */
 export const SIMULATED_RATE = 4;
 
 type Listener = (event: { data?: unknown }) => void;
 
 interface SimulatedLamp {
-  state: 'on' | 'off';
+  state: string;
   attributes: Record<string, unknown>;
 }
 
@@ -40,10 +61,22 @@ export function simulatedHass(
     entities.map((entity) => [
       entity,
       {
-        state: 'off',
-        attributes: entity.startsWith('light.')
-          ? { supported_color_modes: ['xy', 'color_temp'] }
-          : {},
+        state: entity.startsWith('number.')
+          ? '128'
+          : entity.startsWith('select.')
+            ? 'Default'
+            : entity.startsWith('sensor.')
+              ? // The address of a strip of WLED: this computer, so that nothing real is ever sent to.
+                '127.0.0.1'
+              : 'off',
+        attributes: entity.startsWith('select.')
+          ? { options: WLED_PALETTES }
+          : entity.startsWith('light.wled_')
+            ? // A strip of WLED: RGB only, and a list of effects it can show.
+              { supported_color_modes: ['rgb'], effect_list: WLED_EFFECTS, effect: 'Solid' }
+            : entity.startsWith('light.')
+              ? { supported_color_modes: ['xy', 'color_temp'] }
+              : {},
       },
     ]),
   );
@@ -140,7 +173,11 @@ class SimulatedSocket implements HassSocketLike {
       return;
     }
     const { entity_id: _entity, transition: _transition, ...rest } = data;
-    if (message.service === 'turn_off') {
+    if (message.service === 'set_value') {
+      lamp.state = String(rest.value);
+    } else if (message.service === 'select_option') {
+      lamp.state = String(rest.option);
+    } else if (message.service === 'turn_off') {
       lamp.state = 'off';
       lamp.attributes = withoutLight(lamp.attributes);
     } else {

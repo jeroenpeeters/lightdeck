@@ -5,6 +5,8 @@ Nicolaudie Light Rider LR512 interface, from a web page on a tablet, without Das
 the Light Rider app. The lamps and switches of the room, in Home Assistant, are driven from
 the same console as slow scenery under the DMX fixtures.
 
+![The tablet page: the groups at the left, the looks of a mood in the middle, a tray to vary the look at the right, and the parts of the evening along the foot](docs/screenshots/tablet.png)
+
 > **Early work in progress.** Lightdeck is built for one home event with one set of
 > hardware. It works on that hardware and has been tested nowhere else. Settings, the API
 > and the show file change without notice. Expect to read code.
@@ -15,7 +17,7 @@ the same console as slow scenery under the DMX fixtures.
 |---|---|
 | Live DMX to the LR512, from Linux | Works on real hardware, through an Android phone as bridge |
 | Fixture pages for manual control | Work, for the two fixtures below |
-| Beat-synced effects, tap tempo, blackout | Work: twenty-two light effects and six motion effects for the spider, five effects for the laser |
+| Beat-synced effects, tap tempo, blackout | Work: twenty-three light effects and seven motion effects for the spider, five effects for the laser |
 | Palettes: the colours of the show, apart from the effects | Built, not yet tested on the real fixtures |
 | Scenes and looks: store what the fixtures do, recall it | Built, not yet tested on the real fixtures |
 | Grand master, swing limits and zones of the spider | Built, not yet tested on the real fixtures |
@@ -37,8 +39,25 @@ Fixtures it knows:
 - **Room Lights**: the lamps (lights) and switches that Home Assistant drives, as one fixture
   with zones, like the two bars of the spider. They follow the palettes, the grand master and
   the blackout, and have a dimmer of their own.
+- **Decor**: what is part of the set and not of the lighting, driven through Home Assistant: switches (two UV
+  lamps on the symbols of a cabinet) and strips of WLED (three, in white dryer hoses, with effects as if a
+  liquid flows through the pipe, at a speed that follows the bpm). On their own tab of the tablet page: on and
+  off apart or together, and for a pipe colour, brightness and effect. No scene, look or sequence touches them.
+  Each can follow the blackout of the console or not, which is set on the tab while the show runs.
 
 Other fixtures need a profile of their own, see [Adding a fixture](#adding-a-fixture).
+
+## The pages
+
+The tablet page above is what you play on. The rest is for setting up and for trying things.
+These were made from a lightdeck running without a bridge and against the simulated Home
+Assistant, so no real fixture or lamp was driven.
+
+| | |
+|---|---|
+| [![The deck](docs/screenshots/deck.png)](docs/screenshots/deck.png) **Deck** (`/deck`): the groups, their looks and scenes, and the sequences | [![The spider page](docs/screenshots/spider.png)](docs/screenshots/spider.png) **Spider** (`/fixtures/spider`): effects, palettes, movement and zones, with the lenses and bars as they are sent |
+| [![The palettes](docs/screenshots/palettes.png)](docs/screenshots/palettes.png) **Palettes** (`/palettes`): the colours of the show, apart from the effects | [![The simulator](docs/screenshots/simulator.png)](docs/screenshots/simulator.png) **Simulator** (`/simulator`): the spiders and the lamps of the room in 3D, drawn from the bytes that are sent |
+| [![The room](docs/screenshots/room.png)](docs/screenshots/room.png) **Room Lights** (`/fixtures/room`): the lamps and switches in Home Assistant, in zones | [![The laser page](docs/screenshots/laser.png)](docs/screenshots/laser.png) **Laser** (`/fixtures/laser`): mode, pattern, effects and the channels that are sent |
 
 ## How it works
 
@@ -152,16 +171,19 @@ says "Home Assistant simulated" in amber.
 
 Go to `http://<computer-ip>:8080` on the tablet. The console has:
 
-- **Deck**: per group a lane of scenes of lights, a lane of palettes, a lane of scenes of
-  motion, a lane of zones (how far the motion effects reach), and a row of looks. Set the fixtures on their pages, store that as a scene, and get
-  it back with one press.
+- **Deck**: the groups and the lanes (looks, lights, colour, motion, zone) as a list, the keys of
+  the chosen one, and the sequences at the side. Show mode presses them; Program mode stores,
+  renames and deletes scenes, looks and groups. Set the fixtures on their pages, store that as a
+  scene, and get it back with one press.
 - **Palettes**: the colours of the show, apart from the effects. A list of up to eight
   colours (or off), static or cycling.
 - **Tablet** (`/tablet`, the old `/moods` goes there): the page for a tablet at the side of the
-  dance floor, with few, big controls: tap the tempo, the master and its speed, the parts of the
-  evening (sequences, with Next and Hold), the looks of a group by mood with a tray under them to
-  vary the look (palette, effect, movement, zone), the lamps of the room (a dimmer, and a switch
-  per rail), the blackout, the state of the bridge, the LR512 and Home Assistant, and last a tab
+  dance floor, built after the design in [design/](design/HANDOFF.md) (every page has it: a lighting-console look,
+  dark, IBM Plex, a rail of the groups with what each shows right now), with few, big controls: tap the tempo, the master and its speed, the parts of the
+  evening (sequences, with Next and Hold, which freezes a part and lets it go on when pressed again), the looks of a group by mood with a tray under them to
+  vary the look (palette, effect, movement, zone), a dimmer and a blackout for each group in
+  the same place on every tab (the laser has no dimmer, so there it rests) and a switch per rail for
+  the room, the blackout of everything, the state of the bridge, the LR512 and Home Assistant, and last a tab
   Video wall: play what the player has (playlists, videos, effects, texts), its blackout, and the
   text of the track.
 - **Video wall** (`/videowall`): the same video wall controls on a page of their own.
@@ -178,8 +200,9 @@ Go to `http://<computer-ip>:8080` on the tablet. The console has:
   computer), the tablet page has a **Fullscreen** key in the top row that hides the bar of the
   browser while the page is open.
 - **Simulator** (`/simulator`): the 3D view.
-- On every page: the tempo with tap and nudge, the speed of the effects, the blackout,
-  and lamps that show whether the bridge and the LR512 are connected.
+- On every page: the bpm with beat lamps and Tap, the master, the speed of the effects and the
+  blackout, and a key to the live page. The tempo source (by hand or Rekordbox), the nudge and the
+  state of the links (bridge, LR512, Home Assistant) are in the menu of the tablet page.
 
 ## Settings
 
@@ -336,7 +359,17 @@ fixtures:
       - { id: fog, label: Fog machine, entity: switch.fog, blackout: true }
     zones:
       - { id: low, label: Low, lamps: [bar] }
+  - id: decor
+    kind: decor
+    label: Decor
+    switches:
+      - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
+      - { id: uv2, label: UV 2, entity: switch.uv_lamp_2, blackout: true }
 ```
+
+The decor is its own fixture, with switches and no lamps. It needs a group in the show file to
+get its tab on the tablet page: `groups:` `decor: { label: Decor, fixtures: [decor] }`. Its
+`blackout: true` is where "follows the blackout" starts; the tablet changes it while the show runs.
 
 The lights that are in no zone are one zone together, a switch is in no zone, and a switch goes off
 in a blackout (and with the master at 0) only when it says `blackout: true`. A lamp that a
@@ -350,7 +383,8 @@ it stops: the lamps stay as they are until something sets them.
   bridge keeps sending the last frame it got. Software is not a safety device. Mount
   the laser so that it cannot reach eyes, and have a way to cut its power.
 - **Flashing light.** Effects flash at most 10 times per second. The strobe of a fixture,
-  set by hand, is not limited. The lamps of the room change about once a minute, never faster
+  set by hand, is not limited, and neither are the effects of a WLED strip, which are WLED's own
+  (Strobe, Blink and the like are in its list, behind More effects). The lamps of the room change about once a minute, never faster
   than the Zigbee mesh takes them.
 - **The Home Assistant token** opens your house. Keep it in the environment or in `.env`, which
   is not committed, and not in a flag, a file in git or a chat.
@@ -384,6 +418,7 @@ without a build step. Tests are next to the code as `*.test.ts`.
 | `android-bridge/` | The Android app, with a build of its own |
 | `android-tablet/`, `android-camera/` | The tablet app (a full-screen window on `/tablet`) and the camera app for the laser survey |
 | `docs/` | Designs, plans and what was found out about the LR512 |
+| `design/` | The design of the console (tokens, mockups, rules), made in Claude Design. Only the tablet page is built after it so far |
 
 [CLAUDE.md](CLAUDE.md) has the complete and current overview of the code, the decisions
 that were made and the assumptions that are not verified yet.
@@ -427,8 +462,8 @@ see also [NOTICE](NOTICE).
 
 Two things in the repository are not under that licence:
 
-- The Barlow fonts in `src/server/public/fonts/` are under the SIL Open Font License 1.1,
-  see the `LICENSE.txt` next to them.
+- The Barlow and IBM Plex fonts in `src/server/public/fonts/` are under the SIL Open Font License
+  1.1, see the `LICENSE.txt` and `PLEX-LICENSE.txt` next to them.
 - The fixture manuals in `docs/` (`spider-dmx-channels.pdf`, `alien-500mw-laser.html`)
   belong to the makers of the fixtures. They are there as the source of the channel
   tables.

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Spider · Movement and zone</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#08090B}
+.lim{position:relative;height:56px;border-radius:4px;background:repeating-linear-gradient(135deg,#171A1F 0 6px,#0F1114 6px 12px);border:1px solid #2A2F37}
+.lim .ok{position:absolute;top:0;bottom:0;background:#272C33}
+.lim .zone{position:absolute;top:8px;bottom:8px;border:2px solid #F1F3F5;border-radius:3px}
+.lim .h{position:absolute;top:4px;bottom:4px;width:10px;margin-left:-5px;background:#F1F3F5;border-radius:2px}
+.lim .pos{position:absolute;top:-6px;bottom:-6px;width:3px;margin-left:-1px;background:#FFB000}
+.ticks{display:flex;justify-content:space-between;font:500 12px var(--f-num);color:#8A919C}
+</style>
+</head>
+<body>
+<div class="app" style="width: 1280px; height: 800px; display: grid; grid-template-rows: 64px 64px 1fr">
+
+  <div class="top">
+    <button class="menu" style="gap: 8px">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 4l-6 6 6 6"/></svg>
+      <span>Live</span><span class="dots"><i></i><i></i><i class="sim"></i></span>
+    </button>
+    <div class="tempo">
+      <div class="col" style="gap: 2px"><span class="bpm num">126</span><span class="src">By hand</span></div>
+      <div class="beats"><i class="one"></i><i></i><i></i><i class="lit"></i></div>
+    </div>
+    <button class="key c" style="width: 96px; height: 48px">Tap</button>
+    <div class="fader" style="flex: 1; max-width: 340px"><div class="fill" style="width: 100%"></div><span class="fl">Master</span><span class="fv">100</span><div class="hand" style="left: calc(100% - 8px)"></div></div>
+    <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+    <div style="flex: 1"></div>
+    <button class="bo" style="width: 168px">Blackout</button>
+  </div>
+
+  <div class="row" style="justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #2A2F37">
+    <div class="row" style="gap: 14px"><h1 style="margin: 0; font: 700 28px var(--f-ui)">Spider</h1><span class="t2" style="font-size: 15px">Port 1 · address 1 · 43 channels</span></div>
+    <div class="row" style="gap: 8px"><span class="lbl">Now</span><span class="tag on">Kick</span><span class="tag on">Mid shift</span><span class="tag on">Tilt wave</span></div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 200px 1fr 320px; min-height: 0">
+    <nav class="snav" style="padding: 12px; border-right: 1px solid #2A2F37">
+      <button>Effects</button>
+      <button>Colour</button>
+      <button class="is-sel">Movement<span class="tag on" style="height: 18px">Tilt wave</span></button>
+      <button class="is-sel" style="background: #171A1F">Zone</button>
+      <button>Fixture</button>
+    </nav>
+
+    <main style="display: flex; flex-direction: column; gap: 14px; padding: 12px 16px; min-width: 0">
+      <div class="sh"><h3>Movement</h3></div>
+      <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px">
+        <button class="key c">Hold</button>
+        <button class="key c is-on">Tilt wave</button>
+        <button class="key c">Scissor</button>
+        <button class="key c" style="font-size: 14px">Scissor, rest</button>
+        <button class="key c">Creep</button>
+        <button class="key c">Drift</button>
+        <button class="key c">Slice</button>
+      </div>
+      <div class="row" style="gap: 12px"><span class="lbl" style="width: 56px">Speed</span><div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div><span class="t2" style="font-size: 14px">Tilt wave: the bars rise and fall against each other, one cycle every two bars.</span></div>
+
+      <div class="panel col" style="gap: 14px; padding: 14px; margin-top: 4px">
+        <div class="sh"><h3>Reach per bar</h3>
+          <div class="row" style="gap: 14px; font-size: 13px; color: #B6BCC5">
+            <span class="row" style="gap: 6px"><i style="width: 18px; height: 12px; background: #272C33; border-radius: 2px"></i>swing limit</span>
+            <span class="row" style="gap: 6px"><i style="width: 18px; height: 12px; border: 2px solid #F1F3F5; border-radius: 2px"></i>zone</span>
+            <span class="row" style="gap: 6px"><i style="width: 3px; height: 14px; background: #FFB000"></i>tilt now</span>
+          </div>
+        </div>
+        <div class="col" style="gap: 6px">
+          <div class="row" style="justify-content: space-between"><span style="font: 600 16px var(--f-ui)">Bar 1</span><span class="num t2" style="font-size: 14px">limit 0–37 · no zone · tilt 7</span></div>
+          <div class="lim"><div class="ok" style="left: 0%; width: 37%"></div><div class="h" style="left: 1%"></div><div class="h" style="left: 37%"></div><div class="pos" style="left: 7%"></div></div>
+        </div>
+        <div class="col" style="gap: 6px">
+          <div class="row" style="justify-content: space-between"><span style="font: 600 16px var(--f-ui)">Bar 2</span><span class="num t2" style="font-size: 14px">limit 16–80 · zone 30–60 · tilt 52</span></div>
+          <div class="lim"><div class="ok" style="left: 16%; width: 64%"></div><div class="zone" style="left: 30%; width: 30%"></div><div class="h" style="left: 16%"></div><div class="h" style="left: 80%"></div><div class="pos" style="left: 52%"></div></div>
+          <div class="ticks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+        </div>
+        <div class="row" style="gap: 8px">
+          <button class="key c" style="flex: 1">Full swing</button>
+          <button class="key c" style="flex: 1">No zone</button>
+          <button class="key c" style="flex: 1">Edit zone</button>
+          <button class="key c" style="flex: 1; color: #5AA8FF; border-color: #2f5480">Store as Zone scene…</button>
+        </div>
+        <span class="t3" style="font-size: 13px">A movement swings from one end of the zone to the other. The limit cuts off everything, even a tilt set by hand. The limit is kept in the show file.</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 180px; gap: 8px; align-items: center">
+        <div class="fader"><div class="fill" style="width: 0%"></div><span class="fl">Tilt bar 1</span><span class="fv">0</span><div class="hand" style="left: 4px"></div></div>
+        <div class="fader"><div class="fill" style="width: 0%"></div><span class="fl">Tilt bar 2</span><span class="fv">0</span><div class="hand" style="left: 4px"></div></div>
+        <div class="fader"><div class="fill" style="width: 0%"></div><span class="fl">Motor speed</span><span class="fv">0</span><div class="hand" style="left: 4px"></div></div>
+        <button class="key c is-on" style="font-size: 15px">Bars together</button>
+      </div>
+    </main>
+
+    <aside style="display: flex; flex-direction: column; gap: 14px; padding: 12px; background: #0F1114; border-left: 1px solid #2A2F37">
+      <div class="sh"><h3>Output</h3><span class="t2" style="font-size: 13px">live</span></div>
+      <div class="col" style="gap: 6px">
+        <div class="row" style="justify-content: space-between"><span class="lbl">Bar 1 · 4 3 2 1</span><span class="num t2" style="font-size: 13px">tilt 7</span></div>
+        <div class="lenses big"><i style="background: #FF6600"></i><i style="background: #FF6600"></i><i style="background: #FF6600"></i><i style="background: #FF6600"></i></div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="row" style="justify-content: space-between"><span class="lbl">Bar 2 · 5 6 7 8</span><span class="num t2" style="font-size: 13px">tilt 52</span></div>
+        <div class="lenses big"><i style="background: #8A00FF"></i><i style="background: #8A00FF"></i><i style="background: #8A00FF"></i><i style="background: #8A00FF"></i></div>
+      </div>
+      <div class="panel" style="position: relative; height: 150px; background: #08090B">
+        <span class="lbl" style="position: absolute; left: 10px; top: 8px">Side view</span>
+        <div style="position: absolute; left: 50%; top: 30px; width: 140px; height: 6px; margin-left: -70px; background: #3B414B; border-radius: 2px"></div>
+        <div style="position: absolute; left: calc(50% - 50px); top: 36px; width: 3px; height: 90px; background: linear-gradient(#FF6600, transparent); transform-origin: top; transform: rotate(8deg)"></div>
+        <div style="position: absolute; left: calc(50% + 50px); top: 36px; width: 3px; height: 90px; background: linear-gradient(#8A00FF, transparent); transform-origin: top; transform: rotate(-30deg)"></div>
+      </div>
+      <div class="col" style="gap: 8px; margin-top: auto">
+        <div class="fader"><div class="fill" style="width: 85%"></div><span class="fl">Brightness</span><span class="fv">85</span><div class="hand" style="left: 85%"></div></div>
+        <div class="fader"><div class="fill" style="width: 0%"></div><span class="fl">Strobe</span><span class="fv">0</span><div class="hand" style="left: 4px"></div></div>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

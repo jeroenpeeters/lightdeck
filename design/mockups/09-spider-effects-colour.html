@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Spider · Effects and colour</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#08090B} .fx{min-height:52px;padding:7px 10px;gap:4px} .d{display:flex;gap:3px} .d i{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.85} .d i.o{background:transparent;box-shadow:inset 0 0 0 1.5px currentColor}</style>
+</head>
+<body>
+<div class="app" style="width: 1280px; height: 800px; display: grid; grid-template-rows: 64px 64px 1fr">
+
+  <div class="top">
+    <button class="menu" style="gap: 8px">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 4l-6 6 6 6"/></svg>
+      <span>Live</span><span class="dots"><i></i><i></i><i class="sim"></i></span>
+    </button>
+    <div class="tempo">
+      <div class="col" style="gap: 2px"><span class="bpm num">126</span><span class="src">By hand</span></div>
+      <div class="beats"><i class="one"></i><i></i><i class="lit"></i><i></i></div>
+    </div>
+    <button class="key c" style="width: 96px; height: 48px">Tap</button>
+    <div class="fader" style="flex: 1; max-width: 340px"><div class="fill" style="width: 100%"></div><span class="fl">Master</span><span class="fv">100</span><div class="hand" style="left: calc(100% - 8px)"></div></div>
+    <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+    <div style="flex: 1"></div>
+    <button class="bo" style="width: 168px">Blackout</button>
+  </div>
+
+  <div class="row" style="justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #2A2F37">
+    <div class="row" style="gap: 14px"><h1 style="margin: 0; font: 700 28px var(--f-ui)">Spider</h1><span class="t2" style="font-size: 15px">Port 1 · address 1 · 43 channels</span></div>
+    <div class="row" style="gap: 8px"><span class="lbl">Now</span><span class="tag on">Kick</span><span class="tag on">Mid shift</span><span class="tag on">Tilt wave</span></div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 200px 1fr 320px; min-height: 0">
+    <nav class="snav" style="padding: 12px; border-right: 1px solid #2A2F37">
+      <button class="is-sel">Effects<span class="tag on" style="height: 18px">Kick</span></button>
+      <button>Colour</button>
+      <button>Movement</button>
+      <button>Zone</button>
+      <button>Fixture</button>
+    </nav>
+
+    <main style="display: grid; grid-template-columns: 1.35fr 1fr; gap: 20px; padding: 12px 16px; min-width: 0">
+      <section class="col" style="gap: 10px">
+        <div class="sh"><h3>Effect</h3><span class="t3" style="font-size: 13px">● colours it uses · ○ optional</span></div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+          <button class="key fx is-on">Kick<span class="d"><i></i><i></i><i class="o"></i></span></button>
+          <button class="key fx">Chase<span class="d t2"><i></i><i></i><i class="o"></i></span></button>
+          <button class="key fx">Bounce<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Bar swap<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Wave<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Sparkle<span class="d t2"><i></i><i></i><i class="o"></i></span></button>
+          <button class="key fx">Build-up<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Strobe burst<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Pump<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Solid<span class="d t2"><i></i></span></button>
+          <button class="key fx">Bars<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Alternate<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Spread<span class="sub" style="font-size: 11px; letter-spacing: .06em">ALL COLOURS</span></button>
+          <button class="key fx">Cross<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Tick-tock<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Scan<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Pairs<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Stab<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Fade<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Strobe<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Seesaw<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx">Glow<span class="d t2"><i></i><i></i></span></button>
+          <button class="key fx c" style="grid-column: span 2; color: #B6BCC5">Stop the effect</button>
+        </div>
+        <div class="row" style="gap: 12px; margin-top: 4px"><span class="lbl" style="width: 64px">Speed</span><div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div><span class="t2" style="font-size: 14px">a change every beat</span></div>
+        <p class="t2" style="margin: 0; font-size: 14px; line-height: 1.4">Kick: every lens hits on the beat in colour 1 and falls back to colour 2. Beat one of each bar rings longer, and in colour 3 if there is one.</p>
+      </section>
+
+      <section class="col" style="gap: 10px">
+        <div class="sh"><h3>Palette</h3><span class="t3" style="font-size: 13px">1 hits · 2 backdrop · 3 accent</span></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+          <button class="chip">White<div class="strip"><span style="background: #FFF3DC"></span></div></button>
+          <button class="chip">Rainbow<div style="height: 10px; border-radius: 1px; background: linear-gradient(90deg, #FF0000, #FFA500, #22FF00, #00FFFF, #0000FF, #FF00FF)"></div></button>
+          <button class="chip">Halloween<div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div></button>
+          <button class="chip">Pumpkin<div class="strip"><span style="background: #FF6600"></span><span style="background: #7A00FF"></span></div></button>
+          <button class="chip">Witch<div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div></button>
+          <button class="chip">Ember<div class="strip"><span style="background: #FF4500"></span><span class="dark"></span></div></button>
+          <button class="chip">Blood moon<div class="strip"><span style="background: #FF0000"></span><span style="background: #7A00FF"></span></div></button>
+          <button class="chip">Void<div class="strip"><span style="background: #FF0000"></span><span class="dark"></span></div></button>
+          <button class="chip">Lightning<div class="strip"><span style="background: #DCE2FF"></span><span style="background: #6A00FF"></span></div></button>
+          <button class="chip">Dusk<div class="strip"><span style="background: #FF6600"></span><span style="background: #9B00FF"></span><span style="background: #FF2D6F"></span></div></button>
+          <button class="chip">Sunset drift<div style="height: 10px; border-radius: 1px; background: linear-gradient(90deg, #FF6600, #FF2D6F, #8A00FF)"></div></button>
+          <button class="chip is-on">Mid shift<div class="strip"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div></button>
+          <button class="chip">Techno pulse<div class="strip"><span style="background: #FF0000"></span><span style="background: #4A148C"></span><span style="background: #228B22"></span><span style="background: #7F3A14"></span><span style="background: #6B7280"></span></div></button>
+          <button class="chip">Techno bar<div class="strip"><span style="background: #FF0000"></span><span style="background: #4A148C"></span><span style="background: #228B22"></span><span style="background: #7F3A14"></span><span style="background: #6B7280"></span></div></button>
+        </div>
+        <div class="row" style="gap: 8px; margin-top: 4px"><span class="lbl" style="width: 48px">Pace</span><div class="spd"><button style="width: 44px">÷4</button><button style="width: 44px">÷2</button><button style="width: 44px">×1</button><button style="width: 44px">×2</button><button class="is-on" style="width: 56px">Own</button></div></div>
+        <span class="t2" style="font-size: 14px">Own pace of Mid shift: a step every 4 beats.</span>
+      </section>
+    </main>
+
+    <aside style="display: flex; flex-direction: column; gap: 14px; padding: 12px; background: #0F1114; border-left: 1px solid #2A2F37">
+      <div class="sh"><h3>Output</h3><span class="t2" style="font-size: 13px">live</span></div>
+      <div class="col" style="gap: 6px">
+        <div class="row" style="justify-content: space-between"><span class="lbl">Bar 1 · 4 3 2 1</span><span class="num t2" style="font-size: 13px">tilt 29</span></div>
+        <div class="lenses big"><i style="background: #FF6600"></i><i style="background: #3a1a00"></i><i style="background: #FF6600"></i><i style="background: #3a1a00"></i></div>
+        <div style="height: 4px; background: #272C33; border-radius: 1px; position: relative"><i style="position: absolute; left: 29%; top: -4px; width: 4px; height: 12px; background: #F1F3F5"></i></div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="row" style="justify-content: space-between"><span class="lbl">Bar 2 · 5 6 7 8</span><span class="num t2" style="font-size: 13px">tilt 29</span></div>
+        <div class="lenses big"><i style="background: #3a1a00"></i><i style="background: #FF6600"></i><i style="background: #3a1a00"></i><i style="background: #FF6600"></i></div>
+        <div style="height: 4px; background: #272C33; border-radius: 1px; position: relative"><i style="position: absolute; left: 29%; top: -4px; width: 4px; height: 12px; background: #F1F3F5"></i></div>
+      </div>
+      <div class="col" style="gap: 8px; margin-top: 8px">
+        <div class="fader"><div class="fill" style="width: 85%"></div><span class="fl">Brightness</span><span class="fv">85</span><div class="hand" style="left: 85%"></div></div>
+        <div class="fader"><div class="fill" style="width: 0%"></div><span class="fl">Strobe</span><span class="fv">0</span><div class="hand" style="left: 4px"></div></div>
+      </div>
+      <span class="t3" style="font-size: 13px; margin-top: auto">This page changes the Spider lanes directly. A look that is on turns Varied.</span>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

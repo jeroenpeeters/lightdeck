@@ -21,6 +21,12 @@
  *
  * The blackout and the grand master of the console are not state either. They change
  * what goes out and leave what is set: the master scales the dimmer and nothing else.
+ *
+ * The sub dimmer (`subDimmer`, 0 to 1, 1 at the start; Jeroen, 2026-10-28: every fixture has one in
+ * the same place on the tablet page) is the spider's own master, as the `dimmer` of the room is for
+ * the lamps: it scales the dimmer on top of the grand master and leaves what is set. It is in the
+ * state, so that every screen shows it, and in no scene: a scene or a look neither moves it nor
+ * keeps it, so a look that sets the brightness does not undo what the operator turned down.
  */
 
 import { EventEmitter } from 'node:events';
@@ -109,6 +115,13 @@ export interface SpiderState {
    * are the window. Hand and scene tilts are not held to it.
    */
   zone: SpiderLimits | null;
+  /** The sub dimmer, 0 to 1: the master of this fixture. Part of no scene. */
+  subDimmer: number;
+  /**
+   * The blackout of this fixture alone (Jeroen, 2026-10-28): dark, with everything it is set to kept,
+   * as the blackout of the console does for all. Part of no scene. The two do not undo each other.
+   */
+  blackout: boolean;
 }
 
 export interface StatePatch {
@@ -118,6 +131,8 @@ export interface StatePatch {
   motion?: unknown;
   colour?: unknown;
   zone?: unknown;
+  subDimmer?: unknown;
+  blackout?: unknown;
 }
 
 /** What of the state a change can set and a scene keeps. */
@@ -226,7 +241,7 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
         throw new Error(`layout names "${name}", which the profile lacks`);
       }
     }
-    this.state = { ...rest, resetting: false };
+    this.state = { ...rest, resetting: false, subDimmer: 1, blackout: false };
 
     // Fails here, at startup, when the fixture does not fit at this address.
     this.send();
@@ -241,6 +256,8 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       motion: { ...this.state.motion },
       colour: { ...this.state.colour },
       zone: this.state.zone === null ? null : { tilt: this.state.zone.tilt.map((t) => ({ ...t })) },
+      subDimmer: this.state.subDimmer,
+      blackout: this.state.blackout,
     };
   }
 
@@ -338,7 +355,10 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
    * invalid. `origin` is passed on with the event so a browser can skip its own echo.
    */
   update(change: unknown, origin?: string): void {
-    this.state = { ...this.state, ...this.apply(this.state, change, 'a change of the spider') };
+    const next = this.apply(this.state, change, 'a change of the spider');
+    const subDimmer = this.readSubDimmer(change);
+    const blackout = this.readBlackout(change);
+    this.state = { ...this.state, ...next, subDimmer, blackout };
     this.emit('wants');
     this.push(origin);
   }
@@ -440,7 +460,15 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       'motion',
       'colour',
       'zone',
+      'subDimmer',
+      'blackout',
     ]) as StatePatch;
+    if (only !== undefined && patch.subDimmer !== undefined) {
+      throw new PatchError('the "subDimmer" of the spider is part of no scene');
+    }
+    if (only !== undefined && patch.blackout !== undefined) {
+      throw new PatchError('the "blackout" of the spider is part of no scene');
+    }
     const levels = { ...base.levels };
     const raw = { ...base.raw };
     const own = only === undefined ? undefined : new Set(controlsOf(this.profile, only));
@@ -481,6 +509,24 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
       colour: this.readColour(base.colour, patch.colour),
       zone: this.readZone(base.zone, patch.zone),
     };
+  }
+
+  /** The sub dimmer with the change on top; the change has been read as an object already. */
+  private readSubDimmer(change: unknown): number {
+    const { subDimmer } = change as StatePatch;
+    if (subDimmer === undefined) return this.state.subDimmer;
+    if (typeof subDimmer !== 'number' || !Number.isFinite(subDimmer)) {
+      throw new PatchError('the subDimmer must be a number between 0 and 1');
+    }
+    return clamp01(subDimmer);
+  }
+
+  /** The blackout of this fixture with the change on top; the change has been read as an object already. */
+  private readBlackout(change: unknown): boolean {
+    const { blackout } = change as StatePatch;
+    if (blackout === undefined) return this.state.blackout;
+    if (typeof blackout !== 'boolean') throw new PatchError('the blackout must be true or false');
+    return blackout;
   }
 
   /** The zone with the change on top: `null` takes it away, an object sets the windows of the bars. */
@@ -699,8 +745,10 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
         levels[name] = Math.min(limit.max, Math.max(limit.min, levels[name] ?? 0));
       }
     });
-    for (const name of this.dimmers) levels[name] = (levels[name] ?? 0) * this.master;
-    if (this.blackout) {
+    for (const name of this.dimmers) {
+      levels[name] = (levels[name] ?? 0) * this.master * this.state.subDimmer;
+    }
+    if (this.blackout || this.state.blackout) {
       for (const name of BLACKOUT_CONTROLS) if (name in levels) levels[name] = 0;
     }
     return { levels, raw: this.state.raw };

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Menu</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#08090B} .nav{height:112px;padding:14px 16px;align-items:flex-start} .nav .sub{font-size:14px}</style>
+</head>
+<body>
+<div class="app" style="width: 1280px; height: 800px; display: grid; grid-template-rows: 64px 1fr">
+
+  <div class="top">
+    <button class="menu" style="background: #272C33; border-color: #F1F3F5" aria-label="Close the menu">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 4l12 12M16 4L4 16"/></svg>
+      <span>Close</span>
+    </button>
+    <div class="tempo">
+      <div class="col" style="gap: 2px"><span class="bpm num">126</span><span class="src">By hand</span></div>
+      <div class="beats"><i class="one"></i><i></i><i></i><i class="lit"></i></div>
+    </div>
+    <button class="key c" style="width: 96px; height: 48px">Tap</button>
+    <div class="fader" style="flex: 1; max-width: 340px"><div class="fill" style="width: 100%"></div><span class="fl">Master</span><span class="fv">100</span><div class="hand" style="left: calc(100% - 8px)"></div></div>
+    <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+    <div style="flex: 1"></div>
+    <button class="bo" style="width: 168px">Blackout</button>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 400px; gap: 24px; padding: 24px">
+    <div class="col" style="gap: 20px">
+      <div class="col" style="gap: 8px">
+        <span class="lbl">Live</span>
+        <button class="key nav is-sel" style="height: 88px; border-color: #F1F3F5; box-shadow: inset 0 0 0 1px #F1F3F5; flex-direction: row; align-items: center; justify-content: space-between">
+          <span class="col" style="gap: 4px"><span style="font: 700 24px var(--f-ui)">Live page</span><span class="sub">Looks, moods, parts, video wall</span></span>
+          <span class="tag next">You came from here</span>
+        </button>
+      </div>
+      <div class="col" style="gap: 8px">
+        <span class="lbl">Setup</span>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+          <button class="key nav"><span style="font: 600 20px var(--f-ui)">Deck</span><span class="sub">Store, rename, sequences</span></button>
+          <button class="key nav"><span style="font: 600 20px var(--f-ui)">Palettes</span><span class="sub">14 palettes</span></button>
+          <button class="key nav"><span style="font: 600 20px var(--f-ui)">Spider</span><span class="sub">Effects, colour, movement</span></button>
+          <button class="key nav" style="border-color: #5a1d1f"><span style="font: 600 20px var(--f-ui); color: #FF4B4B">Laser</span><span class="sub">Modes, channels</span></button>
+          <button class="key nav"><span style="font: 600 20px var(--f-ui)">Room</span><span class="sub">14 lamps, 3 rails</span></button>
+          <button class="key nav"><span style="font: 600 20px var(--f-ui)">Video wall</span><span class="sub">Player, track text</span></button>
+          <button class="key nav"><span style="font: 600 20px var(--f-ui)">Simulator</span><span class="sub">3D view of the rig</span></button>
+          <button class="key nav"><span style="font: 600 20px var(--f-ui)">Rig and links</span><span class="sub">Addresses, calibration</span></button>
+        </div>
+      </div>
+      <span class="t3" style="font-size: 14px; margin-top: auto">Show file: show.yaml · 4 groups · 62 scenes · 51 looks</span>
+    </div>
+
+    <aside class="col" style="gap: 20px">
+      <section class="panel col" style="gap: 12px; padding: 16px">
+        <span class="lbl">Tempo source</span>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+          <button class="key c is-on">By hand</button>
+          <button class="key c">Rekordbox</button>
+          <button class="key c" style="font-size: 14px">Idle in breakdown</button>
+        </div>
+        <span class="t2" style="font-size: 14px">Your last tap is beat one of the bar. Nudge it:</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px">
+          <button class="key c num">−1 beat</button>
+          <button class="key c num">+1 beat</button>
+        </div>
+      </section>
+      <section class="panel col" style="gap: 12px; padding: 16px">
+        <span class="lbl">Links</span>
+        <div class="row" style="justify-content: space-between; font-size: 16px"><span class="row" style="gap: 10px"><i style="width: 10px; height: 10px; border-radius: 50%; background: #34D27B"></i>Bridge</span><span class="t2">connected</span></div>
+        <div class="row" style="justify-content: space-between; font-size: 16px"><span class="row" style="gap: 10px"><i style="width: 10px; height: 10px; border-radius: 50%; background: #34D27B"></i>LR512</span><span class="t2">connected</span></div>
+        <div class="row" style="justify-content: space-between; font-size: 16px"><span class="row" style="gap: 10px"><i style="width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 2px #8A919C"></i>Home Assistant</span><span class="t2">simulated</span></div>
+        <div class="row" style="justify-content: space-between; font-size: 16px"><span class="row" style="gap: 10px"><i style="width: 10px; height: 10px; border-radius: 50%; background: #34D27B"></i>Video wall player</span><span class="t2">connected</span></div>
+      </section>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

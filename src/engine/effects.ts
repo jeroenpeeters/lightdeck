@@ -32,6 +32,7 @@
 
 import { clamp01 } from '../model/fixture.js';
 import { frac, hit, mod, noise, TAU } from './beat.js';
+import { swipeLeg, swipesUp } from './swipe.js';
 
 export type { Rgbw } from './colour.js';
 
@@ -423,6 +424,43 @@ const pairs: Effect = {
   },
 };
 
+/** How much of a swipe fades in at the start and out at the end, as a share of its leg. */
+const SWIPE_EDGE = 0.12;
+
+/** The lenses of a bar that a swipe lights: the two outer ones or the two inner ones (all of a short bar). */
+function swipePair(bar: readonly number[], outside: boolean): readonly number[] {
+  if (bar.length <= 2) return bar;
+  const outer = [bar[0], bar[bar.length - 1]].filter((cell): cell is number => cell !== undefined);
+  const inner = bar.slice(1, -1);
+  return outside || inner.length === 0 ? outer : inner;
+}
+
+const swipe: Effect = {
+  id: 'swipe',
+  name: 'Swipe',
+  description:
+    'Two beams of a bar light up while it swings up from the floor, then go dark while it swings back down, and the other bar takes over at once, so there is always a fan of beams going up. The first bar is the first colour and the second bar the second. The pair is the outer two lenses of a bar and then the inner two. It is made to go with the motion effect Swipe.',
+  slots: 2,
+  render(context) {
+    const { beat, cells, bars } = context;
+    const { leg, phase } = swipeLeg(beat);
+    // The bar that goes up on this leg, from its first lit moment to its last; edges fade so that a beam
+    // does not pop on at the floor or off at the top.
+    const level = clamp01(Math.min(1, phase / SWIPE_EDGE, (1 - phase) / SWIPE_EDGE));
+    // Each bar is up on every other leg, and takes the other pair on its next turn.
+    const round = Math.floor(leg / 2);
+    const beams: [number, number[]][] = [];
+    bars.forEach((bar, number) => {
+      if (!swipesUp(number, leg + 1)) return;
+      const outside = mod(round + number, 2) === 0;
+      for (const cell of swipePair(bar, outside)) {
+        beams.push([cell, lit(level, number % 2 === 1, context)]);
+      }
+    });
+    return { levels: only(cells, beams) };
+  },
+};
+
 /** A step along the lenses that reaches every lens before it comes round, and is a jump, not a neighbour. */
 function jump(cells: number): number {
   const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
@@ -543,6 +581,7 @@ export const EFFECTS: readonly Effect[] = [
   scan,
   pairs,
   stab,
+  swipe,
   fade,
   strobe,
   seesaw,

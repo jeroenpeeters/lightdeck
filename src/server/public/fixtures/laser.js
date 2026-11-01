@@ -5,12 +5,22 @@
 // within a range sets. This file draws keys and faders from that, and turns what the
 // operator does into bytes. It knows nothing about one laser in particular.
 //
+// The page is a setup page of the console (the top bar with the Live key is the shell's),
+// with a red frame round the laser's own area, because red means laser. Three views, chosen
+// in the side navigation and by the URL hash:
+//   Effects   the mode (the control that opens and closes the laser), the control after it
+//             (the pattern), the effect of the lights and the motion, each with its own speed
+//   Colour    the colours of the colour chase and the colour channel
+//   Channels  every other channel, a block of keys and a fader each
+// The side panel always shows what the laser does (closed, or open and what it draws) and the
+// bytes that are being sent.
+//
 // The server also says which effects there are and which channels each of them drives.
 // They are of two kinds that are chosen apart and run together: an Effect of the lights
 // (`details.effects`, state `effect`) and a Motion (`details.motionEffects`, state
 // `motion`), each with its own Stop key and its own speed. While one shows, the server
 // sends the bytes it renders, and the blocks of the channels that either of the two
-// drives show those instead of what the operator set.
+// drives show those instead of what the operator set, and cannot be set.
 //
 // The laser has colours of its own, up to three, which its colour chase steps through
 // (`state.colours`, bytes of the range `details.colourSetting` names). It does not follow
@@ -18,12 +28,13 @@
 // slot are numbered 1 to 7, and the page spreads them over the range evenly, the way the
 // server does.
 //
-// Blackout, master and tempo are not the laser's: they are in the shell. The laser has
+// There is no arm key: a scene or a look may open the laser, an effect never does.
+// Blackout, master and tempo are not the laser's: they are in the top bar. The laser has
 // no dimmer, so the master at 0 holds it closed the way the blackout does, and the page
 // says which of the two it is.
 
 import { start } from '../shell.js';
-import { $, button, element, renderReadout, speedKeys, speedNote } from '../ui.js';
+import { $, button, element, renderReadout, slider, speedKeys, speedNote, views } from '../ui.js';
 
 let shell;
 let fixture;
@@ -189,17 +200,36 @@ function setByte(control, byte) {
 
 // ---- building the page ----
 
-/** The keys and the fader of one control. */
-function block(control) {
-  const section = element('section', 'laser-block');
-  const id = `l-${control.name}`;
+/** What a fader stands on, to the byte for it. */
+const byteFor = (range, number) =>
+  range.steps
+    ? byteForStep(range, number)
+    : range.from + Math.round(((range.to - range.from) * number) / 100);
 
-  const choice = element('fieldset', 'choice');
-  choice.append(element('legend', '', title(control)));
+/** The number a range's fader shows for the byte that is sent. */
+function numberOf(control, range) {
+  const byte = byteOf(control);
+  return range.steps
+    ? stepOfByte(range, byte)
+    : Math.round(((byte - range.from) / (range.to - range.from)) * 100);
+}
+
+/**
+ * The keys and the faders of one control, in a panel: a key per range that has a key, and for a
+ * range that sets something by its place a fader (and keys of one step, when it has steps).
+ */
+function block(control, lead = false) {
+  const section = element('section', lead ? 'panel lz-block is-lead' : 'panel lz-block');
+  const head = element('div', 'sh');
+  head.append(element('h3', '', title(control)));
+
+  const choice = element('div', 'lz-keys');
+  choice.setAttribute('role', 'group');
+  choice.setAttribute('aria-label', title(control));
   const keys = control.ranges
     .filter((range) => range.key)
     .map((range) => {
-      const made = button('pick', range.name ?? range.key, () => {
+      const made = button('key c lz-pick', range.name ?? range.key, () => {
         if (currentRange(control) !== range) setByte(control, byteToEnter(control, range));
       });
       choice.append(made);
@@ -212,28 +242,27 @@ function block(control) {
     ...(fixture.details.effects ?? []),
     ...(fixture.details.motionEffects ?? []),
   ].some((effect) => effect.drives.includes(control.name));
-  const driven = element('p', reserved ? 'hint reserved' : 'hint');
-  const stepper = element('div', 'stepper');
-  const fader = element('div', 'slider');
-  const name = element('label');
-  name.htmlFor = id;
-  const value = element('output');
-  value.htmlFor = id;
-  const input = element('input');
-  input.type = 'range';
-  input.id = id;
-  input.step = '1';
-  const note = element('p', 'meaning');
-  fader.append(name, value, input, note);
+  const driven = element('p', 'hint lz-driven');
 
-  /** What the fader stands on, to the byte for it. */
-  const byteFor = (range, number) =>
-    range.steps
-      ? byteForStep(range, number)
-      : range.from + Math.round(((range.to - range.from) * number) / 100);
-  input.addEventListener('input', () => {
-    const range = currentRange(control);
-    if (range) setByte(control, byteFor(range, Number(input.value)));
+  // One fader per range that sets something by its place; only the range that counts shows.
+  const faders = element('div', 'lz-faders');
+  const rows = new Map();
+  control.ranges.forEach((range, index) => {
+    if (!range.steps && !range.scale) return;
+    const row = slider({
+      id: `l-${control.name}-${range.key ?? index}`,
+      label: range.scale ?? title(control),
+      min: range.steps ? 1 : 0,
+      max: range.steps ?? 100,
+      read: () => numberOf(control, range),
+      write: (number) => {
+        if (currentRange(control) === range) setByte(control, byteFor(range, number));
+      },
+      meaning: () => `${range.meaning}.`,
+    });
+    row.classList.add('lz-away');
+    rows.set(range, row);
+    faders.append(row);
   });
   const nudge = (by) => () => {
     const range = currentRange(control);
@@ -241,12 +270,13 @@ function block(control) {
     const step = stepOfByte(range, byteOf(control)) + by;
     if (step >= 1 && step <= range.steps) setByte(control, byteForStep(range, step));
   };
-  const down = button('key nudge', '−1', nudge(-1));
-  const up = button('key nudge', '+1', nudge(1));
-  stepper.append(down, fader, up);
+  const down = button('key c lz-nudge', '−1', nudge(-1));
+  const up = button('key c lz-nudge', '+1', nudge(1));
+  const stepper = element('div', 'lz-set');
+  stepper.append(down, faders, up);
   // Stays in its place when there is nothing to choose, so the other blocks do not jump.
   const idle = element('p', 'hint', 'Nothing to choose in this mode.');
-  section.append(choice, idle, stepper, driven);
+  section.append(head, idle, choice, stepper, driven);
   section.control = control;
 
   section.refresh = () => {
@@ -262,67 +292,87 @@ function block(control) {
       : '';
     idle.hidden = active.length > 0;
     // One range leaves nothing to choose: the fader says it all.
-    choice.hidden = active.length === 1;
+    choice.hidden = active.length <= 1;
     for (const each of keys) {
+      const here = each.range === range;
       each.key.hidden = !active.includes(each.range);
       each.key.disabled = taken;
-      each.key.setAttribute('aria-pressed', String(each.range === range));
+      each.key.classList.toggle('is-disabled', taken);
+      // A range of rest (closed, fixed) is where you are, white; any other is what the laser does, amber.
+      each.key.classList.toggle('is-on', here && !holds(each.range, control.idle));
+      each.key.classList.toggle('is-here', here && holds(each.range, control.idle));
+      each.key.setAttribute('aria-pressed', String(here));
     }
-    input.disabled = taken;
 
-    const steps = range?.steps;
-    const sets = range && (steps || range.scale);
-    stepper.hidden = !sets;
+    const row = range ? rows.get(range) : undefined;
+    stepper.hidden = !row;
+    // The faders lie over each other in one cell, so the block keeps the room of the longest line.
+    for (const [other, each] of rows) each.classList.toggle('lz-away', other !== range);
+    if (!row) return;
+    const steps = range.steps;
     stepper.dataset.steps = String(Boolean(steps));
     down.hidden = !steps;
     up.hidden = !steps;
-    if (!sets) return;
-
-    const byte = byteOf(control);
-    const min = steps ? 1 : 0;
-    const max = steps ?? 100;
-    const number = steps
-      ? stepOfByte(range, byte)
-      : Math.round(((byte - range.from) / (range.to - range.from)) * 100);
     // Without keys above it the fader carries the name of the control.
-    name.textContent = choice.hidden ? title(control) : range.scale;
+    const label = choice.hidden ? title(control) : range.scale;
+    row.querySelector('.fl').textContent = label;
+    row.input.setAttribute('aria-label', label);
+    const number = numberOf(control, range);
     down.setAttribute('aria-label', `${range.scale ?? title(control)} down by one`);
     up.setAttribute('aria-label', `${range.scale ?? title(control)} up by one`);
-    down.disabled = taken || number <= min;
-    up.disabled = taken || number >= max;
-    input.min = String(min);
-    input.max = String(max);
-    input.value = String(number);
-    value.textContent = String(number);
-    fader.style.setProperty('--fill', `${((number - min) / (max - min)) * 100}%`);
-    note.textContent = `${range.meaning}.`;
+    down.disabled = taken || number <= 1;
+    up.disabled = taken || number >= (steps ?? 100);
+    down.classList.toggle('is-disabled', down.disabled);
+    up.classList.toggle('is-disabled', up.disabled);
+    row.refresh();
+    row.input.disabled = taken;
+    row.bar.classList.toggle('is-disabled', taken);
   };
   return section;
 }
 
+/** The titles of the channels an effect sets: "Pattern", "Horizontal position". */
+const drivesWords = (effect) =>
+  effect.drives
+    .map((name) => controls.find((control) => control.name === name))
+    .filter(Boolean)
+    .map((control) => title(control))
+    .join(', ');
+
 /**
- * One kind of effect: its keys, a Stop key, a line about the chosen one and the keys of
- * its speed. Without effects of this kind the section stays away.
+ * One kind of effect, in a panel: its keys, a Stop key, a line about the chosen one and the keys
+ * of its speed. Without effects of this kind the panel stays away.
  */
 function buildGroup(key, name, list) {
-  const section = element('section', 'laser-effects');
+  const section = element('section', 'panel lz-group');
   section.hidden = list.length === 0;
-  const keys = element('fieldset', 'effect-list');
-  keys.append(
-    element('legend', 'visually-hidden', `Choose ${name === 'Motion' ? 'a motion' : 'an effect'}`),
-  );
+  const keys = element('div', 'lz-effect-keys');
+  keys.setAttribute('role', 'group');
+  keys.setAttribute('aria-label', name === 'Motion' ? 'Choose a motion' : 'Choose an effect');
+  // One column per key, three at the most: the Stop key has the row under them.
+  keys.style.setProperty('--n', String(Math.min(Math.max(list.length, 1), 3)));
   const group = { key, name, list, section, keys: new Map() };
   for (const effect of list) {
-    const made = button('effect', effect.name, () => setEffect(group, effect.id));
+    const made = button('key lz-effect', '', () => setEffect(group, effect.id));
+    made.append(
+      element('span', 'nm', effect.name),
+      element('span', 'sub', `Sets ${drivesWords(effect)}`),
+    );
     group.keys.set(effect.id, made);
     keys.append(made);
   }
-  group.stop = button('key stop', `Stop ${name.toLowerCase()}`, () => setEffect(group, null));
-  group.hint = element('p', 'hint effect-hint');
-  const speed = element('fieldset', 'choice');
-  speed.append(element('legend', '', `Speed of ${name.toLowerCase()}`));
-  group.speedHint = element('p', 'hint');
-  section.append(element('h3', '', name), keys, group.stop, group.hint, speed, group.speedHint);
+  // The last key of the row: it puts the effect away and leaves the laser as the operator set it.
+  group.stop = button('key c lz-stop', 'Stop', () => setEffect(group, null));
+  group.stop.setAttribute('aria-label', `Stop ${name.toLowerCase()}`);
+  keys.append(group.stop);
+  group.hint = element('p', 'hint lz-effect-hint');
+  const speedHead = element('div', 'sh');
+  speedHead.append(element('h3', '', `Speed of ${name.toLowerCase()}`));
+  const speed = element('div', 'lz-speed');
+  group.speedHint = element('p', 'hint lz-speed-hint');
+  const heading = element('div', 'sh');
+  heading.append(element('h3', '', name));
+  section.append(heading, keys, speedHead, speed, group.speedHint, group.hint);
   group.showSpeed = speedKeys(speed, fixture.details.speeds ?? [1], (each) =>
     setSpeed(group, each),
   );
@@ -330,15 +380,15 @@ function buildGroup(key, name, list) {
 }
 
 /**
- * The slots of the colour setting: per slot a row of the seven colours and None. The
- * section stays away when the laser has no colour setting.
+ * The slots of the colour setting: per slot a row of None and the seven colours. The section
+ * stays away when the laser has no colour setting.
  */
-function buildColours() {
-  const section = element('section', 'laser-colours');
-  section.hidden = colourSetting === null;
-  if (!colourSetting) return section;
-  section.append(
-    element('h3', '', 'Colours for the colour chase'),
+function buildColours(holder) {
+  const panel = element('section', 'panel lz-slots');
+  const head = element('div', 'sh');
+  head.append(element('h3', '', 'Colours for the colour chase'));
+  panel.append(
+    head,
     element(
       'p',
       'hint',
@@ -347,25 +397,28 @@ function buildColours() {
   );
   const ordinals = ['First', 'Second', 'Third'];
   for (let at = 0; at < colourSetting.max; at++) {
-    const row = element('fieldset', 'slot');
-    const note = element('span', 'slot-note');
-    const legend = element('legend', '', `${ordinals[at] ?? `Colour ${at + 1}`} colour`);
-    legend.append(note);
-    const none = button('pick none', 'None', () => setSlot(at, null));
-    const grid = element('div', 'slot-keys');
-    row.append(legend, grid);
+    const row = element('div', 'lz-slot');
+    row.setAttribute('role', 'group');
+    const label = `${ordinals[at] ?? `Colour ${at + 1}`} colour`;
+    row.setAttribute('aria-label', label);
+    const top = element('div', 'sh');
+    const note = element('span', 't2 lz-slot-note');
+    top.append(element('h3', '', label), note);
+    const none = button('key c lz-pick', 'None', () => setSlot(at, null));
+    const grid = element('div', 'lz-slot-keys');
     grid.append(none);
     const keys = [];
     for (let number = 1; number <= COLOURS; number++) {
-      const made = button('pick', String(number), () => setSlot(at, number));
+      const made = button('key c lz-pick lz-colour', String(number), () => setSlot(at, number));
       made.setAttribute('aria-label', `Colour ${number}`);
       grid.append(made);
       keys.push(made);
     }
     slots.push({ row, note, none, keys });
-    section.append(row);
+    row.append(top, grid);
+    panel.append(row);
   }
-  return section;
+  holder.append(panel);
 }
 
 // ---- drawing the state ----
@@ -382,6 +435,9 @@ function renderTile() {
   const held = heldBy();
   const closed = held !== null || isOff();
   $('laser-tile').dataset.on = String(!closed);
+  // Hazard stripes in full colour while the laser draws, dimmed while it is closed.
+  $('laser-strip').classList.toggle('hazard', !closed);
+  $('laser-strip').classList.toggle('hazard-dim', closed);
   $('laser-state').textContent =
     held === 'blackout'
       ? 'Closed by blackout'
@@ -401,6 +457,7 @@ function effectsMode() {
   return range?.name ?? range?.key ?? '';
 }
 
+/** What the laser is waiting for, in one line, or the standing line that says who opens it. */
 function renderHint() {
   const open = gate
     ? gate.ranges.filter((range) => range.key && !holds(range, gate.idle)).map((r) => r.name)
@@ -414,7 +471,7 @@ function renderHint() {
       'Blackout is on, so the laser is closed. What you set here is kept and shows when you lift the blackout.';
   } else if (held === 'master') {
     text =
-      'The master is at 0, so the laser is closed. What you set here is kept and shows when you raise the master on the deck.';
+      'The master is at 0, so the laser is closed. What you set here is kept and shows when you raise the master.';
   } else if (waiting && !inEffectsMode()) {
     text = `${names(chosen)} is chosen and waits: effects show in ${effectsMode()} mode. Choose ${effectsMode()} to see it.`;
   } else if (waiting) {
@@ -422,8 +479,11 @@ function renderHint() {
   } else if (isOff() && open.length > 1) {
     text = `The laser is closed. Choose ${open.slice(0, -1).join(', ')} or ${open[open.length - 1]} to open it.`;
   }
-  $('laser-hint').textContent = text;
-  $('laser-hint').hidden = text === '';
+  const note = $('laser-note');
+  note.dataset.urgent = String(text !== '');
+  $('laser-hint').textContent =
+    text ||
+    'An effect never opens the laser: that stays with you. Scenes, looks and sequences can open it. Blackout closes it.';
 }
 
 /** Names of effects in one line: "Pattern chase · Pulse". */
@@ -431,8 +491,12 @@ const names = (list) => list.map((effect) => effect.name).join(' · ');
 
 function renderGroup(group) {
   const chosen = chosenIn(group);
-  for (const [id, made] of group.keys) made.setAttribute('aria-pressed', String(id === chosen?.id));
+  for (const [id, made] of group.keys) {
+    made.classList.toggle('is-on', id === chosen?.id);
+    made.setAttribute('aria-pressed', String(id === chosen?.id));
+  }
   group.stop.disabled = !chosen;
+  group.stop.classList.toggle('is-disabled', !chosen);
   group.hint.textContent = chosen
     ? chosen.description
     : `Choose ${group.key === 'motion' ? 'a motion' : 'an effect'}. It follows the music and shows in ${effectsMode()} mode. It never opens the laser: that stays with you.`;
@@ -441,17 +505,49 @@ function renderGroup(group) {
   group.speedHint.textContent = speedNote(speed, shell.speed(speed));
 }
 
-function renderEffects() {
-  for (const group of groups) renderGroup(group);
+/** The tags in the head: whether the laser draws, and the effects that are chosen. */
+function renderNow() {
   const chosen = chosenEffects();
   const showing = showingEffects();
-  $('running').dataset.on = String(showing.length > 0 && heldBy() === null);
-  $('running').textContent =
-    chosen.length === 0
-      ? 'No effect'
-      : showing.length === 0
-        ? `${names(chosen)}, waiting`
-        : names(chosen);
+  const held = heldBy();
+  const closed = held !== null || isOff();
+  const tags = $('now-tags');
+  tags.textContent = '';
+  const status = element(
+    'span',
+    closed ? 'tag mute' : 'tag danger',
+    held === 'blackout'
+      ? 'Closed by blackout'
+      : held === 'master'
+        ? 'Closed by master'
+        : closed
+          ? 'Closed'
+          : 'Open',
+  );
+  tags.append(status);
+  if (chosen.length === 0) {
+    tags.append(element('span', 't3 lz-none', 'No effect'));
+    return;
+  }
+  for (const effect of chosen) {
+    const going = showing.includes(effect) && held === null;
+    // Dashed while it waits for the mode or the music.
+    tags.append(element('span', going ? 'tag on' : 'tag var', effect.name));
+  }
+}
+
+/** The counts at the right of the keys of the side navigation. */
+function renderNav() {
+  const chosen = chosenEffects().length;
+  $('n-effects').textContent = chosen > 0 ? String(chosen) : '';
+  const set = state.colours?.length ?? 0;
+  if ($('n-colour')) $('n-colour').textContent = set > 0 ? String(set) : '';
+}
+
+function renderEffects() {
+  for (const group of groups) renderGroup(group);
+  renderNow();
+  renderNav();
 }
 
 function renderColours() {
@@ -461,8 +557,11 @@ function renderColours() {
     const number = byte === undefined ? 0 : colourNumber(byte);
     // A slot after an empty one has nothing to be after: the list is the filled slots in order.
     const open = at <= list.length;
+    slot.none.classList.toggle('is-here', byte === undefined);
     slot.none.setAttribute('aria-pressed', String(byte === undefined));
     slot.keys.forEach((made, index) => {
+      made.classList.toggle('is-on', index + 1 === number);
+      made.classList.toggle('is-disabled', !open);
       made.setAttribute('aria-pressed', String(index + 1 === number));
       made.disabled = !open;
     });
@@ -482,13 +581,13 @@ function render() {
   renderTile();
   renderHint();
   renderEffects();
-  renderColours();
+  if (colourSetting) renderColours();
   renderReadout($('readout'), dmx, fixture.controls);
   shell.refresh();
 }
 
 async function main() {
-  shell = await start();
+  shell = await start({ page: 'fixture' });
   if (!shell) return;
   fixture = shell.fixture;
   controls = fixture.controls.filter((control) => control.kind === 'function');
@@ -498,16 +597,42 @@ async function main() {
   state = fixture.state;
   dmx = fixture.dmx;
 
-  blocks = controls.map(block);
-  // The keys that open the laser stand apart, next to the effects.
-  $('laser-gate').append(...blocks.filter((each) => each.control === gate));
-  $('laser-blocks').append(...blocks.filter((each) => each.control !== gate));
+  // The mode and the control after it are the lead; the colour channel goes with the colours.
+  const lead = [gate, controls[controls.indexOf(gate) + 1]].filter(Boolean);
+  const colourControl = colourSetting
+    ? controls.find((control) => control.name === colourSetting.control)
+    : undefined;
+  blocks = controls.map((control) => block(control, lead.includes(control)));
+  const blockOf = (control) => blocks.find((each) => each.control === control);
+  $('laser-lead').append(...lead.map(blockOf));
+  const others = blocks.filter(
+    (each) => !lead.includes(each.control) && each.control !== colourControl,
+  );
+  $('laser-blocks').append(...others);
+  $('n-channels').textContent = String(controls.length);
+
   groups = [
     buildGroup('effect', 'Effect', fixture.details.effects ?? []),
     buildGroup('motion', 'Motion', fixture.details.motionEffects ?? []),
   ];
-  // The keys that open the laser, the two kinds of effect and the colours share one grid.
-  $('laser-lead').append(...groups.map((group) => group.section), buildColours());
+  $('laser-effects').append(...groups.map((group) => group.section));
+
+  const names_ = ['effects'];
+  if (colourSetting) {
+    buildColours($('laser-colours'));
+    if (colourControl) $('laser-colours').append(blockOf(colourControl));
+    names_.push('colour');
+  } else {
+    $('tab-colour').remove();
+    $('view-colour').remove();
+  }
+  names_.push('channels');
+  if (others.length === 0) {
+    $('tab-channels').remove();
+    $('view-channels').remove();
+    names_.pop();
+  }
+  views(names_);
 
   shell.on('fixture', (message) => {
     // The shell has laid what is still on its way over the state, so nothing is set back.

@@ -293,6 +293,60 @@ describe('RoomController', () => {
     });
   });
 
+  describe('the blackout of the room alone', () => {
+    beforeEach(() => {
+      room.update({ levels: { bar: 1, shelf: 1, ceiling: 1, fog: 1, heater: 1 } });
+      hass.commands = [];
+    });
+
+    it('turns the lights off at once and urgently, as the blackout of the console does', () => {
+      room.update({ blackout: true }, 'tablet');
+      expect(state().blackout).toBe(true);
+      expect(hass.commands.map((sent) => [sent.entity, sent.urgent])).toEqual([
+        ['light.bar', true],
+        ['light.shelf', true],
+        ['light.ceiling', true],
+        ['switch.fog', true],
+      ]);
+      expect(hass.to('light.bar')).toEqual([off(0)]);
+      expect(hass.to('switch.heater')).toEqual([]);
+    });
+
+    it('keeps what is set, and brings the room back as it was when it is lifted', () => {
+      room.update({ blackout: true });
+      expect(state().levels.bar).toBe(1);
+      room.update({ levels: { bar: 0.5 } });
+      expect(hass.to('light.bar').at(-1)).toEqual(off(0));
+      hass.commands = [];
+      room.update({ blackout: false });
+      expect(hass.to('light.bar')).toEqual([on(128, [0, 0, 0, 255], 1)]);
+      expect(hass.to('switch.fog')).toEqual([{ domain: 'switch', service: 'turn_on' }]);
+    });
+
+    it('and the blackout of the console do not undo each other', () => {
+      room.update({ blackout: true });
+      room.setBlackout(true);
+      room.setBlackout(false);
+      hass.commands = [];
+      room.update({ levels: { bar: 1 } });
+      expect(hass.to('light.bar')).toEqual([]);
+      room.update({ blackout: false });
+      expect(hass.to('light.bar')).toEqual([on(255, [0, 0, 0, 255], 1)]);
+    });
+
+    it('is part of no scene, and must be true or false', () => {
+      room.update({ blackout: true });
+      for (const type of ['lights', 'colour'] as const) {
+        expect(JSON.stringify(room.snapshot(type))).not.toContain('lackout');
+      }
+      room.recall('lights', { levels: { bar: 1 } });
+      expect(state().blackout).toBe(true);
+      expect(() => room.check('lights', { blackout: false })).toThrow(/no scene/);
+      expect(() => room.update({ blackout: 'yes' })).toThrow(PatchError);
+      expect(state().blackout).toBe(true);
+    });
+  });
+
   describe('the switch of a zone', () => {
     beforeEach(() => {
       room.update({ levels: { bar: 1, shelf: 1, ceiling: 1, fog: 1 } });

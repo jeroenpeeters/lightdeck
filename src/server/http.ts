@@ -4,6 +4,8 @@
  *   GET  /                            goes to the deck
  *   GET  /deck                        the deck: the groups of the show with their scenes
  *   GET  /palettes                    the palettes of the show: their colours, and how they move
+ *   GET  /decor                       how the pipes of the decor are put together: linked or apart, in which
+ *                                     order, which way round (set with POST /api/fixtures/decor/update)
  *   GET  /tablet                      the page for a tablet at the side of the dance floor: the
  *                                     tap, the master, the parts of the evening, the looks of a group
  *                                     by mood with what goes with the mood in a tray under them
@@ -50,8 +52,10 @@
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
  *   POST /api/sequence                `start`, the id of a sequence of the show, which sets its first
  *                                     step at once and goes on on the bars (it stops the one that
- *                                     runs), `next: true` (the next step now) or `stop: true`. A
- *                                     stop leaves the fixtures as they are
+ *                                     runs), `next: true` (the next step now), `hold: true` (freeze
+ *                                     it where it is: no bar is counted and nothing is set) or
+ *                                     `hold: false` (let it go on with the bars the step has
+ *                                     left), or `stop: true`. A stop leaves the fixtures as they are
  *   POST /api/playback                `group` with one of: `scene`, the id of the scene of
  *                                     lights or motion to set the fixtures of the group to
  *                                     (only the properties of the type of the scene);
@@ -129,6 +133,7 @@ const PALETTE_POST = /^\/api\/palettes\/([a-z0-9-]+)\/(update|delete)$/;
 const VIDEOWALL_POST = /^\/api\/videowall\/(test|send|clear|play|playlist|blackout)$/;
 const DECK = '/deck';
 const VIDEOWALL = '/videowall';
+const DECOR = '/decor';
 const PALETTES = '/palettes';
 const TABLET = '/tablet';
 const MOODS = '/moods';
@@ -444,12 +449,22 @@ export function createHttpServer(options: HttpOptions): Server {
 
     if (req.method === 'POST' && path === '/api/sequence') {
       const { change } = split(await readJson(req));
-      const { start, stop, next } = readObject(change, 'the sequence', ['start', 'stop', 'next']);
-      if ([start, stop, next].filter((given) => given !== undefined).length !== 1) {
-        throw new PatchError('say which sequence to start, or stop: true, or next: true');
+      const { start, stop, next, hold } = readObject(change, 'the sequence', [
+        'start',
+        'stop',
+        'next',
+        'hold',
+      ]);
+      if ([start, stop, next, hold].filter((given) => given !== undefined).length !== 1) {
+        throw new PatchError(
+          'say which sequence to start, or stop: true, or next: true, or hold: true or false',
+        );
       }
       if (start !== undefined) {
         rig.sequencer.start(start);
+      } else if (hold !== undefined) {
+        if (typeof hold !== 'boolean') throw new PatchError('"hold" can only be true or false');
+        rig.sequencer.hold(hold);
       } else if (next !== undefined) {
         if (next !== true) throw new PatchError('"next" can only be true');
         rig.sequencer.next();
@@ -577,6 +592,7 @@ export function createHttpServer(options: HttpOptions): Server {
       if (path === DECK && sendFile(req, res, '/deck.html')) return;
       if (path === PALETTES && sendFile(req, res, '/palettes.html')) return;
       if (path === VIDEOWALL && sendFile(req, res, '/videowall.html')) return;
+      if (path === DECOR && sendFile(req, res, '/decor.html')) return;
       if (path === TABLET && sendFile(req, res, '/tablet.html')) return;
       if (path === MOODS) {
         // The page for moods is the tablet page now; an old bookmark goes there.

@@ -81,6 +81,7 @@ describe('Sequencer', () => {
       steps: 0,
       barsLeft: 0,
       paused: false,
+      held: false,
       problem: null,
     });
     expect(playback.calls).toEqual([]);
@@ -98,6 +99,7 @@ describe('Sequencer', () => {
       steps: 2,
       barsLeft: 4,
       paused: false,
+      held: false,
       problem: null,
     });
     expect(states).toHaveLength(1);
@@ -228,6 +230,111 @@ describe('Sequencer', () => {
     sequencer.next();
     expect(playback.calls).toEqual([]);
     expect(states).toEqual([]);
+  });
+
+  describe('hold', () => {
+    const night = () =>
+      seq('a', [
+        step(4, { spider: 'drop' }),
+        step(4, { spider: 'calm' }),
+        step(4, { spider: 'low' }),
+      ]);
+
+    it('freezes the sequence where it is, and sets nothing while it holds', () => {
+      playback.sequences = [night()];
+      sequencer.start('a');
+      goTo(1);
+      goTo(2);
+      expect(sequencer.getState()).toMatchObject({ step: 0, barsLeft: 2, held: false });
+      playback.calls = [];
+      sequencer.hold(true);
+      expect(sequencer.getState()).toMatchObject({
+        running: 'a',
+        step: 0,
+        barsLeft: 2,
+        held: true,
+      });
+      expect(vi.getTimerCount()).toBe(0);
+      run(BAR * 20);
+      expect(playback.calls).toEqual([]);
+      expect(sequencer.getState()).toMatchObject({
+        running: 'a',
+        step: 0,
+        barsLeft: 2,
+        held: true,
+      });
+    });
+
+    it('goes on with the bars the step has left when it is let go, from the next bar line', () => {
+      playback.sequences = [night()];
+      sequencer.start('a');
+      goTo(1);
+      goTo(2);
+      sequencer.hold(true);
+      // Held for a while, half way into a bar when it is let go.
+      run(BAR * 10 + BAR / 2);
+      playback.calls = [];
+      sequencer.hold(false);
+      expect(sequencer.getState()).toMatchObject({ step: 0, barsLeft: 2, held: false });
+      // The bar that is going on is not counted: the next bar line is the first of the two.
+      goBefore(13);
+      expect(sequencer.getState().barsLeft).toBe(2);
+      goTo(13);
+      expect(sequencer.getState().barsLeft).toBe(1);
+      expect(playback.calls).toEqual([]);
+      goTo(14);
+      expect(playback.calls).toEqual(['spider:calm@sequence']);
+      expect(sequencer.getState()).toMatchObject({ step: 1, barsLeft: 4 });
+    });
+
+    it('tells of a hold and of a release, and a second hold of the same kind says nothing', () => {
+      playback.sequences = [night()];
+      sequencer.start('a');
+      states.length = 0;
+      sequencer.hold(true);
+      sequencer.hold(true);
+      sequencer.hold(false);
+      sequencer.hold(false);
+      expect(states.map((state) => state.held)).toEqual([true, false]);
+    });
+
+    it('refuses a hold when no sequence runs, and refuses a next while it holds', () => {
+      playback.sequences = [night()];
+      expect(() => sequencer.hold(true)).toThrow(PatchError);
+      sequencer.start('a');
+      sequencer.hold(true);
+      playback.calls = [];
+      expect(() => sequencer.next()).toThrow(/on hold/);
+      expect(playback.calls).toEqual([]);
+      sequencer.hold(false);
+      sequencer.next();
+      expect(playback.calls).toEqual(['spider:calm@sequence']);
+    });
+
+    it('lets go of the hold when a sequence is started or stopped', () => {
+      playback.sequences = [night(), seq('b', [step(2, { spider: 'other' })])];
+      sequencer.start('a');
+      sequencer.hold(true);
+      sequencer.start('b');
+      expect(sequencer.getState()).toMatchObject({ running: 'b', held: false });
+      goTo(1);
+      expect(sequencer.getState().barsLeft).toBe(1);
+      sequencer.hold(true);
+      sequencer.stop();
+      expect(sequencer.getState()).toMatchObject({ running: null, held: false });
+    });
+
+    it('stays held while the music stops and starts, and counts nothing when it comes back', () => {
+      playback.sequences = [night()];
+      sequencer.start('a');
+      goTo(1);
+      sequencer.hold(true);
+      stopMusic();
+      run(BAR * 3);
+      startMusic();
+      run(BAR * 5);
+      expect(sequencer.getState()).toMatchObject({ step: 0, barsLeft: 3, held: true });
+    });
   });
 
   it('is stopped by a stop and leaves the fixtures as they are', () => {

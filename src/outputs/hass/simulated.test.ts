@@ -61,6 +61,42 @@ describe('the simulated Home Assistant', () => {
     expect(heard.get('light.a')?.on).toBe(false);
   });
 
+  it('says what a strip of WLED is: RGB only, with the effects it offers, and sets its effect and speed', () => {
+    client.stop();
+    const strips = ['light.wled_buis1', 'number.wled_buis1_speed'];
+    const reports = new Map<string, EntityReport | undefined>();
+    const own = new HassClient({
+      url: 'ws://simulated/api/websocket',
+      token: 'x',
+      entities: strips,
+      now: () => Date.now(),
+      socketFactory: simulatedHass(strips),
+    });
+    own.watch('light.wled_buis1', (report) => reports.set('light.wled_buis1', report));
+    own.start();
+    vi.advanceTimersByTime(10);
+    expect(reports.get('light.wled_buis1')).toMatchObject({
+      available: true,
+      on: false,
+      colourModes: ['rgb'],
+      effect: 'Solid',
+    });
+    expect(reports.get('light.wled_buis1')?.effects).toContain('Flow');
+    own.setEntity('light.wled_buis1', {
+      domain: 'light',
+      service: 'turn_on',
+      data: { brightness: 200, rgb_color: [0, 255, 0], effect: 'Flow', transition: 0.4 },
+    });
+    own.setEntity('number.wled_buis1_speed', {
+      domain: 'number',
+      service: 'set_value',
+      data: { value: 140 },
+    });
+    vi.advanceTimersByTime(1000);
+    expect(reports.get('light.wled_buis1')).toMatchObject({ on: true, effect: 'Flow' });
+    own.stop();
+  });
+
   it('turns a switch on and off', () => {
     client.setEntity('switch.fog', { domain: 'switch', service: 'turn_on' });
     vi.advanceTimersByTime(1000);

@@ -59,6 +59,13 @@ palettes:
     mode: static
     change: step
     speed: 0.25
+  # For the pipes above all: 1 the water itself, 2 the deep dark water behind it, 3 the light on the crests.
+  water:
+    label: Water
+    colours: [ "#1f6bff", "#02104a", "#7fd3ff" ]
+    mode: static
+    change: step
+    speed: 0.25
   sunset-drift:
     label: Sunset drift
     colours: [ "#ff5a00", "#ff2a6d", "#8a00ff" ]
@@ -177,6 +184,12 @@ groups:
         fixtures:
           spider:
             motion: { id: slice, speed: 1 }
+      swipe-up:
+        label: Swipe up
+        type: motion
+        fixtures:
+          spider:
+            motion: { id: swipe, speed: 1 }
       floor-glow:
         label: Floor glow
         type: lights
@@ -312,6 +325,13 @@ groups:
           spider:
             levels: { dimmer: 0.65 }
             effect: { id: pairs, speed: 1 }
+      swiping:
+        label: Swipe
+        type: lights
+        fixtures:
+          spider:
+            levels: { dimmer: 0.8 }
+            effect: { id: swipe, speed: 1 }
       bursting:
         label: Burst
         type: lights
@@ -389,9 +409,9 @@ groups:
         zone: [ zone-floor, zone-over-heads ]
       techno:
         label: Techno
-        lights: [ crossfire, the-void, scanning, pairing, bursting, static-dark ]
+        lights: [ crossfire, the-void, scanning, pairing, bursting, static-dark, swiping ]
         colour: [ techno-pulse, techno-bar, void, bloodmoon ]
-        motion: [ guillotine, staring, scissors-fast, scissors-rest, adrift, over-heads ]
+        motion: [ guillotine, staring, scissors-fast, scissors-rest, adrift, over-heads, swipe-up ]
         zone: [ zone-floor, zone-over-heads ]
     looks:
       glow:
@@ -592,6 +612,12 @@ groups:
         lights: scanning
         colour: { palette: void }
         motion: scissors-fast
+      swipe:
+        label: Swipe
+        mood: techno
+        lights: swiping
+        colour: { palette: bloodmoon }
+        motion: swipe-up
   laser:
     label: Laser
     fixtures: [ laser ]
@@ -823,6 +849,10 @@ groups:
         mood: warm
         lights: low
         colour: { palette: void }
+  decor:
+    label: Decor
+    fixtures: [ decor ]
+    scenes: {}
   all:
     label: All
     fixtures: [ spider, laser ]

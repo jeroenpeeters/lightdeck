@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1760">
+<title>Design system: Console</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#08090B}
+.ds h2{margin:0 0 16px;font:700 26px/1 var(--f-ui)}
+.ds .sec{display:flex;flex-direction:column;gap:14px;padding:24px;background:#0F1114;border:1px solid #2A2F37;border-radius:6px}
+.tok{display:flex;flex-direction:column;gap:6px}
+.tok .chipc{height:56px;border-radius:4px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.tok b{font:600 14px/1 var(--f-ui)}
+.tok code{font:500 12px/1.2 var(--f-num);color:#B6BCC5}
+.tok span{font:500 13px/1.3 var(--f-ui);color:#B6BCC5}
+.cap2{font:500 13px/1.3 var(--f-ui);color:#8A919C;text-align:center}
+</style>
+</head>
+<body>
+<div class="app ds" style="width: 1760px; height: 2400px; padding: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-content: start">
+
+  <!-- COLOUR -->
+  <section class="sec" style="grid-column: 1 / 3">
+    <h2>Colour: grey chrome, five signals, one meaning each</h2>
+    <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 14px">
+      <div class="tok"><div class="chipc" style="background: #08090B"></div><b>ground</b><code>#08090B</code><span>App background</span></div>
+      <div class="tok"><div class="chipc" style="background: #0F1114"></div><b>s1</b><code>#0F1114</code><span>Panels, bars, tray</span></div>
+      <div class="tok"><div class="chipc" style="background: #171A1F"></div><b>s2</b><code>#171A1F</code><span>Key idle</span></div>
+      <div class="tok"><div class="chipc" style="background: #1E2228"></div><b>s3</b><code>#1E2228</code><span>Selected tab</span></div>
+      <div class="tok"><div class="chipc" style="background: #272C33"></div><b>s4</b><code>#272C33</code><span>Pressed, notices</span></div>
+      <div class="tok"><div class="chipc" style="background: #2A2F37"></div><b>line</b><code>#2A2F37</code><span>Borders</span></div>
+      <div class="tok"><div class="chipc" style="background: #3B414B"></div><b>line-2</b><code>#3B414B</code><span>Dashed, inputs</span></div>
+      <div class="tok"><div class="chipc" style="background: #353B44"></div><b>fill</b><code>#353B44</code><span>Fader level</span></div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 14px">
+      <div class="tok"><div class="chipc" style="background: #F1F3F5"></div><b>t1 · 17:1</b><code>#F1F3F5</code><span>Names, values. White = where you are, and Next</span></div>
+      <div class="tok"><div class="chipc" style="background: #B6BCC5"></div><b>t2 · 10:1</b><code>#B6BCC5</code><span>Sub lines, meta</span></div>
+      <div class="tok"><div class="chipc" style="background: #8A919C"></div><b>t3 · 5.5:1</b><code>#8A919C</code><span>Labels, disabled. Never fainter than this</span></div>
+      <div class="tok"><div class="chipc" style="background: #FFB000"></div><b>on</b><code>#FFB000</code><span>The lights do this now</span></div>
+      <div class="tok"><div class="chipc" style="background: repeating-linear-gradient(135deg, #FFB000 0 8px, #241B06 8px 14px)"></div><b>varied</b><code>on, striped</code><span>On, but changed by hand since</span></div>
+      <div class="tok"><div class="chipc" style="background: #FF4B4B"></div><b>danger</b><code>#FF4B4B</code><span>Blackout, laser, link lost. Nothing else</span></div>
+      <div class="tok"><div class="chipc" style="background: #5AA8FF"></div><b>edit</b><code>#5AA8FF</code><span>Program mode only: storing, renaming</span></div>
+      <div class="tok"><div class="chipc" style="background: #34D27B"></div><b>ok</b><code>#34D27B</code><span>Link lamps only</span></div>
+    </div>
+    <span class="t2" style="font-size: 14px">Tints: on-tint #241B06 behind amber, danger-tint #2A0D0E, edit-tint #0D1A29. Amber is never a large fill: an on key is a dark slab with an amber bar and outline, so nothing glares in the dark.</span>
+  </section>
+
+  <!-- TYPE -->
+  <section class="sec">
+    <h2>Type</h2>
+    <span class="t2" style="font-size: 14px">IBM Plex Sans Condensed (labels, keys) and IBM Plex Mono (numbers). Both are OFL and self-hosted as woff2. Condensed fits long look names on narrow keys, and mono numbers do not jitter while they count.</span>
+    <div class="col" style="gap: 10px">
+      <div class="row" style="gap: 20px"><code class="num t3" style="width: 120px; font-size: 12px">xxl 40 / 700</code><span style="font: 700 40px/1 var(--f-ui)">Blackout</span></div>
+      <div class="row" style="gap: 20px"><code class="num t3" style="width: 120px; font-size: 12px">bpm 32 mono</code><span class="num" style="font: 600 32px/1 var(--f-num)">126</span></div>
+      <div class="row" style="gap: 20px"><code class="num t3" style="width: 120px; font-size: 12px">xl 28 / 700</code><span style="font: 700 28px/1 var(--f-ui)">Page title</span></div>
+      <div class="row" style="gap: 20px"><code class="num t3" style="width: 120px; font-size: 12px">l 20 / 600</code><span style="font: 600 20px/1 var(--f-ui)">Look name · part name</span></div>
+      <div class="row" style="gap: 20px"><code class="num t3" style="width: 120px; font-size: 12px">m 16 / 600</code><span style="font: 600 16px/1 var(--f-ui)">Key label, tab, value</span></div>
+      <div class="row" style="gap: 20px"><code class="num t3" style="width: 120px; font-size: 12px">s 14 / 500</code><span style="font: 500 14px/1 var(--f-ui); color: #B6BCC5">Meta line: Pumping · Halloween · Scissors</span></div>
+      <div class="row" style="gap: 20px"><code class="num t3" style="width: 120px; font-size: 12px">xs 12 / 600 caps</code><span class="lbl">Section label · minimum size</span></div>
+    </div>
+  </section>
+
+  <!-- SPACE -->
+  <section class="sec">
+    <h2>Space and size</h2>
+    <div class="row" style="gap: 16px; align-items: flex-end">
+      <div class="col" style="gap: 6px; align-items: center"><div style="width: 4px; height: 4px; background: #B6BCC5"></div><span class="cap2">4</span></div>
+      <div class="col" style="gap: 6px; align-items: center"><div style="width: 8px; height: 8px; background: #B6BCC5"></div><span class="cap2">8</span></div>
+      <div class="col" style="gap: 6px; align-items: center"><div style="width: 12px; height: 12px; background: #B6BCC5"></div><span class="cap2">12</span></div>
+      <div class="col" style="gap: 6px; align-items: center"><div style="width: 16px; height: 16px; background: #B6BCC5"></div><span class="cap2">16</span></div>
+      <div class="col" style="gap: 6px; align-items: center"><div style="width: 24px; height: 24px; background: #B6BCC5"></div><span class="cap2">24</span></div>
+      <div class="col" style="gap: 6px; align-items: center"><div style="width: 32px; height: 32px; background: #B6BCC5"></div><span class="cap2">32</span></div>
+    </div>
+    <div class="row" style="gap: 12px; align-items: flex-end">
+      <div class="col" style="gap: 6px"><button class="key c" style="width: 120px; height: 48px">48</button><span class="cap2">k-s · settings</span></div>
+      <div class="col" style="gap: 6px"><button class="key c" style="width: 120px; height: 64px">64</button><span class="cap2">k-m · live keys</span></div>
+      <div class="col" style="gap: 6px"><button class="key c" style="width: 160px; height: 104px">104</button><span class="cap2">k-l · looks</span></div>
+    </div>
+    <span class="t2" style="font-size: 14px">Radius 4 on everything (6 on panels). Gaps 8 between keys, 12 around panels. A 1 px line separates surfaces, never a shadow, except under a notice.</span>
+  </section>
+
+  <!-- KEY STATES -->
+  <section class="sec" style="grid-column: 1 / 3">
+    <h2>Key states</h2>
+    <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 14px">
+      <div class="col"><button class="key" style="height: 64px">Kick<span class="sub">Idle</span></button><span class="cap2">idle</span></div>
+      <div class="col"><button class="key is-pressed" style="height: 64px">Kick<span class="sub">Finger down</span></button><span class="cap2">pressed: white ring, no move</span></div>
+      <div class="col"><button class="key is-on" style="height: 64px">Kick<span class="sub">Running</span></button><span class="cap2">on: amber bar + outline</span></div>
+      <div class="col"><button class="key is-varied" style="height: 64px"><div class="hd">Kick<span class="tag var">±</span></div><span class="sub">Changed by hand</span></button><span class="cap2">varied: striped bar, dashed</span></div>
+      <div class="col"><button class="key is-next" style="height: 64px"><div class="hd">Kick<span class="tag next">6</span></div><span class="sub">Comes next</span></button><span class="cap2">next: white dashed + bars</span></div>
+      <div class="col"><button class="key is-disabled" style="height: 64px">Kick<span class="sub">Not possible now</span></button><span class="cap2">disabled: dashed, still legible</span></div>
+      <div class="col"><button class="key is-warn" style="height: 64px"><div class="hd">Spider<span class="tag danger">!</span></div><span class="sub">No signal</span></button><span class="cap2">warning: red ring + tag</span></div>
+      <div class="col"><button class="key is-edit" style="height: 64px">Kick<span class="sub">Picked to store</span></button><span class="cap2">program: picked</span></div>
+    </div>
+  </section>
+
+  <!-- LOOK / SCENE / PALETTE -->
+  <section class="sec">
+    <h2>Look key, scene key, palette</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+      <button class="key look is-on"><div class="hd"><span class="nm"><span class="no">7</span>Pump</span><span class="tag on">On</span></div><div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div><span class="meta">Pumping · Halloween · Scissors</span></button>
+      <button class="key look"><div class="hd"><span class="nm">Bounce witch</span></div><div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div><span class="meta">Bouncing · Witch · Scissors</span></button>
+    </div>
+    <span class="t2" style="font-size: 14px">Look: name 20, number in mono, the palette strip at true colour, then effect · palette · movement. Tags sit top right and never push the name.</span>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+      <button class="key" style="height: 64px"><div class="hd">Kick<span class="lbl">Lights</span></div><div class="sws"><i class="sw" style="background: #F1F3F5"></i></div></button>
+      <button class="key is-on" style="height: 64px"><div class="hd">Witch<span class="lbl" style="color: #E8C77A">Colour</span></div><div class="sws"><i class="sw" style="background: #3CFF1E"></i><i class="sw" style="background: #8A00FF"></i></div></button>
+      <button class="key" style="height: 64px"><div class="hd">Stalking<span class="lbl">Motion</span></div><span class="sub">Tilt wave</span></button>
+      <button class="key" style="height: 64px"><div class="hd">Floor<span class="lbl">Zone</span></div><span class="sub">0–40</span></button>
+    </div>
+    <span class="t2" style="font-size: 14px">Scene key: one lane only, so the lane is named top right in small caps.</span>
+    <div class="col" style="gap: 8px">
+      <div class="row" style="gap: 12px"><span style="width: 120px; font-weight: 600">Witch</span><div class="strip" style="flex: 1; height: 18px"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div><span class="tag mute">Static</span></div>
+      <div class="row" style="gap: 12px"><span style="width: 120px; font-weight: 600">Void</span><div class="strip" style="flex: 1; height: 18px"><span style="background: #FF0000"></span><span class="dark"></span></div><span class="tag mute">Static</span></div>
+      <div class="row" style="gap: 12px"><span style="width: 120px; font-weight: 600">Mid shift</span><div class="strip" style="flex: 1; height: 18px"><span style="background: #FF6600"></span><span style="background: #8A00FF"></span><span style="background: #FF2D6F"></span><span style="background: #3CFF1E"></span></div><span class="tag mute">Step ÷4</span></div>
+      <div class="row" style="gap: 12px"><span style="width: 120px; font-weight: 600">Sunset drift</span><div style="flex: 1; height: 18px; border-radius: 2px; background: linear-gradient(90deg, #FF6600, #FF2D6F, #8A00FF)"></div><span class="tag mute">Fade ÷4</span></div>
+    </div>
+    <span class="t2" style="font-size: 14px">Strip: stepped palettes as blocks, fading ones as a gradient. A hatched block is a dark slot (off), never a black square.</span>
+  </section>
+
+  <!-- FADERS, SPEED, TABS -->
+  <section class="sec">
+    <h2>Faders, speed, tabs</h2>
+    <div class="fader"><div class="fill" style="width: 85%"></div><span class="fl">Master</span><span class="fv">85</span><div class="hand" style="left: 85%"></div></div>
+    <span class="t2" style="font-size: 14px">Horizontal fader: a grey level, not amber, so 100 % is not a bright bar. Drag anywhere on the track, and the handle jumps only after you move.</span>
+    <div class="row" style="gap: 16px; align-items: stretch">
+      <div class="col" style="gap: 6px; align-items: center"><div class="vf" style="height: 200px"><div class="fill" style="height: 70%"></div><div class="hand" style="bottom: 70%"></div></div><span class="cap2">Room 70</span></div>
+      <div class="col" style="gap: 6px; align-items: center"><div class="vf" style="height: 200px"><div class="fill" style="height: 40%"></div><div class="hand" style="bottom: 40%"></div></div><span class="cap2">Rail 2 40</span></div>
+      <div class="col" style="flex: 1; gap: 12px">
+        <div class="col" style="gap: 6px"><span class="lbl">Range: swing limit 16–80</span><div class="range"><div class="in" style="left: 16%; width: 64%"></div><div class="h" style="left: 16%"></div><div class="h" style="left: 80%"></div></div></div>
+        <div class="col" style="gap: 6px"><span class="lbl">Speed</span><div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div></div>
+        <div class="col" style="gap: 6px"><span class="lbl">Tabs: white = where you are</span><div class="tabs"><button class="tab">Begin</button><button class="tab is-sel">Midden</button><button class="tab">Techno</button></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PARTS, BEATS, LAMPS -->
+  <section class="sec">
+    <h2>Part strip, beat lamps, link lamps</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; height: 100px">
+      <div class="part is-on"><div class="row" style="justify-content: space-between"><span class="nm">Midden</span><span class="num" style="font-size: 14px; color: #E8C77A">1/10 · 19/24</span></div><span class="info">Now Creeping in → <b style="color: #F1F3F5">Heartbeat in 6</b></span><div class="bars"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i></div></div>
+      <div class="part"><span class="nm">Techno</span><span class="info">11 steps · 8–16 bars</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    </div>
+    <span class="t2" style="font-size: 14px">A segment per bar of the step: grey = done, amber = this bar. On Hold the bar stripes and the count stops.</span>
+    <div class="row" style="gap: 32px">
+      <div class="col" style="gap: 6px"><div class="beats"><i class="one lit"></i><i></i><i></i><i></i></div><span class="cap2">beat 1</span></div>
+      <div class="col" style="gap: 6px"><div class="beats"><i class="one"></i><i></i><i class="lit"></i><i></i></div><span class="cap2">beat 3</span></div>
+      <div class="col" style="gap: 8px">
+        <span class="lamp-row row" style="gap: 8px; font-size: 15px"><i style="width: 10px; height: 10px; border-radius: 50%; background: #34D27B"></i>Bridge connected</span>
+        <span class="row" style="gap: 8px; font-size: 15px"><i style="width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 2px #8A919C"></i>Home Assistant simulated</span>
+        <span class="row" style="gap: 8px; font-size: 15px; color: #FF4B4B"><i style="width: 10px; height: 10px; border-radius: 50%; background: #FF4B4B"></i>LR512 lost</span>
+      </div>
+    </div>
+    <span class="t2" style="font-size: 14px">Beat one is taller. Simulated is a hollow ring, no longer amber, so amber keeps one meaning.</span>
+  </section>
+
+  <!-- TRAY + NOTICE -->
+  <section class="sec">
+    <h2>Tray chip, notice</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+      <button class="chip">Halloween<div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div></button>
+      <button class="chip is-look">Witch<div class="strip"><span style="background: #3CFF1E"></span><span style="background: #8A00FF"></span></div></button>
+      <button class="chip is-on">Blood moon<div class="strip"><span style="background: #FF0000"></span><span style="background: #7A00FF"></span></div></button>
+    </div>
+    <span class="t2" style="font-size: 14px">Chip: 48 high. Dashed = what the look itself uses. Amber = on now. Pressing a chip other than the look's own makes the look Varied. All puts the look back as stored.</span>
+    <div style="position: relative; height: 72px; background: repeating-linear-gradient(90deg, #171A1F 0 120px, #0F1114 120px 128px); border-radius: 4px">
+      <div class="notice" style="left: 16px; right: 16px; top: 8px"><i style="width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 2px #8A919C"></i><span style="flex: 1">Home Assistant is simulated: no real lamp is touched.</span><button class="x" aria-label="Close">✕</button></div>
+    </div>
+    <span class="t2" style="font-size: 14px">Notices lie over the keys at the bottom of the middle area, never push them, and fade after 6 s. Only one at a time.</span>
+  </section>
+
+  <!-- BLACKOUT + LASER -->
+  <section class="sec">
+    <h2>Blackout and laser</h2>
+    <div class="row" style="gap: 12px">
+      <button class="bo" style="width: 168px">Blackout</button>
+      <button class="bo is-on" style="width: 168px">Blackout</button>
+      <span class="t2" style="font-size: 14px; flex: 1">Outlined in red when idle. When active it is filled red and a 3 px red frame runs round the whole screen.</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+      <div class="col" style="gap: 6px">
+        <button class="armkey" style="height: 88px; background: transparent; border-color: #5a1d1f; color: #FF4B4B">Hold to arm<span style="font: 500 13px var(--f-ui); letter-spacing: 0; text-transform: none; color: #B6BCC5">Laser is closed</span></button>
+        <span class="cap2">safe</span>
+      </div>
+      <div class="col" style="gap: 6px">
+        <button class="armkey" style="height: 88px; background: linear-gradient(90deg, #4a1416 60%, #2A0D0E 60%)">Arming…<span style="font: 500 13px var(--f-ui); letter-spacing: 0; text-transform: none; color: #F1F3F5">keep holding</span></button>
+        <span class="cap2">arming: 1 s fill</span>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="hazard" style="padding: 4px; border-radius: 6px"><button class="armkey" style="width: 100%; height: 80px; background: #2A0D0E">Armed<span class="num" style="font: 600 14px var(--f-num); letter-spacing: 0; color: #F1F3F5">09:12 left</span></button></div>
+        <span class="cap2">armed: hazard frame</span>
+      </div>
+    </div>
+    <span class="t2" style="font-size: 14px">Laser looks are disabled until it is armed. No sequence, effect or look of another group can open it. Blackout closes and disarms it.</span>
+  </section>
+</div>
+</body>
+</html>

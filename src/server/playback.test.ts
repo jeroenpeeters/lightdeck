@@ -391,6 +391,7 @@ describe('Playback', () => {
       effect: { id: null, speed: 1 },
       motion: { id: 'pulse', speed: 1 },
       colours: [],
+      blackout: false,
     });
   });
 
@@ -1519,9 +1520,9 @@ describe('Playback', () => {
     start();
     change('spider', { levels: { red1: 1, strobe: 1 }, effect: { id: 'kick' } });
     rig.playback.recall('spider', 'hand');
-    // Its colours are another type and stay.
+    // Its colours are another type and stay, and so does the strobe, which is held by hand.
     expect(state('spider')).toMatchObject({
-      levels: { dimmer: 0.5, red1: 1, strobe: 0 },
+      levels: { dimmer: 0.5, red1: 1, strobe: 1 },
       effect: { id: null },
     });
   });

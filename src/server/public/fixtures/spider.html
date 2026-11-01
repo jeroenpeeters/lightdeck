@@ -3,136 +3,198 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f1114" />
+    <meta name="theme-color" content="#08090b" />
     <title>Spider</title>
-    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="preload" href="/fonts/plex-condensed-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/plex-condensed-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/plex.css" />
+    <link rel="stylesheet" href="/lightdeck.css" />
+    <link rel="stylesheet" href="/chrome.css" />
     <link rel="stylesheet" href="/fixtures/spider.css" />
   </head>
   <body>
-    <!-- The shell puts the status bar, the tempo and the notice above this. -->
-    <main class="console" id="console" data-view="effects">
-      <header class="fixture-head">
-        <h1 id="fixture-name">Spider</h1>
-        <p class="where" id="where"></p>
-        <p class="running" id="running" data-on="false"></p>
+    <!-- The shell puts the top bar (a Live key, the tempo, the masters, Blackout) first in .app and the notice in #notices. -->
+    <div class="app page" id="app" data-view="effects">
+      <header class="page-head">
+        <div class="ph-title">
+          <h1 id="fixture-name">Spider</h1>
+          <span class="meta" id="where"></span>
+        </div>
+        <div class="ph-actions">
+          <span class="lbl">Now</span>
+          <span class="now-tags" id="now"></span>
+        </div>
       </header>
 
-      <section class="panel output" aria-labelledby="output-title">
-        <h2 id="output-title">Output</h2>
-        <div class="strip" id="strip"></div>
-      </section>
-
-      <section class="panel master" aria-labelledby="master-title">
-        <h2 id="master-title">Brightness and strobe</h2>
-        <div class="sliders" id="master-sliders"></div>
-      </section>
-
-      <div class="panel work">
-        <div class="views" role="tablist" aria-label="Controls">
-          <button type="button" role="tab" class="view-tab" id="tab-effects" aria-controls="view-effects" aria-selected="true">Effects</button>
-          <button type="button" role="tab" class="view-tab" id="tab-colour" aria-controls="view-colour" aria-selected="false">Colour</button>
-          <button type="button" role="tab" class="view-tab" id="tab-movement" aria-controls="view-movement" aria-selected="false">Movement</button>
-          <button type="button" role="tab" class="view-tab" id="tab-fixture" aria-controls="view-fixture" aria-selected="false">Fixture</button>
-        </div>
-
-        <div class="view view-effects" role="tabpanel" id="view-effects" aria-labelledby="tab-effects">
-          <div class="effects-choice">
-            <fieldset class="effect-list" id="effect-list">
-              <legend class="visually-hidden">Choose an effect</legend>
-            </fieldset>
-            <button type="button" class="key stop" id="effect-stop">Stop the effect</button>
-            <p class="hint" id="effect-hint"></p>
+      <div class="setup">
+        <nav class="setup-nav" aria-label="Views">
+          <div class="snav" role="tablist">
+            <button type="button" role="tab" id="tab-effects" aria-controls="view-effects" aria-selected="true">
+              Effects<span class="tag on" id="nav-effect" hidden></span>
+            </button>
+            <button type="button" role="tab" id="tab-colour" aria-controls="view-colour" aria-selected="false">Colour</button>
+            <button type="button" role="tab" id="tab-movement" aria-controls="view-movement" aria-selected="false">
+              Movement<span class="tag on" id="nav-motion" hidden></span>
+            </button>
+            <button type="button" role="tab" id="tab-zone" aria-controls="view-zone" aria-selected="false">
+              Zone<span class="tag on" id="nav-zone" hidden>On</span>
+            </button>
+            <button type="button" role="tab" id="tab-fixture" aria-controls="view-fixture" aria-selected="false">Fixture</button>
           </div>
+        </nav>
 
-          <div class="effects-settings">
-            <fieldset class="choice" id="effect-speed">
-              <legend>Speed of this effect</legend>
-            </fieldset>
-            <p class="hint" id="speed-hint"></p>
-            <fieldset class="choice palette-list" id="palette-list">
-              <legend>Palette</legend>
-            </fieldset>
-            <fieldset class="choice" id="palette-speed">
-              <legend>Palette pace</legend>
-            </fieldset>
-            <p class="hint" id="pace-hint"></p>
-            <p class="hint" id="palette-hint"></p>
+        <main class="setup-main">
+          <!-- Effects: the light effect, its speed, the palette and its pace. -->
+          <section class="view view-effects" id="view-effects" aria-label="Effects">
+            <div class="effects-choice col">
+              <div class="sh">
+                <h3>Effect</h3>
+                <span class="t3 legend" aria-hidden="true">● colours it uses · ○ optional</span>
+              </div>
+              <div class="effect-grid" id="effect-list">
+                <button type="button" class="key c effect-stop" id="effect-stop">Stop the effect</button>
+              </div>
+              <div class="row speed-row">
+                <span class="lbl">Speed</span>
+                <fieldset id="effect-speed" aria-label="Speed of this effect"></fieldset>
+              </div>
+              <p class="note" id="speed-hint"></p>
+              <p class="desc" id="effect-hint"></p>
+            </div>
+
+            <div class="effects-settings col">
+              <div class="sh">
+                <h3>Palette</h3>
+                <span class="t3 legend">1 hits · 2 backdrop · 3 accent</span>
+              </div>
+              <div class="palette-grid" id="palette-list"></div>
+              <div class="row speed-row">
+                <span class="lbl">Pace</span>
+                <fieldset id="palette-speed" aria-label="Palette pace"></fieldset>
+              </div>
+              <p class="note" id="pace-hint"></p>
+              <p class="desc" id="palette-hint"></p>
+            </div>
+          </section>
+
+          <!-- Colour: the colour of each lens by hand. A tool that no scene stores. -->
+          <section class="view view-colour col" id="view-colour" aria-label="Colour" hidden>
+            <div class="sh"><h3 id="mixer-title">Colour</h3></div>
+            <p class="desc note-2" id="mixer-hint"></p>
+            <div class="col">
+              <span class="lbl">Lenses</span>
+              <div class="pick-grid" id="picks"></div>
+            </div>
+            <div class="col mixer" id="colour-sliders"></div>
+            <div class="col">
+              <span class="lbl">Ready-made colours</span>
+              <div class="swatch-grid" id="swatches"></div>
+            </div>
+          </section>
+
+          <!-- Movement: the motion effect, the swing limit, the tilts by hand. -->
+          <section class="view view-movement col" id="view-movement" aria-label="Movement" hidden>
+            <div class="sh"><h3>Movement</h3></div>
+            <div class="motion-grid" id="motion-list"></div>
+            <div class="row speed-row">
+              <span class="lbl">Speed</span>
+              <fieldset id="motion-speed" aria-label="Speed of this movement"></fieldset>
+              <span class="t2 speed-note" id="motion-speed-hint"></span>
+            </div>
+            <p class="desc" id="motion-effect-hint"></p>
+
+            <div class="panel reach col">
+              <div class="sh">
+                <h3>Swing limit per bar</h3>
+                <div class="legend-row" aria-hidden="true">
+                  <span><i class="sw-limit"></i>swing limit</span>
+                  <span><i class="sw-zone"></i>zone</span>
+                  <span><i class="sw-now"></i>tilt now</span>
+                </div>
+              </div>
+              <div class="col" id="swing-bars"></div>
+              <div class="row reach-keys">
+                <button type="button" class="key c" id="swing-reset">Full swing</button>
+                <button type="button" class="key c" id="to-zone">Edit zone</button>
+              </div>
+              <p class="hint wide">
+                No bar tilts beyond its limit, whatever sets it: the sliders below, a scene or a
+                movement. A tilt set by hand is cut off there; a movement is fitted into the limits and
+                swings all the way from one to the other. The limit is kept in the show file.
+              </p>
+            </div>
+
+            <div class="tilt-row" id="motion-sliders">
+              <button type="button" class="key c" id="link-bars" aria-pressed="true">Bars together</button>
+            </div>
+          </section>
+
+          <!-- Zone: how far the movement reaches inside the swing limit. -->
+          <section class="view view-zone col" id="view-zone" aria-label="Zone" hidden>
+            <div class="sh"><h3>Zone</h3></div>
+            <p class="desc">
+              How far the movement reaches. The movement is laid inside this window: its 0 is where a
+              bar starts and its 100 where it stops, so a narrow window is a small swing. It takes the
+              place of the swing limit while it is on. A tilt set by hand is not held to it. Store it
+              on the deck, in Program, as a Zone scene to press it later.
+            </p>
+            <div class="panel reach col">
+              <div class="sh">
+                <h3>Reach per bar</h3>
+                <div class="legend-row" aria-hidden="true">
+                  <span><i class="sw-limit"></i>swing limit</span>
+                  <span><i class="sw-zone"></i>zone</span>
+                  <span><i class="sw-now"></i>tilt now</span>
+                </div>
+              </div>
+              <div class="col" id="zone-bars"></div>
+              <div class="row reach-keys">
+                <button type="button" class="key c" id="zone-reset">No zone</button>
+                <button type="button" class="key c" id="to-swing">Edit swing limit</button>
+              </div>
+              <p class="hint wide" id="zone-hint"></p>
+            </div>
+          </section>
+
+          <!-- Fixture: the spider's own programs, the restart and the bytes that are sent. -->
+          <section class="view view-fixture col" id="view-fixture" aria-label="Fixture" hidden>
+            <div class="sh"><h3>Built-in programs</h3></div>
+            <p class="hint">
+              The spider can run its own programs. Keep both program sliders at 0 to control the
+              lights yourself.
+            </p>
+            <div class="col programs" id="program-sliders"></div>
+
+            <div class="col reset">
+              <button type="button" class="key c reset-button" id="reset">Hold to restart the spider</button>
+              <p class="hint" id="reset-hint">Hold the button for one second. The spider restarts.</p>
+            </div>
+
+            <div class="sh"><h3>Channels being sent</h3></div>
+            <ol class="readout" id="readout"></ol>
+          </section>
+        </main>
+
+        <aside class="setup-side" aria-label="Output">
+          <div class="sh side-head"><h3>Output</h3><span class="t2 legend">live</span></div>
+          <div class="monitor col" id="strip"></div>
+          <div class="panel side-view">
+            <span class="lbl">Side view</span>
+            <svg id="side-view" viewBox="0 0 200 124" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+              <rect class="sv-housing" x="40" y="14" width="120" height="8" rx="2"></rect>
+              <text class="sv-text" x="6" y="118">back</text>
+              <text class="sv-text" x="194" y="118" text-anchor="end">front</text>
+            </svg>
           </div>
-        </div>
-
-        <div class="view view-colour" role="tabpanel" id="view-colour" aria-labelledby="tab-colour" hidden>
-          <h3 id="mixer-title">Colour</h3>
-          <p class="hint" id="mixer-hint"></p>
-          <fieldset class="choice" id="picks">
-            <legend>Lenses</legend>
-          </fieldset>
-          <div class="sliders" id="colour-sliders"></div>
-          <fieldset class="choice" id="swatches">
-            <legend>Ready-made colours</legend>
-          </fieldset>
-        </div>
-
-        <div class="view view-movement" role="tabpanel" id="view-movement" aria-labelledby="tab-movement" hidden>
-          <fieldset class="effect-list" id="motion-list">
-            <legend class="visually-hidden">Choose a movement</legend>
-          </fieldset>
-          <fieldset class="choice" id="motion-speed">
-            <legend>Speed of this movement</legend>
-          </fieldset>
-          <p class="hint" id="motion-speed-hint"></p>
-          <p class="hint" id="motion-effect-hint"></p>
-          <p class="hint" id="motion-hint"></p>
-          <div class="sliders" id="motion-sliders"></div>
-          <label class="check">
-            <input type="checkbox" id="link-bars" checked />
-            <span>Move both bars together</span>
-          </label>
-
-          <fieldset class="swing" id="swing">
-            <legend>Swing limit</legend>
-            <p class="hint">
-              No bar tilts beyond its limit, whatever sets it: the sliders above, a scene or a
-              movement. A tilt set by hand is cut off there; a movement is fitted into the limits and
-              swings all the way from one to the other. It is kept in the show file.
-            </p>
-            <div class="sliders" id="swing-sliders"></div>
-            <p class="hint" id="swing-hint"></p>
-            <button type="button" class="key" id="swing-reset">Full swing</button>
-          </fieldset>
-
-          <fieldset class="swing" id="zone">
-            <legend>Zone</legend>
-            <p class="hint">
-              How far the movement reaches. The movement is laid inside this window: its 0 is where
-              a bar starts and its 100 where it stops, so a narrow window is a small swing. It
-              takes the place of the swing limit while it is on. A tilt set by hand is not held to
-              it. Store it on the deck, in Program, as a Zone scene to press it later.
-            </p>
-            <div class="sliders" id="zone-sliders"></div>
-            <p class="hint" id="zone-hint"></p>
-            <button type="button" class="key" id="zone-reset">No zone</button>
-          </fieldset>
-        </div>
-
-        <div class="view view-fixture" role="tabpanel" id="view-fixture" aria-labelledby="tab-fixture" hidden>
-          <h3>Built-in programs</h3>
-          <p class="hint">
-            The spider can run its own programs. Keep both program sliders at 0 to control the
-            lights yourself.
+          <div class="col faders" id="master-sliders"></div>
+          <p class="hint side-hint">
+            This page changes the Spider lanes directly. A look that is on turns Varied.
           </p>
-          <div class="sliders" id="program-sliders"></div>
-
-          <div class="reset">
-            <button type="button" class="key reset-button" id="reset">Hold to restart the spider</button>
-            <p class="hint" id="reset-hint">Hold the button for one second. The spider restarts.</p>
-          </div>
-
-          <h3>Channels being sent</h3>
-          <ol class="readout" id="readout"></ol>
-        </div>
+        </aside>
       </div>
-    </main>
+
+      <div class="notices-stack" id="notices"></div>
+    </div>
 
     <script type="module" src="/fixtures/spider.js"></script>
   </body>

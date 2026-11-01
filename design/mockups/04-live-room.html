@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280">
+<title>Live · Room</title>
+<link rel="stylesheet" href="../tokens/lightdeck.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#08090B} .lampdot{width:14px;height:14px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}</style>
+</head>
+<body>
+<div class="app" style="width: 1280px; height: 800px; display: grid; grid-template-rows: 64px 1fr 128px">
+
+  <div class="top">
+    <button class="menu" aria-label="Menu: links OK, Home Assistant simulated">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
+      <span class="dots"><i></i><i></i><i class="sim"></i></span>
+    </button>
+    <div class="tempo">
+      <div class="col" style="gap: 2px"><span class="bpm num">126</span><span class="src">By hand</span></div>
+      <div class="beats"><i class="one"></i><i class="lit"></i><i></i><i></i></div>
+    </div>
+    <button class="key c" style="width: 96px; height: 48px">Tap</button>
+    <div class="fader" style="flex: 1; max-width: 340px"><div class="fill" style="width: 100%"></div><span class="fl">Master</span><span class="fv">100</span><div class="hand" style="left: calc(100% - 8px)"></div></div>
+    <div class="spd"><button>÷4</button><button>÷2</button><button class="is-on">×1</button><button>×2</button><button>×4</button></div>
+    <div style="flex: 1"></div>
+    <button class="bo" style="width: 168px">Blackout</button>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 128px 1fr 344px; min-height: 0">
+    <nav style="display: flex; flex-direction: column; gap: 8px; padding: 12px 0 12px 12px">
+      <button class="gtab" style="height: 112px">
+        <span class="nm">Spider</span>
+        <div class="lenses"><i style="background: #FF0000"></i><i style="background: #7A00FF"></i><i style="background: #3a0000"></i><i style="background: #FF0000"></i><i style="background: #7A00FF"></i><i style="background: #FF0000"></i><i style="background: #24004a"></i><i style="background: #7A00FF"></i></div>
+        <span class="st amber">Creeping in ±</span>
+      </button>
+      <button class="gtab laser" style="height: 112px"><span class="nm">Laser</span><div class="hazard-dim" style="height: 12px; border-radius: 2px"></div><span class="st">Safe · closed</span></button>
+      <button class="gtab is-sel" style="height: 124px"><span class="nm">Room</span><div class="rails"><i style="height: 60%; background: #CC5A2C"></i><i style="height: 60%; background: #CC5A2C"></i><i style="height: 25%; background: #FF0000"></i></div><span class="st amber">Welcome · 100</span></button>
+      <button class="gtab" style="height: 112px"><span class="nm">Video wall</span><div style="height: 12px; border-radius: 2px; background: linear-gradient(90deg, #12324a, #3a1660); box-shadow: inset 0 0 0 1px #3B414B"></div><span class="st">Liquid Glass 0:07</span></button>
+    </nav>
+
+    <main style="display: flex; flex-direction: column; gap: 12px; padding: 12px; min-width: 0">
+      <div class="row" style="justify-content: space-between">
+        <div class="tabs"><button class="tab is-sel">Warm and low<span class="ct">4</span></button><button class="tab">Colourful</button><button class="tab">All</button></div>
+        <span class="lbl">Room · looks</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+        <button class="key look is-on"><div class="hd"><span class="nm"><span class="no">1</span>Welcome</span><span class="tag on">On</span></div><div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div><span class="meta">Steady · Halloween</span></button>
+        <button class="key look"><div class="hd"><span class="nm"><span class="no">2</span>Pumpkin patch</span></div><div class="strip"><span style="background: #FF6600"></span><span style="background: #7A00FF"></span></div><span class="meta">Swap · Pumpkin</span></button>
+        <button class="key look"><div class="hd"><span class="nm"><span class="no">8</span>Embers</span></div><div class="strip"><span style="background: #FF4500"></span><span class="dark"></span></div><span class="meta">Low · Ember</span></button>
+        <button class="key look"><div class="hd"><span class="nm"><span class="no">9</span>The void</span></div><div class="strip"><span style="background: #FF0000"></span><span class="dark"></span></div><span class="meta">Low · Void</span></button>
+      </div>
+
+      <!-- fader bank: dimmer + one strip per rail, with the live lamp colours -->
+      <div class="panel" style="flex: 1; display: grid; grid-template-columns: 1.1fr 1fr 1fr 1fr; gap: 1px; background: #2A2F37; overflow: hidden">
+        <div class="col" style="gap: 10px; padding: 12px; background: #0F1114; align-items: center">
+          <div class="row" style="justify-content: space-between; align-self: stretch"><span style="font: 600 16px var(--f-ui)">Room dimmer</span><span class="num" style="font: 600 20px var(--f-num)">100</span></div>
+          <span class="t3" style="font-size: 13px; align-self: stretch">On top of the master</span>
+          <div class="vf" style="flex: 1; width: 96px"><div class="fill" style="height: 100%"></div><div class="hand" style="bottom: calc(100% - 8px)"></div></div>
+        </div>
+        <div class="col" style="gap: 10px; padding: 12px; background: #0F1114; align-items: center">
+          <div class="row" style="justify-content: space-between; align-self: stretch"><span style="font: 600 16px var(--f-ui)">Rail 1</span><span class="num" style="font: 600 20px var(--f-num)">60</span></div>
+          <div class="row" style="gap: 6px; align-self: stretch"><i class="lampdot" style="background: #CC5A2C"></i><i class="lampdot" style="background: #FF0000"></i><i class="lampdot" style="background: #CC5A2C"></i><i class="lampdot" style="background: #FF0000"></i><i class="lampdot" style="background: #CC5A2C"></i></div>
+          <div class="row" style="gap: 8px; flex: 1; align-self: stretch">
+            <div class="vf" style="flex: 1"><div class="fill" style="height: 60%"></div><div class="hand" style="bottom: 60%"></div></div>
+            <button class="key c is-on" style="width: 64px; align-self: flex-start; height: 64px">On</button>
+          </div>
+        </div>
+        <div class="col" style="gap: 10px; padding: 12px; background: #0F1114; align-items: center">
+          <div class="row" style="justify-content: space-between; align-self: stretch"><span style="font: 600 16px var(--f-ui)">Rail 2</span><span class="num" style="font: 600 20px var(--f-num)">60</span></div>
+          <div class="row" style="gap: 6px; align-self: stretch"><i class="lampdot" style="background: #FF0000"></i><i class="lampdot" style="background: #CC5A2C"></i><i class="lampdot" style="background: #FF0000"></i><i class="lampdot" style="background: #CC5A2C"></i><i class="lampdot" style="background: #FF0000"></i></div>
+          <div class="row" style="gap: 8px; flex: 1; align-self: stretch">
+            <div class="vf" style="flex: 1"><div class="fill" style="height: 60%"></div><div class="hand" style="bottom: 60%"></div></div>
+            <button class="key c is-on" style="width: 64px; align-self: flex-start; height: 64px">On</button>
+          </div>
+        </div>
+        <div class="col" style="gap: 10px; padding: 12px; background: #0F1114; align-items: center">
+          <div class="row" style="justify-content: space-between; align-self: stretch"><span style="font: 600 16px var(--f-ui)">Rail 3</span><span class="num" style="font: 600 20px var(--f-num)">25</span></div>
+          <div class="row" style="gap: 6px; align-self: stretch"><i class="lampdot" style="background: #FF0000"></i><i class="lampdot" style="background: #FF0000"></i><i class="lampdot" style="background: #FF0000"></i><i class="lampdot" style="background: #FF0000"></i></div>
+          <div class="row" style="gap: 8px; flex: 1; align-self: stretch">
+            <div class="vf" style="flex: 1"><div class="fill" style="height: 25%"></div><div class="hand" style="bottom: 25%"></div></div>
+            <button class="key c is-on" style="width: 64px; align-self: flex-start; height: 64px">On</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <aside style="display: flex; flex-direction: column; gap: 14px; padding: 12px 12px 12px 14px; background: #0F1114; border-left: 1px solid #2A2F37">
+      <div class="sh">
+        <div class="col" style="gap: 2px"><h3>Vary</h3><span style="font: 600 16px/1.2 var(--f-ui)">with 1 Welcome</span></div>
+        <div class="row" style="gap: 6px"><button class="key c" style="width: 64px">All</button><button class="key c" style="width: 64px">Off</button></div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="sh"><h3>Colour</h3></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+          <button class="chip is-on is-look">Halloween<div class="strip"><span style="background: #CC5A2C"></span><span style="background: #FF0000"></span></div></button>
+          <button class="chip">Pumpkin<div class="strip"><span style="background: #FF6600"></span><span style="background: #7A00FF"></span></div></button>
+          <button class="chip">Ember<div class="strip"><span style="background: #FF4500"></span><span class="dark"></span></div></button>
+          <button class="chip">Void<div class="strip"><span style="background: #FF0000"></span><span class="dark"></span></div></button>
+          <button class="chip">Blood moon<div class="strip"><span style="background: #FF0000"></span><span style="background: #7A00FF"></span></div></button>
+          <button class="chip">Dusk<div class="strip"><span style="background: #FF6600"></span><span style="background: #9B00FF"></span><span style="background: #FF2D6F"></span></div></button>
+        </div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="sh"><h3>Scenery</h3></div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+          <button class="chip is-on is-look">Still</button><button class="chip">Rotate</button>
+          <button class="chip">Shuffle</button><button class="chip">Zones</button>
+        </div>
+      </div>
+      <div class="col" style="gap: 6px">
+        <div class="sh"><h3>Fade</h3><span class="num t2" style="font-size: 14px">2 s</span></div>
+        <div class="fader"><div class="fill" style="width: 20%"></div><span class="fv" style="right: auto; left: 30%">2 s</span><div class="hand" style="left: 20%"></div></div>
+      </div>
+    </aside>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) 120px 120px; gap: 8px; padding: 12px; background: #0F1114; border-top: 1px solid #2A2F37">
+    <button class="part"><span class="nm">The night</span><span class="info">10 steps · 32 bars each</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="part"><span class="nm">Begin</span><span class="info">11 steps · 32 bars each</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="part is-on">
+      <div class="row" style="justify-content: space-between"><span class="nm">Midden</span><span class="num" style="font-size: 14px; color: #E8C77A">1/10 · bar 19/24</span></div>
+      <span class="info">Now Creeping in → <b style="color: #F1F3F5">Heartbeat in 6</b></span>
+      <div class="bars"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i><i></i><i></i></div>
+    </button>
+    <button class="part"><span class="nm">Techno</span><span class="info">11 steps · 8–16 bars</span><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></button>
+    <button class="key c">Next</button>
+    <button class="key c">Hold</button>
+  </div>
+
+  <div class="notice" style="left: 152px; bottom: 148px; width: 600px">
+    <i style="width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 2px #8A919C"></i>
+    <span style="flex: 1">Home Assistant is simulated: no real lamp is touched.</span>
+    <button class="x" aria-label="Close">✕</button>
+  </div>
+</div>
+</body>
+</html>

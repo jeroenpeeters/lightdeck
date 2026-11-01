@@ -26,6 +26,8 @@ import { OscReceiver } from '../inputs/rkbx/receiver.js';
 import type { HassOutput, HassStatus } from '../outputs/hass/types.js';
 import type { BridgeStatus } from '../outputs/lr512/bridgeClient.js';
 import { Patch, type UniverseOutput } from '../outputs/patch.js';
+import type { PipeLookDefinition, StripDefinition, SwitchDefinition } from './decorController.js';
+import { type DecorSetup, readSetupFile, writeSetupFile } from './decorSetup.js';
 import { DEFAULT_MAX_FPS, Engine, isAnimated, readMaxFps } from './engine.js';
 import {
   type DmxFixtureController,
@@ -58,10 +60,16 @@ export interface DmxFixtureDefinition extends FixtureNaming {
   address: number;
 }
 
-/** A fixture that Home Assistant drives: the lamps and switches of the room. */
+/**
+ * A fixture that Home Assistant drives: the lamps and switches of the room (`lamps`, `zones`), or the
+ * switches and strips of the decor (`switches`, `strips`). Which of them a fixture needs is up to its kind.
+ */
 export interface HassFixtureDefinition extends FixtureNaming {
-  lamps: LampDefinition[];
+  lamps?: LampDefinition[];
   zones?: ZoneDefinition[];
+  switches?: SwitchDefinition[];
+  strips?: StripDefinition[];
+  looks?: PipeLookDefinition[];
 }
 
 export type FixtureDefinition = DmxFixtureDefinition | HassFixtureDefinition;
@@ -113,6 +121,8 @@ export interface RigOptions {
   rkbxPort?: number;
   /** The file with the settings of the video wall. Without it they are kept in memory only. */
   videoWallFile?: string;
+  /** The file with how the pipes of the decor are put together. Without it they are kept in memory only. */
+  decorFile?: string;
   /** How the video wall is called. Tests pass their own. */
   videoWallFetch?: typeof fetch;
   /** For the one-line messages about rekordbox. */
@@ -185,25 +195,61 @@ export class Rig extends EventEmitter {
           });
           fixtures.push({ ...(definition as DmxFixtureDefinition), protocol: 'dmx', controller });
         } else {
-          const { lamps, zones } = definition as HassFixtureDefinition;
-          if (!Array.isArray(lamps)) throw new Error(`"${id}" needs a list of lamps`);
+          const { lamps, zones, switches, strips, looks } = definition as HassFixtureDefinition;
+          // Which lists a fixture needs is up to its kind: the room has lamps, the decor switches and strips.
+          const decor = definition.kind === 'decor';
+          if (!decor && !Array.isArray(lamps)) throw new Error(`"${id}" needs a list of lamps`);
+          for (const [name, list] of [
+            ['switches', switches],
+            ['strips', strips],
+          ] as const) {
+            if (list !== undefined && !Array.isArray(list)) {
+              throw new Error(`"${id}" needs a list of ${name}`);
+            }
+          }
           if (!options.hass) {
             throw new Error(
               `"${id}" is driven by Home Assistant, and lightdeck was not given a connection to it`,
             );
           }
-          for (const lamp of lamps) {
-            if (entities.has(lamp.entity)) {
-              throw new Error(`${lamp.entity} is a lamp of two fixtures, and may be of one only`);
+          for (const { entity } of [...(lamps ?? []), ...(switches ?? []), ...(strips ?? [])]) {
+            if (entities.has(entity)) {
+              throw new Error(`${entity} is a lamp of two fixtures, and may be of one only`);
             }
-            entities.add(lamp.entity);
+            entities.add(entity);
+          }
+          // How the pipes are linked, in which order and which way round: a file of its own, written by /decor.
+          const decorFile = options.decorFile;
+          let setup: DecorSetup | undefined;
+          if (decor && decorFile !== undefined) {
+            const ids = (strips ?? []).filter((one) => one.draw !== 'wled').map((one) => one.id);
+            const read = readSetupFile(decorFile, ids);
+            if (read.problem) options.log?.(read.problem);
+            setup = read.setup;
           }
           const controller = kind.create({
             hass: options.hass,
             tempo: this.tempo,
             palettes: this.palettes,
-            lamps,
+            lamps: lamps ?? [],
             zones: zones ?? [],
+            switches: switches ?? [],
+            strips: strips ?? [],
+            looks: looks ?? [],
+            ...(setup ? { setup } : {}),
+            ...(decor && decorFile !== undefined
+              ? {
+                  onSetup: (next: DecorSetup) => {
+                    try {
+                      writeSetupFile(decorFile, next);
+                    } catch (error) {
+                      options.log?.(
+                        `cannot write ${decorFile}: ${error instanceof Error ? error.message : String(error)}`,
+                      );
+                    }
+                  },
+                }
+              : {}),
           });
           fixtures.push({ ...(definition as HassFixtureDefinition), protocol: 'hass', controller });
         }

@@ -3,10 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f1114" />
+    <meta name="theme-color" content="#08090b" />
     <title>Simulator</title>
-    <link rel="preload" href="/fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="preload" href="/fonts/plex-condensed-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/plex-condensed-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/plex.css" />
+    <link rel="stylesheet" href="/lightdeck.css" />
+    <link rel="stylesheet" href="/chrome.css" />
     <link rel="stylesheet" href="/simulator.css" />
     <!-- three.js is served from here, so that the tablet and the laptop need no internet. -->
     <script type="importmap">
@@ -14,117 +17,129 @@
     </script>
   </head>
   <body>
-    <canvas id="stage" aria-label="The fixtures in 3D, as lightdeck sends them"></canvas>
+    <!--
+      The top bar (a Live key, the tempo, the masters, Blackout) is put first in .app by simulator.js. The
+      picture fills what is left, and the controls lie over it (design mockup 12): fixture and tool at the
+      left, the aim of the lights and the view at the right, the numbers and the settings along the foot.
+    -->
+    <div class="app page sim" id="app">
+      <div class="view" id="view">
+        <canvas id="stage" aria-label="The fixtures in 3D, as lightdeck sends them"></canvas>
 
-    <header class="tools">
-      <a class="key home" href="/deck">Deck</a>
-      <h1 class="title">Simulator</h1>
+        <aside class="tb tb-left" aria-label="Fixture and tool">
+          <span class="lbl">Fixture</span>
+          <div class="tb-keys" id="fixtures"></div>
+          <span class="lbl">Tool</span>
+          <div class="tb-keys">
+            <button type="button" class="key" id="mode-translate" aria-pressed="true">Move</button>
+            <button type="button" class="key" id="mode-rotate" aria-pressed="false">Rotate</button>
+            <button type="button" class="key" id="space" aria-pressed="false">World axes</button>
+            <button type="button" class="key" id="snap" aria-pressed="false">Snap</button>
+          </div>
+        </aside>
 
-      <fieldset class="group" aria-label="Fixture">
-        <div class="row" id="fixtures"></div>
-      </fieldset>
+        <!-- The lamps of the chosen rail: only there while a rail or a lamp is chosen. -->
+        <fieldset class="tb tb-lamps" id="lamps-group" aria-label="The lamps of the chosen rail" hidden>
+          <span class="lbl">Lamps of the rail</span>
+          <div class="tb-wrap" id="lamp-keys"></div>
+        </fieldset>
 
-      <fieldset class="group" id="lamps-group" aria-label="The lamps of the chosen rail" hidden>
-        <div class="row" id="lamp-keys"></div>
-      </fieldset>
+        <aside class="tb tb-right" aria-label="Aim of the lights and view">
+          <span class="lbl">Lights aim</span>
+          <div class="tb-keys" id="mounts"></div>
+          <span class="lbl">View</span>
+          <div class="tb-keys">
+            <button type="button" class="key" id="room-toggle" aria-pressed="false">Room</button>
+            <button type="button" class="key" id="room-eye" aria-pressed="false" disabled>Photo view</button>
+            <button type="button" class="key" id="room-dark" aria-pressed="false" disabled>Dark</button>
+            <button type="button" class="key on-amber" id="smoke-toggle" aria-pressed="false">Smoke machine</button>
+          </div>
+        </aside>
 
-      <fieldset class="group" aria-label="Move or turn the fixture">
-        <div class="row">
-          <button type="button" class="key" id="mode-translate" aria-pressed="true">Move</button>
-          <button type="button" class="key" id="mode-rotate" aria-pressed="false">Rotate</button>
-          <button type="button" class="key" id="space" aria-pressed="false">Local axes</button>
-          <button type="button" class="key" id="snap" aria-pressed="false">Snap</button>
+        <div class="dock">
+          <div class="notices-stack" id="notices">
+            <p class="notice" id="note" role="status" hidden></p>
+          </div>
+
+          <div class="panels">
+            <section class="panel calibrate" id="calibrate" aria-labelledby="calibrate-title" hidden>
+              <div class="sh"><h3 id="calibrate-title">Calibrate the bars</h3></div>
+              <p class="hint">
+                Set a tilt value on the real spider, for example on its Movement page. Then move the
+                angle here until the bar stands where the real one does. Each change stores a point for
+                that value, and between points the bar turns in a straight line. Kept in this browser.
+              </p>
+              <p class="hint" id="calibrate-hint">Choose a fixture first.</p>
+              <div id="calibrate-bars"></div>
+              <div class="cal-export">
+                <label class="lbl" for="calibrate-export">Calibration as in the config (tiltCurve)</label>
+                <textarea class="field" id="calibrate-export" rows="3" readonly></textarea>
+                <button type="button" class="key c" id="calibrate-copy">Copy</button>
+              </div>
+            </section>
+
+            <section class="panel smoke" id="smoke" aria-labelledby="smoke-title" hidden>
+              <div class="sh"><h3 id="smoke-title">Smoke machine</h3></div>
+              <div class="keys">
+                <button type="button" class="key c" id="smoke-on" aria-pressed="false">Smoke</button>
+                <button type="button" class="key c" id="smoke-puff">Puff</button>
+                <button type="button" class="key c" id="smoke-clear">Clear</button>
+              </div>
+              <div class="smoke-settings" id="smoke-settings"></div>
+              <p class="hint">
+                Move and turn it like a fixture. Its nozzle points to the front of the box, up by Nozzle
+                up. The smoke shows where a lens lights it.
+              </p>
+            </section>
+          </div>
+
+          <div class="tb tb-bottom" id="bottom-bar">
+            <div class="nf">
+              <label class="lbl" for="pos-x">Across m</label>
+              <input class="field" type="number" id="pos-x" step="0.05" disabled />
+            </div>
+            <div class="nf">
+              <label class="lbl" for="pos-y">Up m</label>
+              <input class="field" type="number" id="pos-y" step="0.05" disabled />
+            </div>
+            <div class="nf">
+              <label class="lbl" for="pos-z">Along m</label>
+              <input class="field" type="number" id="pos-z" step="0.05" disabled />
+            </div>
+            <span class="sep" aria-hidden="true"></span>
+            <div class="nf grow">
+              <span class="lbl">Haze</span>
+              <div id="haze-holder"></div>
+            </div>
+            <div class="nf grow">
+              <span class="lbl">Room light</span>
+              <div id="room-light-holder"></div>
+            </div>
+            <div class="nf">
+              <label class="lbl" for="room-ceiling">Ceiling m</label>
+              <input class="field ceiling" type="number" id="room-ceiling" min="2" max="4" step="0.05" disabled />
+            </div>
+            <span class="sep" aria-hidden="true"></span>
+            <div class="tb-acts">
+              <button type="button" class="key c" id="calibrate-toggle" aria-pressed="false">Calibrate</button>
+              <button type="button" class="key c" id="reset-fixture">Reset fixture</button>
+              <button type="button" class="key c" id="reset-view">Reset view</button>
+            </div>
+          </div>
         </div>
-      </fieldset>
 
-      <fieldset class="group" aria-label="How the fixture is mounted">
-        <div class="row" id="mounts"></div>
-      </fieldset>
-
-      <fieldset class="group" aria-label="The room">
-        <div class="row">
-          <button type="button" class="key" id="room-toggle" aria-pressed="false">Room</button>
-          <button type="button" class="key" id="room-eye" aria-pressed="false" disabled>Photo view</button>
-          <button type="button" class="key" id="room-dark" aria-pressed="false" disabled>Dark</button>
-        </div>
-      </fieldset>
-
-      <fieldset class="group" aria-label="The smoke machine">
-        <div class="row">
-          <button type="button" class="key" id="smoke-toggle" aria-pressed="false">Smoke machine</button>
-        </div>
-      </fieldset>
-
-      <fieldset class="group" aria-label="Reset and calibration">
-        <div class="row">
-          <button type="button" class="key" id="calibrate-toggle" aria-pressed="false">Calibrate</button>
-          <button type="button" class="key" id="reset-fixture">Reset fixture</button>
-          <button type="button" class="key" id="reset-view">Reset view</button>
-        </div>
-      </fieldset>
-
-      <fieldset class="group settings" aria-label="Look">
-        <label for="haze">Haze <output id="haze-value"></output></label>
-        <input type="range" id="haze" min="0" max="100" step="5" />
-      </fieldset>
-
-      <fieldset class="group settings" aria-label="Room look">
-        <label for="room-light">Room light <output id="room-light-value"></output></label>
-        <input type="range" id="room-light" min="0" max="100" step="5" disabled />
-        <label for="room-ceiling">Ceiling (m)</label>
-        <input type="number" id="room-ceiling" min="2" max="4" step="0.05" disabled />
-      </fieldset>
-
-      <fieldset class="group position" aria-label="Where the fixture hangs, in metres">
-        <label for="pos-x">Across</label>
-        <label for="pos-y">Up</label>
-        <label for="pos-z">Along</label>
-        <input type="number" id="pos-x" step="0.05" disabled />
-        <input type="number" id="pos-y" step="0.05" disabled />
-        <input type="number" id="pos-z" step="0.05" disabled />
-      </fieldset>
-    </header>
-
-    <section class="calibrate" id="calibrate" aria-labelledby="calibrate-title" hidden>
-      <h2 id="calibrate-title">Calibrate the bars</h2>
-      <p class="hint">
-        Set a tilt value on the real spider, for example on its Movement page. Then move the
-        angle here until the bar stands where the real one does. Each change stores a point for
-        that value, and between points the bar turns in a straight line. Kept in this browser.
-      </p>
-      <p class="hint" id="calibrate-hint">Choose a fixture first.</p>
-      <div id="calibrate-bars"></div>
-      <div class="cal-export">
-        <label for="calibrate-export">Calibration as in the config (<code>tiltCurve</code>)</label>
-        <textarea id="calibrate-export" rows="3" readonly></textarea>
-        <button type="button" class="key" id="calibrate-copy">Copy</button>
+        <ul class="tb tb-links" id="links" aria-label="Connection">
+          <li class="link" id="link-stream" data-state="unknown">
+            <span class="ldot" data-state="unknown" aria-hidden="true"></span
+            ><span class="link-text">Lightdeck</span>
+          </li>
+          <li class="link" id="link-bridge" data-state="unknown">
+            <span class="ldot" data-state="unknown" aria-hidden="true"></span
+            ><span class="link-text">Bridge</span>
+          </li>
+        </ul>
       </div>
-    </section>
-
-    <section class="smoke" id="smoke" aria-labelledby="smoke-title" hidden>
-      <h2 id="smoke-title">Smoke machine</h2>
-      <div class="row">
-        <button type="button" class="key" id="smoke-on" aria-pressed="false">Smoke</button>
-        <button type="button" class="key" id="smoke-puff">Puff</button>
-        <button type="button" class="key" id="smoke-clear">Clear</button>
-      </div>
-      <div class="settings" id="smoke-settings"></div>
-      <p class="hint">
-        Move and turn it like a fixture. Its nozzle points to the front of the box, up by Nozzle
-        up. The smoke shows where a lens lights it.
-      </p>
-    </section>
-
-    <ul class="links" id="links" aria-label="Connection">
-      <li class="link" id="link-stream" data-state="unknown">
-        <span class="lamp" aria-hidden="true"></span><span class="link-text">Lightdeck</span>
-      </li>
-      <li class="link" id="link-bridge" data-state="unknown">
-        <span class="lamp" aria-hidden="true"></span><span class="link-text">Bridge</span>
-      </li>
-    </ul>
-
-    <p class="note" id="note" role="status" hidden></p>
+    </div>
     <script type="module" src="/simulator.js"></script>
   </body>
 </html>
