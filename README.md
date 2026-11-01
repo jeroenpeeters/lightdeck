@@ -39,11 +39,13 @@ Fixtures it knows:
 - **Room Lights**: the lamps (lights) and switches that Home Assistant drives, as one fixture
   with zones, like the two bars of the spider. They follow the palettes, the grand master and
   the blackout, and have a dimmer of their own.
-- **Decor**: what is part of the set and not of the lighting, driven through Home Assistant: switches (two UV
-  lamps on the symbols of a cabinet) and strips of WLED (three, in white dryer hoses, with effects as if a
-  liquid flows through the pipe, at a speed that follows the bpm). On their own tab of the tablet page: on and
-  off apart or together, and for a pipe colour, brightness and effect. No scene, look or sequence touches them.
-  Each can follow the blackout of the console or not, which is set on the tab while the show runs.
+- **Decor**: what is part of the set and not of the lighting: two UV lamps on the symbols of a
+  cabinet (switches, through Home Assistant) and three WLED strips in white dryer hoses, "the pipes". Lightdeck
+  draws the effects of the pipes itself, as if a liquid flows through them, in the colours of the show's palettes
+  and at a speed that follows the bpm, and can link the three into one long pipe. On their own tab of the
+  tablet page: on and off apart or together, brightness, and for a pipe its effect and palette. No scene, look
+  or sequence touches them. Each can follow the blackout of the console or not, which is set on the tab while
+  the show runs. See [The decor](#the-decor-uv-lamps-and-pipes).
 
 Other fixtures need a profile of their own, see [Adding a fixture](#adding-a-fixture).
 
@@ -64,7 +66,9 @@ Assistant, so no real fixture or lamp was driven.
 ```
 tablet ──HTTP──▶ Lightdeck ──WebSocket──▶ Android bridge ──Wi-Fi──▶ LR512 ──DMX──▶ fixtures
                  (Node)   │               (phone)
-                          └──WebSocket──▶ Home Assistant ──Zigbee──▶ lamps
+                          ├──WebSocket──▶ Home Assistant ──Zigbee──▶ lamps, UV switches
+                          ├──DDP (UDP)──▶ WLED strips (the pipes)
+                          └──HTTP───────▶ Dreamscape Player (the video wall)
 ```
 
 The LR512 speaks a closed protocol: live DMX is authenticated and encrypted, and the code
@@ -89,6 +93,10 @@ when the beats stop, the effects idle. Set `osc.enabled`, `osc.source = 0.0.0.0:
 `osc.destination = <computer>:4460` and turn on the messages `master/beat/trigger`,
 `master/time` and, for the track text and Idle in breakdown, `master/track/title`,
 `master/track/artist` and `master/phrase`. `pnpm rkbx-monitor` shows what arrives.
+
+The three WLED strips do not go through Home Assistant: lightdeck draws every frame itself, 40 a
+second, and sends the pixels straight to each strip over DDP (UDP port 4048). Home Assistant only
+tells lightdeck where the strips are. See [The decor](#the-decor-uv-lamps-and-pipes).
 
 The track that plays can also go to a video wall (the Dreamscape Player), and its library is
 played from the tablet: see [The video wall](#the-video-wall).
@@ -220,6 +228,7 @@ As a flag, or as an environment variable.
 | | `HASS_TOKEN` | none | A long-lived access token for Home Assistant. Environment or `.env` only, never a flag |
 | `--hass-simulate` | `HASS_SIMULATE` | off | Run the lamps against a simulated Home Assistant: no real lamp is touched, no URL or token needed |
 | `--videowall` | `VIDEOWALL_FILE` | `videowall.json` | The settings of the video wall, written by its page. It holds the PIN of the player, so it is in `.gitignore` |
+| `--decor` | `DECOR_FILE` | `decor.json` | How the pipes are put together: linked or not, their order and which are mounted reversed. Written by the page `/decor`; it says how the set is built, so it belongs in git |
 | `--rig` | `RIG_FILE` | `rig.yaml` | The rig file, with the lamps of the room. No file, no lamps |
 | `--max-fps` | `MAX_FPS` | `25` | The most DMX frames per second to send, 1 to 60 |
 | `--lead-ms` | `LEAD_MS` | `0` | How far ahead of the beat the output is made |
@@ -242,13 +251,15 @@ pnpm laser <phone-ip> mode=manual program=pattern:12
 pnpm laser --list
 node tools/lr512-send.mjs <phone-ip> 0 set 6=255 7=255    # raw channels
 pnpm lamp light.bar dimmer=50 red=100 fade=2              # a Home Assistant light, see step 3
+pnpm pipes <strip-ip> --effect flow --palette water --bpm 126 --seconds 20   # play a pipe effect on one WLED strip
 
 # photograph the laser at its settings (the phone app in android-camera/ looks at the wall)
 pnpm laser-survey pilot --camera <camera-phone-ip> --bridge <bridge-phone-ip> --pattern 26 --distance 3
 ```
 
-Each of these sends one fixture and zeros for the rest of the universe, so other
-fixtures on it go dark.
+Each of the DMX ones sends one fixture and zeros for the rest of the universe, so other
+fixtures on it go dark. `pnpm pipes` needs neither lightdeck nor Home Assistant: it sends the pixels
+to the strip itself, shows how late its timer was and sends black at the end.
 
 ## The show file
 
@@ -329,20 +340,112 @@ it is. When the music stops, the sequence waits.
 
 ## The video wall
 
-The video wall is the Dreamscape Player, a program on a Raspberry Pi. Lightdeck
-talks to its HTTP API (its OpenAPI is at `/api/openapi.json`) and keeps the settings in
-`videowall.json`, written by the page `/videowall`: the address, the PIN, and the track text.
+The video wall is the Dreamscape Player, a separate program on a Raspberry Pi (default
+`http://192.168.68.30:3000`). Lightdeck is its remote control and talks to its HTTP API (its OpenAPI
+is at `/api/openapi.json`). It never shows anything by itself: it only calls the player when a track
+changes or when you press something. The settings are in `videowall.json`, written by the page
+`/videowall`: the address, the PIN, the time, the layout of the text and the filter.
 
-- **Track text.** When the track on the master deck of rekordbox changes, lightdeck shows
-  `Title - Artist` (or the artist under the title) with the text overlay of the player, and takes it
-  away after a set time. It calls the player only for a new track, and never retries a failed call.
-  It is off at the start. A title filter (a regular expression, by default one that cuts `(Original
-  Mix)`, `[Extended Mix]` and the like) cleans the title, and the page shows what ends up on the wall.
-- **Playing the library.** `/videowall` and the tab Video wall of the tablet page list the
-  playlists, videos, effects and texts of the player with a preview, play one with a press and a
-  transition, and have the blackout of the player.
-- Everything goes through lightdeck, so the tablet needs no access to the player and the PIN stays
-  in lightdeck, which never gives it back to a page.
+**The track text.**
+
+```
+rekordbox ──▶ rkbx_link ──OSC──▶ lightdeck ──POST /api/overlay──▶ Dreamscape Player ──▶ wall
+              (title, artist)    (waits 800 ms for both)     └─ DELETE /api/overlay after the time
+```
+
+- rkbx_link sends the title and the artist as two separate messages, only when they change and in
+  no fixed order, so lightdeck waits until neither has changed for 800 ms and then counts that as
+  one track. (`master/track/title` and `master/track/artist` must be turned on in rkbx_link.)
+- When the track changes, lightdeck makes the text, `Title - Artist` or the artist under the title,
+  and calls the overlay of the player once. It never calls it twice for the same track, never retries
+  a failed call by itself (the last result is on the page) and takes the text away again after the
+  set time (0 keeps it until the next track).
+- A title filter (a regular expression, by default one that cuts `(Original Mix)`, `[Extended Mix]`,
+  `(Radio Edit)` and the like at the end) cleans the title. It is not applied to the artist, and it
+  never leaves the title empty. The page shows what the next track would put on the wall.
+- It is off at the start, and switching it on does not show the track that plays: **Send current
+  track** does. The page also has Test text and Clear now, the position (a 3×3 grid with a sketch of
+  the wall), the colour, the size and one or two lines.
+- The player has one overlay at a time, it never expires by itself, and a 200 answer does not mean
+  that anyone is watching. If the wall seems to ignore lightdeck, look at the player first.
+
+**Playing the library.** `/videowall` and the tab Video wall of the tablet page list what the
+player has (playlists, videos, effects and texts) with a preview, play one with a press and the
+transition you chose (none, fade, zoom, slide, wipe), and have the blackout of the player (the
+picture and its text go black). The player is asked for its state every two seconds, only while that
+tab is on screen.
+
+**The PIN.** If the player has one, it goes to the player in a header or in the body of a call and
+is kept in `videowall.json` (in `.gitignore`). Lightdeck never gives it back to a page, which only
+learns whether one is set. The previews also go through lightdeck, so the tablet does not need to reach
+the player.
+
+What the video wall does not do: choose what plays by the beat or the mood, or run on its own.
+Everything is a press, apart from the track text.
+
+## The decor: UV lamps and pipes
+
+The decor is what belongs to the set and not to the lighting. It is one fixture, `decor`, with two
+sorts of thing, both listed in `rig.yaml`, and its own tab on the tablet page. No scene, look
+or sequence touches it, and the Off of a group does not either: only you set it, the way you switch
+the rails of the room.
+
+**UV lamps** are switches (`switch.uv_lamp_1` and `_2`) and go through Home Assistant like the other
+lamps of the room. They are on or off, and a switch cannot be dimmed.
+
+**The pipes** are WLED strips (300 LEDs each) in white dryer hoses, made to look as if a liquid
+flows through the pipe. There are two ways to drive them, and the first is the default.
+
+*1. Lightdeck draws them (`draw: lightdeck`).* This does not go through Home Assistant.
+
+- Lightdeck renders the effect itself, in time with the tempo, and 40 times a second sends
+  the colour of every LED to the strip as DDP over UDP (port 4048; one packet of about 900 bytes per
+  frame per strip). Because it is rendered from the beat, an effect follows the bpm and the master
+  speed exactly, and an effect that changes fast is held to the limit of 10 changes per second like
+  every other effect.
+- The strip's address is the `host` in `rig.yaml` or, when that is not there, what Home Assistant
+  knows about it (`sensor.wled_<name>_ip`, which WLED fills in). Until the address is known nothing
+  is sent and the page says so under the pipe. When the address changes, the stream follows.
+- The colours come from the palettes of the show, so the pipes are in the same colours as the rest:
+  colour 1 is the foreground, colour 2 the background, colour 3 an accent. Choose the palette on the tab
+  (the `water` palette, blue and dark blue, is made for them).
+- The effects are `flow` (slugs of liquid of different lengths and speeds), `slowflow` (the same, four
+  times slower, as a background), `shot`, `bubbles`, `transmute` (a glowing front turns one colour into
+  the other), `shadow`, `seal`, `lightning` (for the techno part), `pulse`, `chase` and `solid`. Each has a
+  pace on top of the bpm, a brightness per pipe and a dimmer for all pipes (the UV lamps have none, since
+  switches cannot dim). A look of the pipes (set in `rig.yaml` under `looks:`) is an effect, a
+  palette and a pace in one press.
+- **The safe state.** A strip that is switched off in WLED shows no DDP at all, so lightdeck leaves it
+  switched on with its own state set to solid black. The first time a pipe is lit, lightdeck puts it in that
+  state through WLED's own JSON API (`POST http://<strip>/json/state`). When lightdeck stops or crashes the
+  stream ends and WLED falls back to black a moment later. Nothing is left lit by mistake.
+- Mind the power: a fully lit pipe at high brightness draws more than the 3 A that WLED is set
+  to allow on a strip, so WLED dims what is above it. Keep the brightness around 0.5, or use effects that
+  have dark parts.
+
+*2. WLED draws them (`draw: wled`).* This does go through Home Assistant: the strip is a `light.wled_*`
+entity, and lightdeck sets its colour, brightness, effect and the speed of the effect (the speed follows the bpm
+through the `number` entity WLED makes). Those are the effects of WLED itself, which can flash faster than
+10 times a second. This is the way to hand a strip back to WLED, for instance when lightdeck is not to render.
+
+**Linking the pipes.** You may not know yet how the pipes will hang. At `/decor` (the menu of the tablet page has
+a card for it) you can link them into one long pipe: one effect then runs through the pipes one
+after the other, in the order you set, and leaves the last. You can also turn a pipe the other way
+round (Reverse), for how you hang it, with or without the link. Switching a pipe on or off and its brightness stay per pipe, and a
+pipe that is off or has no address yet is skipped while the effect goes on through its piece. An effect that takes
+16 beats to cross the pipe takes 16 for the whole chain, so use a faster pace if that is too slow with three. This is kept in `decor.json`, not in the show
+file, because it says how the set is built and not what the show does.
+
+**Blackout.** Each pipe and each UV lamp has a Follows blackout key: on, it goes dark with the blackout
+of the console. The decor also has a blackout of its own that switches everything of the decor off,
+whether it follows or not, and the two do not undo each other. What follows is set on the tab while the show
+runs, and starts as `blackout:` says in `rig.yaml`. The master is not followed.
+
+Lightdeck never touches the decor when it starts and leaves it as it is when it stops, apart from the
+black frames of a pipe that goes out. What it shows next to each item is what Home Assistant reports, and
+that never changes what you set. The decor has run in tests, in headless Chrome and, for one strip
+(`buis2`), on the real hardware: the strip took the stream, answered 42 frames a second and went back
+to black afterwards. The other two strips and the look of the effects on real hoses are not yet seen.
 
 ## The rig file
 
@@ -365,9 +468,18 @@ fixtures:
     switches:
       - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
       - { id: uv2, label: UV 2, entity: switch.uv_lamp_2, blackout: true }
+    strips:
+      - { id: buis1, label: Buis 1, entity: light.wled_buis1, leds: 300 }
+      - { id: buis2, label: Buis 2, entity: light.wled_buis2, leds: 300, host: 192.168.68.32 }
+      - { id: buis3, label: Buis 3, entity: light.wled_buis3, leds: 300, draw: wled }
+    looks:
+      - { id: slow, label: Slow flow, effect: slowflow }
+      - { id: storm, label: Lightning, effect: lightning, palette: lightning }
 ```
 
-The decor is its own fixture, with switches and no lamps. It needs a group in the show file to
+A strip is drawn by lightdeck unless it says `draw: wled`; `host` is its address (without it, lightdeck asks Home
+Assistant for `sensor.<name>_ip`, or the entity in `ip:`), `leds` the number of LEDs. The decor is its own
+fixture, with switches and strips and no lamps. It needs a group in the show file to
 get its tab on the tablet page: `groups:` `decor: { label: Decor, fixtures: [decor] }`. Its
 `blackout: true` is where "follows the blackout" starts; the tablet changes it while the show runs.
 
@@ -382,9 +494,10 @@ it stops: the lamps stay as they are until something sets them.
   closes it when it stops. It cannot do that when it crashes or loses the network: the
   bridge keeps sending the last frame it got. Software is not a safety device. Mount
   the laser so that it cannot reach eyes, and have a way to cut its power.
-- **Flashing light.** Effects flash at most 10 times per second. The strobe of a fixture,
-  set by hand, is not limited, and neither are the effects of a WLED strip, which are WLED's own
-  (Strobe, Blink and the like are in its list, behind More effects). The lamps of the room change about once a minute, never faster
+- **Flashing light.** Effects flash at most 10 times per second, the effects that lightdeck draws
+  on the pipes included. The strobe of a fixture, set by hand, is not limited, and neither are the
+  effects of a WLED strip that is left to WLED (`draw: wled`), which are WLED's own (Strobe, Blink and
+  the like are in its list, behind More effects). The lamps of the room change about once a minute, never faster
   than the Zigbee mesh takes them.
 - **The Home Assistant token** opens your house. Keep it in the environment or in `.env`, which
   is not committed, and not in a flag, a file in git or a chat.
