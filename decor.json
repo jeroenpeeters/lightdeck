@@ -1,0 +1,9 @@
+{
+  "linked": true,
+  "order": ["buis1", "buis2", "buis3"],
+  "reverse": {
+    "buis1": false,
+    "buis2": false,
+    "buis3": false
+  }
+}

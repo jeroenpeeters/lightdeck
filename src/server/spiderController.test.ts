@@ -475,7 +475,7 @@ describe('SpiderController', () => {
     expect(details.layout.tiltCurve[1]).toContainEqual([0.3, 0]);
     expect(details.layout.motorSpeedCurve.length).toBeGreaterThanOrEqual(2);
     expect(details.layout.aim).toEqual([-12, -5, 5, 12]);
-    expect(details.effects).toHaveLength(22);
+    expect(details.effects).toHaveLength(23);
     expect(details.effects[0]).toEqual(
       expect.objectContaining({ id: 'kick', name: 'Kick', slots: 3 }),
     );
@@ -487,6 +487,7 @@ describe('SpiderController', () => {
       'creep',
       'drift',
       'slice',
+      'swipe',
     ]);
     expect(details.motionEffects[2]).toEqual(
       expect.objectContaining({ id: 'scissor-motor', setsMotorSpeed: true }),

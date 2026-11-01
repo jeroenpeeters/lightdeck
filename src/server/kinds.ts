@@ -21,11 +21,18 @@ import type { FixtureProfile } from '../fixtures/profile.js';
 import { SPIDER_43CH, SPIDER_LAYOUT } from '../fixtures/spider.js';
 import type { HassOutput } from '../outputs/hass/types.js';
 import type { UniverseOutput } from '../outputs/patch.js';
+import {
+  DecorController,
+  type PipeLookDefinition,
+  type StripDefinition,
+  type SwitchDefinition,
+} from './decorController.js';
+import type { DecorSetup } from './decorSetup.js';
 import type { DmxFixtureController, FixtureController } from './fixture.js';
 import { LaserController } from './laserController.js';
 import { type LampDefinition, RoomController, type ZoneDefinition } from './roomController.js';
 import { SpiderController } from './spiderController.js';
-import { type SwitchDefinition, SwitchesController } from './switchesController.js';
+
 import type { Tempo } from './tempo.js';
 
 export interface DmxKindOptions {
@@ -53,6 +60,11 @@ export interface HassKindOptions {
   lamps: LampDefinition[];
   zones: ZoneDefinition[];
   switches: SwitchDefinition[];
+  strips: StripDefinition[];
+  looks: PipeLookDefinition[];
+  /** How the pipes of the decor are put together, and who is told when that changes (see `decorSetup.ts`). */
+  setup?: DecorSetup;
+  onSetup?: (setup: DecorSetup) => void;
 }
 
 /** What a fixture that Home Assistant drives is made of. */
@@ -86,9 +98,20 @@ export const FIXTURE_KINDS: Readonly<Record<string, FixtureKind>> = {
     protocol: 'hass',
     create: (options) => new RoomController(options),
   },
-  // The switches of the decor: the UV lamps that light the symbols on the cabinet.
-  switches: {
+  // The decor: switches (the UV lamps on the symbols of a cabinet) and strips of WLED, which belong to
+  // the set and not to the lighting, and which no scene touches.
+  decor: {
     protocol: 'hass',
-    create: ({ hass, switches }) => new SwitchesController({ hass, switches }),
+    create: ({ hass, tempo, palettes, switches, strips, looks, setup, onSetup }) =>
+      new DecorController({
+        hass,
+        tempo,
+        palettes,
+        switches,
+        strips,
+        looks,
+        ...(setup ? { setup } : {}),
+        ...(onSetup ? { onSetup } : {}),
+      }),
   },
 };

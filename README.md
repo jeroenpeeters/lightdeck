@@ -5,6 +5,8 @@ Nicolaudie Light Rider LR512 interface, from a web page on a tablet, without Das
 the Light Rider app. The lamps and switches of the room, in Home Assistant, are driven from
 the same console as slow scenery under the DMX fixtures.
 
+![The tablet page: the groups at the left, the looks of a mood in the middle, a tray to vary the look at the right, and the parts of the evening along the foot](docs/screenshots/tablet.png)
+
 > **Early work in progress.** Lightdeck is built for one home event with one set of
 > hardware. It works on that hardware and has been tested nowhere else. Settings, the API
 > and the show file change without notice. Expect to read code.
@@ -15,7 +17,7 @@ the same console as slow scenery under the DMX fixtures.
 |---|---|
 | Live DMX to the LR512, from Linux | Works on real hardware, through an Android phone as bridge |
 | Fixture pages for manual control | Work, for the two fixtures below |
-| Beat-synced effects, tap tempo, blackout | Work: twenty-two light effects and six motion effects for the spider, five effects for the laser |
+| Beat-synced effects, tap tempo, blackout | Work: twenty-three light effects and seven motion effects for the spider, five effects for the laser |
 | Palettes: the colours of the show, apart from the effects | Built, not yet tested on the real fixtures |
 | Scenes and looks: store what the fixtures do, recall it | Built, not yet tested on the real fixtures |
 | Grand master, swing limits and zones of the spider | Built, not yet tested on the real fixtures |
@@ -37,12 +39,25 @@ Fixtures it knows:
 - **Room Lights**: the lamps (lights) and switches that Home Assistant drives, as one fixture
   with zones, like the two bars of the spider. They follow the palettes, the grand master and
   the blackout, and have a dimmer of their own.
-- **Decor**: switches that Home Assistant drives and that are not lamps of the room, such as the
-  two UV lamps on the symbols of the cabinet. On and off only, by hand on their own tab of the
-  tablet page, apart or together; no scene, look or sequence touches them. Each one can follow the
-  blackout of the console or not, which is set on the tab while the show runs.
+- **Decor**: what is part of the set and not of the lighting, driven through Home Assistant: switches (two UV
+  lamps on the symbols of a cabinet) and strips of WLED (three, in white dryer hoses, with effects as if a
+  liquid flows through the pipe, at a speed that follows the bpm). On their own tab of the tablet page: on and
+  off apart or together, and for a pipe colour, brightness and effect. No scene, look or sequence touches them.
+  Each can follow the blackout of the console or not, which is set on the tab while the show runs.
 
 Other fixtures need a profile of their own, see [Adding a fixture](#adding-a-fixture).
+
+## The pages
+
+The tablet page above is what you play on. The rest is for setting up and for trying things.
+These were made from a lightdeck running without a bridge and against the simulated Home
+Assistant, so no real fixture or lamp was driven.
+
+| | |
+|---|---|
+| [![The deck](docs/screenshots/deck.png)](docs/screenshots/deck.png) **Deck** (`/deck`): the groups, their looks and scenes, and the sequences | [![The spider page](docs/screenshots/spider.png)](docs/screenshots/spider.png) **Spider** (`/fixtures/spider`): effects, palettes, movement and zones, with the lenses and bars as they are sent |
+| [![The palettes](docs/screenshots/palettes.png)](docs/screenshots/palettes.png) **Palettes** (`/palettes`): the colours of the show, apart from the effects | [![The simulator](docs/screenshots/simulator.png)](docs/screenshots/simulator.png) **Simulator** (`/simulator`): the spiders and the lamps of the room in 3D, drawn from the bytes that are sent |
+| [![The room](docs/screenshots/room.png)](docs/screenshots/room.png) **Room Lights** (`/fixtures/room`): the lamps and switches in Home Assistant, in zones | [![The laser page](docs/screenshots/laser.png)](docs/screenshots/laser.png) **Laser** (`/fixtures/laser`): mode, pattern, effects and the channels that are sent |
 
 ## How it works
 
@@ -345,7 +360,7 @@ fixtures:
     zones:
       - { id: low, label: Low, lamps: [bar] }
   - id: decor
-    kind: switches
+    kind: decor
     label: Decor
     switches:
       - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
@@ -368,7 +383,8 @@ it stops: the lamps stay as they are until something sets them.
   bridge keeps sending the last frame it got. Software is not a safety device. Mount
   the laser so that it cannot reach eyes, and have a way to cut its power.
 - **Flashing light.** Effects flash at most 10 times per second. The strobe of a fixture,
-  set by hand, is not limited. The lamps of the room change about once a minute, never faster
+  set by hand, is not limited, and neither are the effects of a WLED strip, which are WLED's own
+  (Strobe, Blink and the like are in its list, behind More effects). The lamps of the room change about once a minute, never faster
   than the Zigbee mesh takes them.
 - **The Home Assistant token** opens your house. Keep it in the environment or in `.env`, which
   is not committed, and not in a flag, a file in git or a chat.

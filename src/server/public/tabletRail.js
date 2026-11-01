@@ -16,7 +16,7 @@ const MINI = {
   laser: () => element('div', 'hazard-dim t-laser-bar'),
   rails: () => element('div', 'rails'),
   wall: () => element('div', 't-wall-bar'),
-  switches: () => element('div', 'uvs'),
+  decor: () => element('div', 'uvs'),
 };
 
 /** A tile: its name, the mini output of its kind and a line of words. */
@@ -74,7 +74,7 @@ export function paintTile(tile, mini) {
     const open = Boolean(mini?.open);
     holder.classList.toggle('hazard', open);
     holder.classList.toggle('hazard-dim', !open);
-  } else if (parts.kind === 'switches') {
+  } else if (parts.kind === 'decor') {
     const lit = mini?.on ?? [];
     if (holder.children.length !== lit.length) {
       holder.replaceChildren(...lit.map(() => element('i')));

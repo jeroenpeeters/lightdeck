@@ -283,7 +283,7 @@ function tileBase(group) {
     const states = decorSwitches(group);
     const lit = states.filter((each) => each.on).length;
     return {
-      kind: 'switches',
+      kind: 'decor',
       ...base,
       lit: lit > 0,
       status:
@@ -318,10 +318,10 @@ function tileBase(group) {
   return { kind: 'wall', ...base, status };
 }
 
-/** Every switch of the decor group, as it shows now: whether it is on once the blackouts are in. */
+/** Every switch and strip of the decor group, as it shows now: whether it is on once the blackouts are in. */
 function decorSwitches(group) {
   return decorOf(shell.fixtures, group).flatMap((fixture) =>
-    (fixture.details?.switches ?? []).map((each) => ({
+    [...(fixture.details?.switches ?? []), ...(fixture.details?.strips ?? [])].map((each) => ({
       id: each.id,
       on: switchView(shell.stateOf(fixture.id), each.id, shell.blackout).on,
     })),

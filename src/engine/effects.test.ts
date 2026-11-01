@@ -63,9 +63,9 @@ const brightest = (cells: Rgbw[]) =>
 const STATIC = ['solid', 'bars', 'alternate'];
 
 describe('the set of effects', () => {
-  it('has twenty-two, each with its own id, a name and a description', () => {
-    expect(EFFECTS).toHaveLength(22);
-    expect(new Set(EFFECTS.map((e) => e.id)).size).toBe(22);
+  it('has twenty-three, each with its own id, a name and a description', () => {
+    expect(EFFECTS).toHaveLength(23);
+    expect(new Set(EFFECTS.map((e) => e.id)).size).toBe(23);
     for (const effect of EFFECTS) {
       expect(effect.name.length).toBeGreaterThan(0);
       expect(effect.description.length).toBeGreaterThan(20);
@@ -839,7 +839,7 @@ describe('speed', () => {
   it.each(EFFECTS.map((effect) => effect.id))(
     'changes %s once per beat at most, unless it moves smoothly',
     (id) => {
-      const smooth = ['wave', 'spread', 'fade', 'seesaw', 'glow'];
+      const smooth = ['wave', 'spread', 'fade', 'seesaw', 'glow', 'swipe'];
       if (smooth.includes(id)) return;
       // Between two beats a lens may fade or go out, but no lens may come on. It holds with
       // one colour, with two and with three.

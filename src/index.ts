@@ -26,6 +26,9 @@
  *   --videowall      VIDEOWALL_FILE     the file with the settings of the video wall, which its page
  *                                       writes (default videowall.json; it holds the PIN of the
  *                                       player, so it is not in git)
+ *   --decor          DECOR_FILE         how the pipes of the decor are put together (linked, in which
+ *                                       order, which way round), which the page /decor writes
+ *                                       (default decor.json)
  *   --hass           HASS_URL           ws://<home-assistant>:8123/api/websocket, http://<home-assistant>:8123 will do. Needed when the
  *                                       rig file has fixtures
  *                    HASS_TOKEN         a long-lived access token of Home Assistant. Environment
@@ -83,6 +86,7 @@ const { values: args } = parseArgs({
     tempo: { type: 'string' },
     rkbx: { type: 'string' },
     videowall: { type: 'string' },
+    decor: { type: 'string' },
     hass: { type: 'string' },
     'hass-simulate': { type: 'boolean' },
     rig: { type: 'string' },
@@ -122,6 +126,7 @@ const hassToken = process.env.HASS_TOKEN;
 const hassSimulated =
   args['hass-simulate'] === true || /^(1|true|yes)$/i.test(process.env.HASS_SIMULATE ?? '');
 const videoWallFile = args.videowall ?? process.env.VIDEOWALL_FILE ?? 'videowall.json';
+const decorFile = args.decor ?? process.env.DECOR_FILE ?? 'decor.json';
 const rigFile = args.rig ?? process.env.RIG_FILE ?? 'rig.yaml';
 const port = wholeNumber(args.port ?? process.env.PORT ?? '8080', 'port');
 const host = args.host ?? process.env.HOST ?? '0.0.0.0';
@@ -147,8 +152,28 @@ try {
   fail(error instanceof Error ? error.message : String(error));
 }
 const lampEntities = fixtures.flatMap((fixture) =>
-  'lamps' in fixture || 'switches' in fixture
-    ? [...(fixture.lamps ?? []), ...(fixture.switches ?? [])].map((lamp) => lamp.entity)
+  'lamps' in fixture || 'switches' in fixture || 'strips' in fixture
+    ? [
+        ...(fixture.lamps ?? []),
+        ...(fixture.switches ?? []),
+        // A strip of WLED has its light, and the entities of its speed, its intensity and its palette.
+        ...(fixture.strips ?? []).flatMap((strip) => {
+          const name = strip.entity.slice('light.'.length);
+          // A strip that lightdeck draws (the default) needs nothing of WLED but its light, and its address
+          // when the rig file does not give it.
+          if (strip.draw !== 'wled') {
+            return strip.host === undefined
+              ? [strip, { entity: strip.ip ?? `sensor.${name}_ip` }]
+              : [strip];
+          }
+          return [
+            strip,
+            { entity: strip.speed ?? `number.${name}_speed` },
+            { entity: strip.intensity ?? `number.${name}_intensity` },
+            { entity: strip.palette ?? `select.${name}_color_palette` },
+          ];
+        }),
+      ].map((lamp) => lamp.entity)
     : [],
 );
 if (lampEntities.length > 0 && !hassSimulated) {
@@ -227,6 +252,7 @@ try {
     tempoSource: tempoSourceText,
     ...(rkbxPort === undefined ? {} : { rkbxPort }),
     videoWallFile,
+    decorFile,
     log,
   });
 } catch (error) {
@@ -248,8 +274,10 @@ server.listen(port, host, () => {
       log(
         `${fixture.label} at address ${fixture.address}, universe index ${fixture.universe}, page /fixtures/${fixture.id}`,
       );
-    } else if (fixture.switches) {
-      log(`${fixture.label}: ${fixture.switches.length} switches, on the tablet page`);
+    } else if (fixture.switches || fixture.strips) {
+      log(
+        `${fixture.label}: ${fixture.switches?.length ?? 0} switches and ${fixture.strips?.length ?? 0} strips, on the tablet page`,
+      );
     } else {
       log(
         `${fixture.label}: ${fixture.lamps?.length ?? 0} lamps and switches, page /fixtures/${fixture.id}`,

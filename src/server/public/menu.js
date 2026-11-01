@@ -92,9 +92,10 @@ export function mountMenu(shell, bar, { host } = {}) {
   const cards = [
     makeCard('/deck', 'Deck', 'Store, rename, sequences'),
     palettesCard,
-    // The switches of the decor have no page of their own: the tablet page has all they do.
+    // The decor has no page of its own among the fixtures: the live page has all it does, and /decor how the
+    // pipes are put together.
     ...shell.fixtures
-      .filter((fixture) => fixture.kind !== 'switches')
+      .filter((fixture) => fixture.kind !== 'decor')
       .map((fixture) => {
         const card = makeCard(`/fixtures/${fixture.id}`, fixture.label, '');
         card.fixture = fixture;
@@ -102,6 +103,11 @@ export function mountMenu(shell, bar, { host } = {}) {
         if (fixture.kind === 'laser') card.classList.add('is-laser');
         return card;
       }),
+    // The pipes of the decor: linked into one long pipe, their order and direction. The rest of the decor is on
+    // the live page.
+    ...(shell.fixtures.some((fixture) => fixture.kind === 'decor')
+      ? [makeCard('/decor', 'Decor', 'Pipes: link, order, direction')]
+      : []),
     makeCard('/videowall', 'Video wall', 'Player, track text'),
     makeCard('/simulator', 'Simulator', '3D view of the rig'),
   ];

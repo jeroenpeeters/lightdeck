@@ -136,10 +136,10 @@ export function decorOf(fixtures, group) {
   if (!group) return [];
   return group.fixtures
     .map((id) => fixtures.find((fixture) => fixture.id === id))
-    .filter((fixture) => fixture?.kind === 'switches');
+    .filter((fixture) => fixture?.kind === 'decor');
 }
 
-/** Whether a group is the decor: it has fixtures and every one of them is a switches fixture. */
+/** Whether a group is the decor: it has fixtures and every one of them is a decor fixture. */
 export function isDecorGroup(fixtures, group) {
   return (
     Boolean(group) &&
@@ -192,4 +192,155 @@ export function switchView(state, id, consoleDark, now = 0, since = {}) {
     warn,
     differs: Boolean(reported?.available && reported.on !== on),
   };
+}
+
+// ---- the strips of WLED in the decor ----
+
+/** The colours a strip can be given with one press: the liquid in the pipe. Name and `#rrggbb`. */
+export const STRIP_COLOURS = [
+  { name: 'White', hex: '#ffffff' },
+  { name: 'Cyan', hex: '#00e5ff' },
+  { name: 'Blue', hex: '#1f4bff' },
+  { name: 'Violet', hex: '#8a2bff' },
+  { name: 'Magenta', hex: '#ff1fa8' },
+  { name: 'Red', hex: '#ff1a1a' },
+  { name: 'Orange', hex: '#ff7a00' },
+  { name: 'Green', hex: '#27ff5a' },
+];
+
+/** The colour of `#rrggbb` as `{ red, green, blue }`, each 0..1. */
+export function hexColour(hex) {
+  const parsed = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  const [red = 0, green = 0, blue = 0] = (parsed ? parsed.slice(1) : []).map(
+    (part) => Number.parseInt(part, 16) / 255,
+  );
+  return { red, green, blue };
+}
+
+/** A colour of a strip as CSS, brightest channel at full: the colour and not its brightness. */
+export function colourCss({ red, green, blue }) {
+  const peak = Math.max(red, green, blue, 1e-9);
+  const part = (value) => Math.round(Math.min(1, value / peak) * 255);
+  return `rgb(${part(red)} ${part(green)} ${part(blue)})`;
+}
+
+/** Whether two strip colours are the same colour, as the strip would show it (direction, a little slack). */
+export function sameColour(a, b) {
+  const unit = (colour) => {
+    const peak = Math.max(colour.red, colour.green, colour.blue, 1e-9);
+    return [colour.red / peak, colour.green / peak, colour.blue / peak];
+  };
+  const [x, y] = [unit(a), unit(b)];
+  return x.every((value, index) => Math.abs(value - (y[index] ?? 0)) < 0.04);
+}
+
+/** The ids a target means: one strip, or `all` of them. A strip that is gone falls back to all. */
+export function targetIds(target, ids) {
+  return target !== 'all' && ids.includes(target) ? [target] : ids;
+}
+
+/** What every item of the list has in common: the value when all are the same, else undefined. */
+export function commonValue(values, same = Object.is) {
+  const [first, ...rest] = values;
+  return values.length > 0 && rest.every((value) => same(value, first)) ? first : undefined;
+}
+
+/**
+ * The effects of WLED that look like something flowing, for the first of the list. Which of them a
+ * strip has is up to its firmware: only the ones it lists are kept, in this order.
+ */
+export const LIQUID_EFFECTS = [
+  'Flow',
+  'Drip',
+  'Lake',
+  'Pacifica',
+  'Colorwaves',
+  'Stream',
+  'Aurora',
+  'Ripple',
+  'Running',
+  'Chase',
+  'Plasma',
+  'Sinelon',
+  'Meteor Smooth',
+  'Fire Flicker',
+];
+
+/** The effects a strip lists as `{ liquid, rest }`: the flowing ones first, then every other, without Solid. */
+export function effectGroups(list) {
+  const named = (list ?? []).filter((name) => name !== 'Solid');
+  const liquid = LIQUID_EFFECTS.filter((name) => named.includes(name));
+  return { liquid, rest: named.filter((name) => !liquid.includes(name)) };
+}
+
+/**
+ * What one strip shows: what a switch shows, and its effect (`Solid` for none) and its colour as CSS.
+ */
+export function stripView(state, id, consoleDark, now = 0, since = {}) {
+  const base = switchView(state, id, consoleDark, now, since);
+  const colour = state?.colour?.[id] ?? { red: 1, green: 1, blue: 1 };
+  return {
+    ...base,
+    effect: state?.effect?.[id] ?? null,
+    effectName: state?.effect?.[id] ?? 'Solid',
+    colour,
+    css: colourCss(colour),
+    level: state?.level?.[id] ?? 1,
+  };
+}
+
+/** The paces on top of the bpm, as the console has its speeds, with the words on the keys. */
+export const PACES = [
+  { value: 0.25, name: '÷4' },
+  { value: 0.5, name: '÷2' },
+  { value: 1, name: '×1' },
+  { value: 2, name: '×2' },
+  { value: 4, name: '×4' },
+];
+
+/** Palettes of WLED that make a good pair or trio of colours, shown first when a strip lists them. */
+export const COMMON_PALETTES = [
+  'Default',
+  '* Color 1',
+  '* Colors 1&2',
+  'Ocean',
+  'Lava',
+  'Party',
+  'Icefire',
+  'Sunset',
+  'Red & Blue',
+  'Orange & Teal',
+  'Yelmag',
+  'Yelblu',
+  'Magred',
+  'Toxy Reaf',
+  'Tiamat',
+  'Cyane',
+  'Splash',
+  'Aurora',
+  'Rainbow',
+];
+
+/** The palettes a strip lists as `{ common, rest }`: the usual ones first, in this order. */
+export function paletteGroups(list) {
+  const named = list ?? [];
+  const common = COMMON_PALETTES.filter((name) => named.includes(name));
+  return { common, rest: named.filter((name) => !common.includes(name)) };
+}
+
+/**
+ * Whether a look of the pipes is what the strips show: every strip has its effect, palette (Default when it
+ * says none), intensity (128), pace (1) and, when it names one, its colour. `states` is a list of
+ * `{ effect, palette, intensity, pace, colour }` of the strips the look is for.
+ */
+export function lookIsOn(look, states) {
+  if (states.length === 0) return false;
+  return states.every(
+    (strip) =>
+      (strip.effect ?? null) === (look.effect ?? null) &&
+      (strip.palette ?? null) === (look.palette ?? 'Default') &&
+      (strip.intensity ?? null) === (look.intensity ?? 128) &&
+      (strip.pace ?? 1) === (look.pace ?? 1) &&
+      (look.colour === undefined || sameColour(strip.colour, hexColour(look.colour))),
+  );
 }

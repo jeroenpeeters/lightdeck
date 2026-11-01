@@ -158,8 +158,8 @@ describe('HTTP server', () => {
       }),
     );
     expect(spider.controls).toHaveLength(SPIDER_43CH.controls.length);
-    expect(spider.details.effects).toHaveLength(22);
-    expect(spider.details.motionEffects).toHaveLength(6);
+    expect(spider.details.effects).toHaveLength(23);
+    expect(spider.details.motionEffects).toHaveLength(7);
     expect(spider.details.layout.cells).toBe(8);
     expect(spider.state.levels.dimmer).toBe(0);
     expect(spider.state.effect.id).toBeNull();

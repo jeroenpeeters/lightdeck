@@ -58,11 +58,22 @@ export interface DecorFixture {
 export interface DecorGroup {
   fixtures: string[];
 }
+export interface StripColour {
+  red: number;
+  green: number;
+  blue: number;
+}
 export interface SwitchesState {
   on?: Record<string, boolean>;
   follows?: Record<string, boolean>;
   blackout?: boolean;
-  reported?: Record<string, { available: boolean; on: boolean } | null>;
+  reported?: Record<
+    string,
+    { available: boolean; on: boolean; effects?: string[]; effect?: string | null } | null
+  >;
+  effect?: Record<string, string | null>;
+  colour?: Record<string, StripColour>;
+  level?: Record<string, number>;
   problems?: Record<string, string | null>;
 }
 export interface SwitchView {
@@ -91,3 +102,49 @@ export function switchView(
   now?: number,
   since?: Record<string, number>,
 ): SwitchView;
+
+export interface StripView extends SwitchView {
+  effect: string | null;
+  effectName: string;
+  colour: StripColour;
+  css: string;
+  level: number;
+}
+export const STRIP_COLOURS: { name: string; hex: string }[];
+export const LIQUID_EFFECTS: string[];
+export function hexColour(hex: string): StripColour;
+export function colourCss(colour: StripColour): string;
+export function sameColour(a: StripColour, b: StripColour): boolean;
+export function targetIds(target: string, ids: string[]): string[];
+export function commonValue<T>(values: T[], same?: (a: T, b: T) => boolean): T | undefined;
+export function effectGroups(list: string[] | undefined): { liquid: string[]; rest: string[] };
+export function stripView(
+  state: SwitchesState | undefined,
+  id: string,
+  consoleDark: boolean,
+  now?: number,
+  since?: Record<string, number>,
+): StripView;
+
+export const PACES: { value: number; name: string }[];
+export const COMMON_PALETTES: string[];
+export function paletteGroups(list: string[] | undefined): { common: string[]; rest: string[] };
+export interface PipeLook {
+  id: string;
+  label: string;
+  effect: string | null;
+  palette?: string;
+  colour?: string;
+  intensity?: number;
+  pace?: number;
+}
+export function lookIsOn(
+  look: PipeLook,
+  states: {
+    effect: string | null;
+    palette: string | null;
+    intensity: number | null;
+    pace: number;
+    colour: StripColour;
+  }[],
+): boolean;

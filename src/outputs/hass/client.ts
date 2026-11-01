@@ -127,6 +127,12 @@ function readEntity(state: unknown): EntityInfo | undefined {
   const modes = Array.isArray(attributes.supported_color_modes)
     ? attributes.supported_color_modes.filter((mode): mode is string => typeof mode === 'string')
     : [];
+  const effects = Array.isArray(attributes.effect_list)
+    ? attributes.effect_list.filter((effect): effect is string => typeof effect === 'string')
+    : undefined;
+  const options = Array.isArray(attributes.options)
+    ? attributes.options.filter((option): option is string => typeof option === 'string')
+    : undefined;
   return {
     state: state.state,
     brightness: typeof attributes.brightness === 'number' ? attributes.brightness : undefined,
@@ -134,6 +140,12 @@ function readEntity(state: unknown): EntityInfo | undefined {
       available: state.state !== 'unavailable' && state.state !== 'unknown',
       on: state.state === 'on',
       colourModes: modes,
+      ...(effects ? { effects } : {}),
+      ...(options ? { options } : {}),
+      ...(typeof state.entity_id === 'string' && state.entity_id.startsWith('sensor.')
+        ? { value: state.state }
+        : {}),
+      ...(typeof attributes.effect === 'string' ? { effect: attributes.effect } : {}),
     },
   };
 }
@@ -516,7 +528,11 @@ export class HassClient implements HassOutput {
       b !== undefined &&
       a.available === b.available &&
       a.on === b.on &&
-      a.colourModes.join() === b.colourModes.join();
+      a.colourModes.join() === b.colourModes.join() &&
+      (a.effects ?? []).join('\n') === (b.effects ?? []).join('\n') &&
+      (a.options ?? []).join('\n') === (b.options ?? []).join('\n') &&
+      (a.value ?? '') === (b.value ?? '') &&
+      (a.effect ?? null) === (b.effect ?? null);
     if (!same && (a !== undefined || b !== undefined)) this.tell(entity, b);
   }
 

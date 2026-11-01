@@ -9,9 +9,9 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { DecorState } from './decorController.js';
 import { createHttpServer } from './http.js';
 import { type FixtureDefinition, Rig } from './rig.js';
-import type { SwitchesState } from './switchesController.js';
 import { RecordingHass, RecordingOutput } from './testing.js';
 
 const SPIDER: FixtureDefinition = {
@@ -23,7 +23,7 @@ const SPIDER: FixtureDefinition = {
 };
 const DECOR: FixtureDefinition = {
   id: 'decor',
-  kind: 'switches',
+  kind: 'decor',
   label: 'Decor',
   switches: [
     { id: 'uv1', label: 'UV 1', entity: 'switch.uv_lamp_1', blackout: true },
@@ -46,7 +46,7 @@ describe('a rig with the decor', () => {
     return rig;
   };
   const decor = () => rig.find('decor')?.controller;
-  const decorState = () => decor()?.getState() as SwitchesState;
+  const decorState = () => decor()?.getState() as DecorState;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'lightdeck-decor-'));
@@ -121,6 +121,72 @@ describe('a rig with the decor', () => {
   });
 });
 
+describe('the strips in the rig', () => {
+  let dir: string;
+  let hass: RecordingHass;
+  let rig: Rig;
+  const WITH_STRIPS: FixtureDefinition = {
+    ...DECOR,
+    strips: [
+      { id: 'buis1', label: 'Buis 1', entity: 'light.wled_buis1', draw: 'wled' },
+      { id: 'buis2', label: 'Buis 2', entity: 'light.wled_buis2', draw: 'wled', blackout: true },
+    ],
+  };
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'lightdeck-strips-'));
+    hass = new RecordingHass();
+    rig = new Rig({
+      output: new RecordingOutput(),
+      hass,
+      fixtures: [SPIDER, WITH_STRIPS],
+      show: join(dir, 'show.yaml'),
+    });
+  });
+  afterEach(() => {
+    rig.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('gives the strips the tempo of the console, and the blackout of the console to those that follow it', () => {
+    rig.find('decor')?.controller.update({ on: { buis1: true, buis2: true } });
+    hass.commands = [];
+    rig.tempo.update({ bpm: 150 });
+    expect(hass.to('number.wled_buis1_speed')).toEqual([
+      { domain: 'number', service: 'set_value', data: { value: 150 } },
+    ]);
+    hass.commands = [];
+    rig.setBlackout(true);
+    expect(hass.commands.map((sent) => [sent.entity, sent.command.service])).toEqual([
+      ['light.wled_buis2', 'turn_off'],
+    ]);
+  });
+
+  it('gives the strips the grand master of the console', () => {
+    rig.find('decor')?.controller.update({ on: { buis1: true } });
+    hass.commands = [];
+    rig.setMaster(0.5);
+    expect(hass.to('light.wled_buis1').at(-1)?.data).toMatchObject({ brightness: 128 });
+    rig.setMaster(0);
+    expect(hass.to('light.wled_buis1').at(-1)?.service).toBe('turn_off');
+  });
+
+  it('refuses an entity that a strip and a lamp share, and a speed entity that is used twice', () => {
+    rig.close();
+    const room: FixtureDefinition = {
+      id: 'room',
+      kind: 'room',
+      label: 'Room',
+      lamps: [{ id: 'a', label: 'A', entity: 'light.wled_buis1' }],
+    };
+    expect(
+      () => new Rig({ output: new RecordingOutput(), hass, fixtures: [room, WITH_STRIPS] }),
+    ).toThrow(/light.wled_buis1 is a lamp of two fixtures/);
+    // Reopen one so that afterEach has something to close.
+    rig = new Rig({ output: new RecordingOutput(), hass, fixtures: [SPIDER, WITH_STRIPS] });
+  });
+});
+
 describe('the decor over HTTP', () => {
   let publicDir: string;
   let hass: RecordingHass;
@@ -161,7 +227,7 @@ describe('the decor over HTTP', () => {
     // biome-ignore lint/suspicious/noExplicitAny: shapes are asserted field by field
     const state = (await (await fetch(`${base}/api/state`)).json()) as any;
     const fixture = state.fixtures.find((each: { id: string }) => each.id === 'decor');
-    expect(fixture.kind).toBe('switches');
+    expect(fixture.kind).toBe('decor');
     expect(fixture.protocol).toBe('hass');
     expect(fixture.dmx).toBeUndefined();
     expect(fixture.details.switches.map((each: { id: string }) => each.id)).toEqual(['uv1', 'uv2']);
@@ -174,6 +240,6 @@ describe('the decor over HTTP', () => {
     expect((await post('/api/fixtures/decor/update', { follows: { uv2: true } })).status).toBe(200);
     const bad = await post('/api/fixtures/decor/update', { on: { nope: true } });
     expect(bad.status).toBe(400);
-    expect(((await bad.json()) as { error: string }).error).toMatch(/no switch called "nope"/);
+    expect(((await bad.json()) as { error: string }).error).toMatch(/nothing called "nope"/);
   });
 });

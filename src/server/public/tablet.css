@@ -49,7 +49,7 @@
   --tile-h: 124px;
 }
 /* Five tiles fit in the rail at 800 px high: the decor, which has two bars to show, is the low one. */
-.gtab[data-kind="switches"] {
+.gtab[data-kind="decor"] {
   --tile-h: 88px;
 }
 .gtab .nm {
@@ -318,7 +318,7 @@
   padding: 10px 6px;
 }
 
-/* ---- the decor: the UV switches ---- */
+/* ---- the decor: the UV lamps and the pipes ---- */
 
 /* It takes the place of the looks, the lanes and the tray, so the column of the tray is its too. */
 .t-body[data-decor="true"] .t-main {
@@ -326,11 +326,49 @@
 }
 .t-decor {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1 1 0;
+  align-content: start;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  touch-action: pan-y;
+}
+.t-decor::-webkit-scrollbar {
+  display: none;
+}
+/* With pipes the look of the pipes stands at the right. */
+.t-decor[data-pipes="true"] {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+.t-dc-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.t-dc-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.t-dc-rowhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.t-dc-rowdimmer {
+  flex: 0 0 min(360px, 60%);
+  min-width: 0;
+}
+.t-dc-cells {
+  display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
-  align-content: start;
   gap: 12px;
-  max-width: 720px;
 }
 .t-dc {
   display: flex;
@@ -340,10 +378,18 @@
 }
 /* The big key keeps its size whatever it says. */
 .t-dc-key {
-  height: 128px;
+  height: 96px;
 }
 .t-dc-key .nm {
-  font: 600 var(--fs-xl, 28px) / 1 var(--f-ui);
+  font: 600 var(--fs-xl) / 1 var(--f-ui);
+}
+.t-dc-key .fx {
+  min-height: 1em;
+  overflow: hidden;
+  color: var(--t2);
+  font: 500 var(--fs-s) / 1 var(--f-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .t-dc-key .wd {
   font: 600 var(--fs-m) / 1 var(--f-ui);
@@ -351,6 +397,18 @@
 }
 .t-dc-key.is-on .wd {
   color: var(--on-soft);
+}
+/* A pipe shows its colour as a dot in the corner of its key. */
+.t-dc-key.has-strip::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--strip, #fff);
+  box-shadow: 0 0 0 1px var(--line-2);
 }
 .t-dc-key .wd.red,
 .t-dc-note.red {
@@ -369,6 +427,92 @@
   font: 500 var(--fs-xs) / 1.2 var(--f-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The look of the pipes: which one, brightness, colour, effect. It scrolls when the effects are many. */
+.t-dc-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+.t-dc-side > * {
+  flex: none;
+}
+.t-dc-targets {
+  display: flex;
+  gap: 4px;
+}
+.t-dc-targets .tab {
+  flex: 1 1 0;
+  justify-content: center;
+  padding: 0 6px;
+}
+.t-dc-colours,
+.t-dc-effects {
+  display: grid;
+  gap: 6px;
+}
+.t-dc-colours {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+/* The looks of the pipes: two across, a name each. */
+.t-dc-looks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.t-dc-pace {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.t-dc-pace .chip {
+  justify-content: center;
+  text-align: center;
+}
+.t-dc-effects {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.t-dc-colour {
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.t-dc-colour i {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--line-2);
+}
+.t-dc-colour .name {
+  font-size: var(--fs-xs);
+}
+.t-dc-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.t-dc-group[hidden] {
+  display: none;
+}
+/* The palettes of the show, a name and the strip of its colours: two across. */
+.t-dc-palettes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.t-dc-more {
+  height: 48px;
+}
+.t-dc-hint {
+  margin: 0;
+  color: var(--t3);
+  font: 500 var(--fs-xs) / 1.3 var(--f-ui);
 }
 
 /* ---- the foot: the parts of the evening ---- */
@@ -448,8 +592,12 @@
   .t-body[data-decor="true"] .t-main {
     grid-column: 1;
   }
-  .t-decor {
-    max-width: none;
+  .t-decor[data-pipes="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .t-dc-side {
+    padding-left: 0;
+    border-left: 0;
   }
   .t-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

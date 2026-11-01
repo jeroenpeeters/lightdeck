@@ -4,6 +4,8 @@
  *   GET  /                            goes to the deck
  *   GET  /deck                        the deck: the groups of the show with their scenes
  *   GET  /palettes                    the palettes of the show: their colours, and how they move
+ *   GET  /decor                       how the pipes of the decor are put together: linked or apart, in which
+ *                                     order, which way round (set with POST /api/fixtures/decor/update)
  *   GET  /tablet                      the page for a tablet at the side of the dance floor: the
  *                                     tap, the master, the parts of the evening, the looks of a group
  *                                     by mood with what goes with the mood in a tray under them
@@ -131,6 +133,7 @@ const PALETTE_POST = /^\/api\/palettes\/([a-z0-9-]+)\/(update|delete)$/;
 const VIDEOWALL_POST = /^\/api\/videowall\/(test|send|clear|play|playlist|blackout)$/;
 const DECK = '/deck';
 const VIDEOWALL = '/videowall';
+const DECOR = '/decor';
 const PALETTES = '/palettes';
 const TABLET = '/tablet';
 const MOODS = '/moods';
@@ -589,6 +592,7 @@ export function createHttpServer(options: HttpOptions): Server {
       if (path === DECK && sendFile(req, res, '/deck.html')) return;
       if (path === PALETTES && sendFile(req, res, '/palettes.html')) return;
       if (path === VIDEOWALL && sendFile(req, res, '/videowall.html')) return;
+      if (path === DECOR && sendFile(req, res, '/decor.html')) return;
       if (path === TABLET && sendFile(req, res, '/tablet.html')) return;
       if (path === MOODS) {
         // The page for moods is the tablet page now; an old bookmark goes there.

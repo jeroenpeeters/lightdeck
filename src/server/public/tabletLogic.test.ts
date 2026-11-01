@@ -1,18 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
   chipMarks,
+  colourCss,
+  commonValue,
   DIFFERS_MS,
   decorOf,
+  effectGroups,
+  hexColour,
   isDecorGroup,
   laserOpen,
+  lookIsOn,
   nextLook,
+  paletteGroups,
   partBars,
   partInfo,
   partPlace,
   roomRails,
+  STRIP_COLOURS,
+  sameColour,
   spiderLenses,
   splitNumber,
+  stripView,
   switchView,
+  targetIds,
 } from './tabletLogic.js';
 
 const sequence = {
@@ -210,7 +220,7 @@ describe('what the tiles of the rail show', () => {
 describe('the decor', () => {
   const fixtures = [
     { id: 'spider', kind: 'spider' },
-    { id: 'decor', kind: 'switches' },
+    { id: 'decor', kind: 'decor' },
   ];
 
   it('knows which fixtures and which groups are decor', () => {
@@ -274,5 +284,123 @@ describe('the decor', () => {
     const refused = state({ problems: { uv1: 'not found' } });
     expect(switchView(refused, 'uv1', false)).toMatchObject({ warn: true, note: 'not found' });
     expect(switchView(undefined, 'uv1', false).word).toBe('Off');
+  });
+});
+
+describe('the strips of the decor', () => {
+  it('reads a colour and shows it as the colour and not its brightness', () => {
+    expect(hexColour('#ff8000')).toEqual({ red: 1, green: 128 / 255, blue: 0 });
+    expect(hexColour('nonsense')).toEqual({ red: 0, green: 0, blue: 0 });
+    expect(colourCss({ red: 0, green: 0.25, blue: 0.5 })).toBe('rgb(0 128 255)');
+    expect(colourCss({ red: 0, green: 0, blue: 0 })).toBe('rgb(0 0 0)');
+    expect(STRIP_COLOURS.every((each) => /^#[0-9a-f]{6}$/.test(each.hex))).toBe(true);
+  });
+
+  it('knows the same colour at another brightness, and another colour', () => {
+    expect(sameColour({ red: 0, green: 0.5, blue: 1 }, { red: 0, green: 0.25, blue: 0.5 })).toBe(
+      true,
+    );
+    expect(sameColour({ red: 1, green: 0, blue: 0 }, { red: 0, green: 1, blue: 0 })).toBe(false);
+  });
+
+  it('works out which strips a target means', () => {
+    const ids = ['a', 'b', 'c'];
+    expect(targetIds('all', ids)).toEqual(ids);
+    expect(targetIds('b', ids)).toEqual(['b']);
+    expect(targetIds('gone', ids)).toEqual(ids);
+  });
+
+  it('finds what the strips have in common', () => {
+    expect(commonValue(['Flow', 'Flow'])).toBe('Flow');
+    expect(commonValue(['Flow', 'Chase'])).toBeUndefined();
+    expect(commonValue([])).toBeUndefined();
+    expect(commonValue([null, null])).toBeNull();
+  });
+
+  it('puts the flowing effects first, in its own order, and leaves Solid out', () => {
+    const groups = effectGroups(['Solid', 'Blink', 'Chase', 'Flow', 'Rainbow', 'Lake']);
+    expect(groups.liquid).toEqual(['Flow', 'Lake', 'Chase']);
+    expect(groups.rest).toEqual(['Blink', 'Rainbow']);
+    expect(effectGroups(undefined)).toEqual({ liquid: [], rest: [] });
+  });
+
+  it('shows a strip: what a switch shows, with its effect and colour', () => {
+    const state = {
+      on: { b1: true },
+      follows: { b1: false },
+      blackout: false,
+      effect: { b1: 'Flow' },
+      colour: { b1: { red: 0, green: 0.5, blue: 1 } },
+      level: { b1: 0.4 },
+      reported: { b1: { available: true, on: true } },
+      problems: { b1: null },
+    };
+    expect(stripView(state, 'b1', false)).toMatchObject({
+      on: true,
+      word: 'On',
+      effect: 'Flow',
+      effectName: 'Flow',
+      css: 'rgb(0 128 255)',
+      level: 0.4,
+    });
+    expect(stripView(state, 'b1', true)).toMatchObject({ on: true });
+    expect(stripView({ ...state, follows: { b1: true } }, 'b1', true)).toMatchObject({
+      on: false,
+      word: 'Blackout',
+    });
+    expect(stripView({ ...state, effect: { b1: null } }, 'b1', false).effectName).toBe('Solid');
+    expect(stripView(undefined, 'b1', false)).toMatchObject({
+      on: false,
+      effectName: 'Solid',
+      level: 1,
+    });
+  });
+});
+
+describe('the looks of the pipes', () => {
+  it('puts the usual palettes first, in their own order', () => {
+    const groups = paletteGroups(['Zebra', 'Lava', 'Default', 'Ocean', 'Atlantica']);
+    expect(groups.common).toEqual(['Default', 'Ocean', 'Lava']);
+    expect(groups.rest).toEqual(['Zebra', 'Atlantica']);
+    expect(paletteGroups(undefined)).toEqual({ common: [], rest: [] });
+  });
+
+  const look = {
+    id: 'flow',
+    label: 'Flow',
+    effect: 'Flow',
+    palette: 'Ocean',
+    colour: '#00e5ff',
+    intensity: 90,
+    pace: 2,
+  };
+  const strip = {
+    effect: 'Flow',
+    palette: 'Ocean',
+    intensity: 90,
+    pace: 2,
+    colour: hexColour('#00e5ff'),
+  };
+
+  it('knows when every strip shows the look', () => {
+    expect(lookIsOn(look, [strip, strip])).toBe(true);
+    expect(lookIsOn(look, [strip, { ...strip, effect: 'Lake' }])).toBe(false);
+    expect(lookIsOn(look, [{ ...strip, palette: null }])).toBe(false);
+    expect(lookIsOn(look, [{ ...strip, pace: 1 }])).toBe(false);
+    expect(lookIsOn(look, [])).toBe(false);
+  });
+
+  it('counts what a look says nothing about as what WLED starts with, and ignores a colour it does not name', () => {
+    const plain = { id: 'p', label: 'P', effect: null };
+    expect(
+      lookIsOn(plain, [
+        { effect: null, palette: 'Default', intensity: 128, pace: 1, colour: hexColour('#ff0000') },
+      ]),
+    ).toBe(true);
+    expect(
+      lookIsOn(plain, [
+        { effect: null, palette: null, intensity: null, pace: 1, colour: hexColour('#ff0000') },
+      ]),
+    ).toBe(false);
   });
 });

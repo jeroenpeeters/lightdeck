@@ -37,6 +37,7 @@
 import { clamp01 } from '../model/fixture.js';
 import { mod } from './beat.js';
 import { type Curve, curveAt, curveInverse, curveRange, curveRangeBetween } from './curve.js';
+import { SWIPE_BEATS, swipesUp } from './swipe.js';
 
 /**
  * How the bars of a fixture move, for an effect that works in degrees and not in tilt values.
@@ -401,6 +402,38 @@ const slice: MotionEffect = {
   },
 };
 
+/** The least a bar must be able to swing the way up for the swipe to go that way, in degrees. */
+const SWIPE_LEAST_DEGREES = 5;
+
+const swipe: MotionEffect = {
+  id: 'swipe',
+  name: 'Swipe',
+  description:
+    'The bars take turns to swing from straight down up as far as they reach, one while the other swings back down, so one bar is always on its way up. It takes two beats a swing, and the motor speed is set so that each swing takes the whole of them. The light effect Swipe lights the bar that is on its way up.',
+  setsMotorSpeed: true,
+  render(context) {
+    // Up is where the beams go to the ceiling: the back bar swings to the back and the front bar to the front,
+    // and down is where the bar hangs. A limit or a zone shortens the swing, it does not stop it, and a window
+    // that leaves almost nothing in that direction (the floor zone) is swung the other way, across what it has.
+    return pathFrame(context, (bar) => {
+      const down = centreOf(context.motion, bar);
+      const { min, max } = reachOf(context.motion, bar);
+      const wanted = bar % 2 === 0 ? min : max;
+      const other = bar % 2 === 0 ? max : min;
+      const up =
+        Math.abs(wanted - down) >= SWIPE_LEAST_DEGREES ||
+        Math.abs(other - down) <= Math.abs(wanted - down)
+          ? wanted
+          : other;
+      return {
+        leg: SWIPE_BEATS,
+        first: 0,
+        degrees: (arrival) => (swipesUp(bar, arrival) ? up : down),
+      };
+    });
+  },
+};
+
 export const MOTION_EFFECTS: readonly MotionEffect[] = [
   tiltWave,
   scissor,
@@ -408,6 +441,7 @@ export const MOTION_EFFECTS: readonly MotionEffect[] = [
   creep,
   drift,
   slice,
+  swipe,
 ];
 
 export function findMotionEffect(id: string): MotionEffect | undefined {

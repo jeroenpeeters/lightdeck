@@ -23,14 +23,23 @@ fixtures:
       - { id: low, label: Low, lamps: [bar, shelf] }
       - { id: high, label: High, lamps: [ceiling] }
 
-  # The decor: switches that light things of the set (here two UV lamps on the symbols of a cabinet).
-  # They have no brightness, colour or effect, and no scene, look or sequence switches them: they are
+  # The decor: what is part of the set and not of the lighting. Two sorts: `switches` (here two UV lamps on
+  # the symbols of a cabinet) and `strips` of WLED (here three, in dryer hoses). No scene, look or sequence
+  # touches them: they are
   # on and off by hand on the tab Decor of the tablet page, apart or together. `blackout: true` is where
   # "follows the blackout of the console" starts; the tablet changes it while the show runs. The group
   # that gives the fixture its tab is in the show file:  groups: { decor: { label: Decor, fixtures: [decor] } }
   - id: decor
-    kind: switches
+    kind: decor
     label: Decor
     switches:
       - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
       - { id: uv2, label: UV 2, entity: switch.uv_lamp_2, blackout: true }
+    # A strip has its own colour (`colour: '#rrggbb'`, default white), a brightness and an effect of WLED's
+    # own, which the strip lists. The speed of the effect follows the bpm through the `number` entity that WLED
+    # makes, `number.wled_buis1_speed` unless `speed:` says otherwise. `blackout: true` is where "follows
+    # the blackout of the console" starts for a strip.
+    strips:
+      - { id: buis1, label: Buis 1, entity: light.wled_buis1 }
+      - { id: buis2, label: Buis 2, entity: light.wled_buis2, speed: number.wled_buis2_speed }
+      - { id: buis3, label: Buis 3, entity: light.wled_buis3, colour: '#00e5ff' }

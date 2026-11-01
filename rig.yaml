@@ -24,8 +24,26 @@ fixtures:
       - { id: rail3, label: Rail 3, lamps: [r3s1, r3s2, r3s3, r3s4] }
   # The two UV lamps on the symbols of the cabinet: on and off by hand, apart or together, on the tab Decor.
   - id: decor
-    kind: switches
+    kind: decor
     label: Decor
     switches:
       - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
       - { id: uv2, label: UV 2, entity: switch.uv_lamp_2, blackout: true }
+    # Three strips of WLED in white dryer hoses. Lightdeck draws the effects itself (engine/pipeEffects.ts, in the
+    # colours of a palette of the show) and sends the pixels over DDP. It finds each strip's address through Home
+    # Assistant (sensor.wled_buisN_ip), so a strip is drawn as soon as it is online; `host:` gives it when needed,
+    # and `draw: wled` leaves the effects to WLED itself (chosen through Home Assistant).
+    strips:
+      - { id: buis1, label: Buis 1, entity: light.wled_buis1, leds: 300 }
+      - { id: buis2, label: Buis 2, entity: light.wled_buis2, leds: 300 }
+      - { id: buis3, label: Buis 3, entity: light.wled_buis3, leds: 300 }
+    # Looks of the pipes that lightdeck draws: an effect, and the palette that colours it when it names one.
+    looks:
+      - { id: slow, label: Slow flow, effect: slowflow }
+      - { id: brew, label: Brew, effect: flow }
+      - { id: bubbling, label: Bubbling, effect: bubbles }
+      - { id: transmute, label: Transmute, effect: transmute }
+      - { id: shadow, label: Shadow, effect: shadow }
+      - { id: seal, label: Seal, effect: seal }
+      - { id: shot, label: Shot, effect: shot, pace: 2 }
+      - { id: storm, label: Lightning, effect: lightning, palette: lightning }

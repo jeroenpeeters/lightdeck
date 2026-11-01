@@ -238,7 +238,7 @@ export function renderRails() {
 const SUB_KEY = { spider: 'subDimmer', room: 'dimmer' };
 
 /** The kinds of fixture that have a blackout of their own: all of them, the laser included. */
-const DARK_KINDS = new Set(['spider', 'laser', 'room', 'switches']);
+const DARK_KINDS = new Set(['spider', 'laser', 'room', 'decor']);
 
 /** The fixtures of a group that have a blackout of their own. */
 function darkFixtures(group) {
@@ -364,6 +364,15 @@ export function refreshSub() {
 export function renderSub(group) {
   subGroup = group;
   sub.point(group);
+  // The decor has no dimmer of its own here: the UV lamps and the pipes have one each, in their rows (Jeroen:
+  // they are not the same at all). The place of the fader stays, empty, so the blackout key does not move.
+  const decorOnly =
+    group !== undefined &&
+    group.fixtures.length > 0 &&
+    group.fixtures.every(
+      (id) => shell.fixtures.find((fixture) => fixture.id === id)?.kind === 'decor',
+    );
+  $('t-sub-dimmer').style.visibility = decorOnly ? 'hidden' : '';
   strobe.point(group);
   $('t-sub-strobe').hidden = strobeFixtures(group).length === 0;
   drawDark();

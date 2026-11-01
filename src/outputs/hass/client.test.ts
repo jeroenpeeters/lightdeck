@@ -246,6 +246,44 @@ describe('HassClient with a fake socket', () => {
       });
     });
 
+    it('passes on the effects of a light and the effect it shows, and tells when they change', () => {
+      const heard: (EntityReport | undefined)[] = [];
+      client.watch('light.a', (report) => heard.push(report));
+      client.start();
+      login();
+      answerStates([
+        lamp('light.a', 'on', { effect_list: ['Solid', 'Flow'], effect: 'Solid', brightness: 10 }),
+      ]);
+      expect(heard.at(-1)).toMatchObject({ effects: ['Solid', 'Flow'], effect: 'Solid' });
+      latest().say({
+        type: 'event',
+        event: {
+          event_type: 'state_changed',
+          data: {
+            entity_id: 'light.a',
+            new_state: lamp('light.a', 'on', { effect_list: ['Solid', 'Flow'], effect: 'Flow' }),
+          },
+        },
+      });
+      expect(heard.at(-1)).toMatchObject({ effect: 'Flow' });
+      expect(heard).toHaveLength(2);
+    });
+
+    it('passes on the options of a select entity, the palettes of a strip', () => {
+      const heard: (EntityReport | undefined)[] = [];
+      client.watch('select.a_palette', (report) => heard.push(report));
+      client.start();
+      login();
+      answerStates([
+        {
+          entity_id: 'select.a_palette',
+          state: 'Default',
+          attributes: { options: ['Default', 'Ocean'] },
+        },
+      ]);
+      expect(heard.at(-1)).toMatchObject({ available: true, options: ['Default', 'Ocean'] });
+    });
+
     it('tells a watcher at once what is already known, and stops when it stops listening', () => {
       client.start();
       login();
