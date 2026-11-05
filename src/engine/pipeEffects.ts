@@ -138,8 +138,31 @@ const slowflow: PipeEffect = makeFlow(
   64,
 );
 
-/** The effect of slugs of liquid, which takes `beats` beats to cross the pipe at pace 1. */
-function makeFlow(id: string, name: string, description: string, beats: number): PipeEffect {
+/**
+ * The liquid with a heartbeat (Jeroen, 2026-11-02: "the pipe in the background pulses along on the
+ * beat"): the same slugs at the pace of `flow`, but the pipe under them swells on every beat and falls
+ * back, and a little more on the first beat of a bar. The pulse follows the beat itself and not the pace,
+ * so it stays on the beat and never changes more than once per beat, whatever the pace of the flow.
+ */
+const flowbeat: PipeEffect = makeFlow(
+  'flowbeat',
+  'Flow and pulse',
+  'The liquid flows and the pipe behind it pulses on the beat.',
+  16,
+  true,
+);
+
+/**
+ * The effect of slugs of liquid, which takes `beats` beats to cross the pipe at pace 1. With `beating`
+ * the background liquid swells on the beat.
+ */
+function makeFlow(
+  id: string,
+  name: string,
+  description: string,
+  beats: number,
+  beating = false,
+): PipeEffect {
   return {
     id,
     name,
@@ -150,10 +173,17 @@ function makeFlow(id: string, name: string, description: string, beats: number):
       const front = accent(context);
       const slugs = 6;
       const time = (context.beat * context.pace) / beats;
+      // The beat of the background: a hit that falls back, a bit more on the first beat of a bar.
+      const inBar = ((context.beat % 4) + 4) % 4;
+      const thump = beating ? Math.exp(-3.2 * frac(context.beat)) * (inBar < 1 ? 1 : 0.7) : 0;
       for (let i = 0; i < context.leds; i++) {
         const x = place(i, context.leds);
-        // The background liquid: a slow shimmer between 18 and 38 percent.
-        const shimmer = 0.28 + 0.1 * Math.sin(TAU * (3.1 * x - 3 * time + 0.2));
+        // The background liquid: a slow shimmer between 18 and 38 percent, which swells on the beat.
+        const shimmer =
+          0.28 +
+          0.1 * Math.sin(TAU * (3.1 * x - 3 * time + 0.2)) -
+          (beating ? 0.1 : 0) +
+          0.5 * thump;
         let body = 0;
         let head = 0;
         for (let k = 0; k < slugs; k++) {
@@ -169,11 +199,77 @@ function makeFlow(id: string, name: string, description: string, beats: number):
           if (d > 0) head = Math.max(head, weight * smooth(0.1, 1.1, d));
         }
         const liquid = mix(fore, front, head * 0.9);
-        put(out, i, mix(back, liquid, body), Math.max(shimmer, 0.2 + 0.8 * body));
+        // The pipe behind the slugs takes some of the foreground on a hit, so it pulses in colour as well.
+        const ground = beating ? mix(back, fore, thump * 0.45) : back;
+        put(out, i, mix(ground, liquid, body), Math.max(shimmer, 0.2 + 0.8 * body));
       }
     },
   };
 }
+
+/**
+ * The pipe fills up and runs empty again (Jeroen, 2026-11-02): the liquid rises from the start of the
+ * pipe to the end, the pipe stands full for a moment, and then it drains away, the tail leaving at the
+ * start so the liquid runs out through the far end. Sixteen beats a round at pace 1: six and a half to
+ * fill, one and a half full, six and a half to drain, one empty. The front is a bright edge in the
+ * accent colour, the liquid shimmers a little, and the empty pipe holds the dim background.
+ */
+const fill: PipeEffect = {
+  id: 'fill',
+  name: 'Fill',
+  description: 'The pipe fills up with liquid and runs empty again.',
+  render(context, out) {
+    const fore = foreground(context);
+    const back = background(context);
+    const front = accent(context);
+    const round = frac((context.beat * context.pace) / 16);
+    const ease = (t: number) => t * t * (3 - 2 * t);
+    const soft = 0.04;
+    // The edges run from before the start to after the end, so the pipe is whole when full and bare when empty.
+    const span = (e: number) => -soft + e * (1 + 2 * soft);
+    const head = round < 0.4 ? span(ease(round / 0.4)) : span(1);
+    const tail = round < 0.5 ? span(0) : round < 0.9 ? span(ease((round - 0.5) / 0.4)) : span(1);
+    const time = (context.beat * context.pace) / 16;
+    for (let i = 0; i < context.leds; i++) {
+      const x = place(i, context.leds);
+      const inside = smooth(head + soft, head - soft, x) * smooth(tail - soft, tail + soft, x);
+      // The liquid shimmers between 80 and 100 percent, and the edge that moves glows in the accent colour.
+      const shimmer = 0.9 + 0.1 * Math.sin(TAU * (4 * x - 6 * time));
+      const edge = Math.max(
+        round < 0.4 ? Math.exp(-(((head - x) / 0.05) ** 2)) : 0,
+        round >= 0.5 && round < 0.9 ? Math.exp(-(((x - tail) / 0.05) ** 2)) : 0,
+      );
+      const liquid = mix(fore, front, edge * 0.8);
+      put(out, i, mix(back, liquid, inside), 0.14 + 0.86 * inside * shimmer);
+    }
+  },
+};
+
+/**
+ * A few pixels of light shoot through the pipe on every beat (Jeroen, 2026-11-02: like `shot`, but not so
+ * fast, and with no light on the other LEDs). The dot is about four pixels wide, leaves the first LED on
+ * the beat quickly and slows down, and reaches the last LED as the next beat leaves; everything else stays
+ * black. At pace 1 that is one dot per beat, at pace ½ one every two beats.
+ */
+const beatshot: PipeEffect = {
+  id: 'beatshot',
+  name: 'Beat shot',
+  description:
+    'A few pixels of light shoot through the pipe on every beat, with no light around them.',
+  render(context, out) {
+    const colour = foreground(context);
+    const period = 1 / context.pace;
+    const phase = (((context.beat % period) + period) % period) / period;
+    // Fast at the start and slower towards the end, so the dot is thrown by the beat.
+    const position = (1 - (1 - phase) ** 2) * (context.leds - 1);
+    const half = 2.5;
+    for (let i = 0; i < context.leds; i++) {
+      const distance = Math.abs(i - position);
+      const level = distance < half ? 0.5 + 0.5 * Math.cos((Math.PI * distance) / half) : 0;
+      put(out, i, colour, level);
+    }
+  },
+};
 
 /**
  * A colour that shoots through the pipe: a bright head with a tail runs from one end to the other, very
@@ -429,6 +525,9 @@ export const PIPE_EFFECTS: readonly PipeEffect[] = [
   solid,
   flow,
   slowflow,
+  flowbeat,
+  fill,
+  beatshot,
   shot,
   bubbles,
   transmute,

@@ -42,6 +42,9 @@ describe('the effects of the pipes', () => {
       'solid',
       'flow',
       'slowflow',
+      'flowbeat',
+      'fill',
+      'beatshot',
       'shot',
       'bubbles',
       'transmute',
@@ -240,6 +243,172 @@ describe('slowflow', () => {
     const fast = change(picture('flow', 8, 300), picture('flow', 9, 300));
     expect(slow).toBeGreaterThan(0);
     expect(slow).toBeLessThan(fast / 2);
+  });
+});
+
+describe('flowbeat', () => {
+  const mean = (values: Float32Array) => sum(values) / values.length;
+
+  it('swells the whole pipe on the beat and falls back before the next', () => {
+    // Away from the slugs the average is what the background does: high on the beat, low just before the next.
+    const onBeat = mean(picture('flowbeat', 5.02, 120));
+    const before = mean(picture('flowbeat', 5.95, 120));
+    expect(onBeat).toBeGreaterThan(before * 1.3);
+  });
+
+  it('hits harder on the first beat of a bar than on the others', () => {
+    const first = mean(picture('flowbeat', 4.02, 120));
+    const other = mean(picture('flowbeat', 5.02, 120));
+    expect(first).toBeGreaterThan(other);
+  });
+
+  it('has the same slugs as flow: where the liquid is thick it is brighter than the background', () => {
+    const flowing = picture('flowbeat', 9.5, 120);
+    const plain = picture('flow', 9.5, 120);
+    expect(Math.max(...flowing)).toBeGreaterThanOrEqual(Math.max(...plain) - 1e-6);
+  });
+
+  it('pulses once per beat whatever the pace of the flow', () => {
+    for (const pace of [0.25, 1, 4]) {
+      const a = mean(picture('flowbeat', 6.02, 120, LOOKS[2], pace));
+      const b = mean(picture('flowbeat', 6.95, 120, LOOKS[2], pace));
+      expect(a).toBeGreaterThan(b);
+    }
+  });
+
+  it('does not change by more than the limit allows: one hit per beat', () => {
+    const effect = findPipeEffect('flowbeat');
+    if (!effect) throw new Error('no flowbeat');
+    const out = new Float32Array(60 * 3);
+    let last = 0;
+    let rises = 0;
+    const bpm = 126;
+    const seconds = 60;
+    for (let f = 0; f < seconds * 100; f++) {
+      renderPipe(effect, (f / 100) * (bpm / 60), bpm, 1, 60, LOOKS[2] ?? [], out);
+      const now = sum(out);
+      if (now - last > 3) rises++;
+      last = now;
+    }
+    expect(rises / seconds).toBeLessThanOrEqual(bpm / 60 + 0.1);
+  });
+});
+
+describe('fill', () => {
+  const LEDS = 100;
+  /** How many LEDs show the liquid, a good deal brighter than the empty pipe. */
+  const wet = (beat: number) => {
+    const out = picture('fill', beat, LEDS, LOOKS[1] ?? []);
+    let count = 0;
+    for (let i = 0; i < LEDS; i++) {
+      const level = Math.max(out[i * 3] ?? 0, out[i * 3 + 1] ?? 0, out[i * 3 + 2] ?? 0);
+      if (level > 0.5) count++;
+    }
+    return count;
+  };
+  /** The highest and the lowest LED that is wet. */
+  const reach = (beat: number) => {
+    const out = picture('fill', beat, LEDS, LOOKS[1] ?? []);
+    const on: number[] = [];
+    for (let i = 0; i < LEDS; i++) {
+      const level = Math.max(out[i * 3] ?? 0, out[i * 3 + 1] ?? 0, out[i * 3 + 2] ?? 0);
+      if (level > 0.5) on.push(i);
+    }
+    return [on[0] ?? -1, on[on.length - 1] ?? -1];
+  };
+
+  it('starts empty, fills from the start, stands full and runs empty again', () => {
+    expect(wet(0)).toBe(0);
+    expect(wet(2)).toBeGreaterThan(0);
+    expect(wet(2)).toBeLessThan(wet(4));
+    expect(wet(4)).toBeLessThan(wet(6));
+    expect(wet(7.5)).toBe(LEDS);
+    expect(wet(8)).toBe(LEDS);
+    expect(wet(10)).toBeLessThan(LEDS);
+    expect(wet(12)).toBeLessThan(wet(10));
+    expect(wet(15.5)).toBe(0);
+    expect(wet(16)).toBe(0);
+  });
+
+  it('fills from the first LED up and drains from the first LED up, so the liquid leaves by the far end', () => {
+    expect(reach(4)[0]).toBe(0);
+    expect(reach(4)[1]).toBeGreaterThan(20);
+    expect(reach(11)[1]).toBe(LEDS - 1);
+    expect(reach(11)[0]).toBeGreaterThan(20);
+  });
+
+  it('rounds in sixteen beats at pace 1 and in eight at pace 2', () => {
+    const at = (beat: number, pace: number) => picture('fill', beat, 60, LOOKS[2], pace);
+    expect(at(3, 1)).toEqual(at(19, 1));
+    expect(at(3, 2)).toEqual(at(11, 2));
+  });
+
+  it('shows the second colour in the empty pipe, dimly', () => {
+    const out = picture('fill', 0, LEDS, [CYAN, MAGENTA]);
+    expect(out[0]).toBeGreaterThan(0);
+    expect(Math.max(...out)).toBeLessThan(0.3);
+  });
+});
+
+describe('beatshot', () => {
+  const LEDS = 100;
+  const lit = (beat: number, pace = 1, leds = LEDS) => {
+    const out = picture('beatshot', beat, leds, LOOKS[2], pace);
+    const on: number[] = [];
+    for (let i = 0; i < leds; i++) {
+      if (Math.max(out[i * 3] ?? 0, out[i * 3 + 1] ?? 0, out[i * 3 + 2] ?? 0) > 0) on.push(i);
+    }
+    return on;
+  };
+
+  it('leaves the first LED on the beat and gets to the end as the next beat comes', () => {
+    expect(lit(5)[0]).toBe(0);
+    expect(lit(5.5)[0]).toBeGreaterThan(30);
+    expect(lit(5.5)[0]).toBeLessThan(90);
+    expect(lit(5.99).at(-1)).toBe(LEDS - 1);
+    expect(lit(6)[0]).toBe(0);
+  });
+
+  it('moves one way only within a beat', () => {
+    let last = -1;
+    for (let beat = 7; beat < 7.99; beat += 0.05) {
+      const middle = lit(beat).reduce((a, b) => a + b, 0) / Math.max(1, lit(beat).length);
+      expect(middle).toBeGreaterThanOrEqual(last);
+      last = middle;
+    }
+  });
+
+  it('is a few pixels wide and leaves every other LED black', () => {
+    for (const beat of [0.2, 1.3, 2.5, 3.7]) {
+      const on = lit(beat);
+      expect(on.length).toBeGreaterThanOrEqual(3);
+      expect(on.length).toBeLessThanOrEqual(6);
+    }
+    const out = picture('beatshot', 2.5, LEDS);
+    const at = lit(2.5);
+    for (let i = 0; i < LEDS; i++) {
+      if (at.includes(i)) continue;
+      expect(out.slice(i * 3, i * 3 + 3)).toEqual(new Float32Array(3));
+    }
+  });
+
+  it('is as wide on a long pipe as on a short one: pixels, not a share of the pipe', () => {
+    expect(lit(2.5, 1, 300).length).toBeLessThanOrEqual(6);
+    expect(lit(2.5, 1, 30).length).toBeLessThanOrEqual(6);
+  });
+
+  it('shoots once per beat at pace 1, every two beats at pace ½ and twice per beat at pace 2', () => {
+    expect(lit(6, 1)[0]).toBe(0);
+    // At pace ½ the dot launched on beat 6 is behind the one of pace 1 half a beat later, and not home at beat 7.
+    expect(lit(6.5, 0.5)[0]).toBeLessThan(lit(6.5, 1)[0] ?? 0);
+    expect(lit(7, 0.5)[0]).toBeGreaterThan(0);
+    expect(lit(6.5, 2)[0]).toBe(0);
+  });
+
+  it('has the foreground colour', () => {
+    const out = picture('beatshot', 5, LEDS, [CYAN, MAGENTA]);
+    expect(out[0]).toBeCloseTo(CYAN.red, 5);
+    expect(out[2]).toBeCloseTo(CYAN.blue, 5);
   });
 });
 

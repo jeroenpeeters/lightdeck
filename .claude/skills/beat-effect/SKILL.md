@@ -40,6 +40,15 @@ unpleasant for most and dangerous for some. An effect that flashes more than onc
 beat at speed 1 breaks the limit without anyone noticing, which is the other reason for
 the rule above.
 
+**Hard, not soft, on the spider** (Jeroen, 2026-11-01). The spider is a cheap fixture and cannot
+take many DMX value changes, so a lens that hits or changes colour is on or off, with nothing
+in between: use `gate(beat, share)` from `beat.ts` (`HOLD`, `HOLD_STAB` in `effects.ts`), not
+`hit()`, which is an exponential fall and looks like a fade there. A backdrop under a hit stays.
+Only a slow effect that is made for a fade says `soft: true` (the wave, spread, fade, seesaw, glow), and
+then it must also work when the context says `hard` (it runs above `SOFT_MAX_SPEED`): draw it at the
+floored beat. A test makes sure that every effect that is not soft changes at most once inside a beat.
+This is for the spider; the laser, the lamps of the room and the pipes are not held to it.
+
 **An effect sets only what it says it sets, and only what its type owns.** For the spider: a
 light effect gives levels per slot and nothing else; a motion effect gives the tilts and the
 motor speed (`setsMotorSpeed`), and the tilt is where the bars must END UP, changed once per leg

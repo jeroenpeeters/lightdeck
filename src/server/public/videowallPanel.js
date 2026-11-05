@@ -257,8 +257,17 @@ export function mountVideoWall(root, { shell, ask, side: sideHost }) {
   els.last = element('span', 'wl-line');
   const lines = element('div', 'wl-lines');
   lines.append(els.shown, els.last);
+  // The tempo for the beat effects of the player: a switch and one line, which keep their size.
+  els.tempo = button('key c wl-switch', 'Tempo off', () =>
+    change({ syncTempo: !settings().syncTempo }),
+  );
+  els.tempo.setAttribute('aria-pressed', 'false');
+  els.tempo.setAttribute('aria-label', 'Send the tempo to the wall');
+  els.tempoLine = element('span', 'wl-line');
+  const tempoLines = element('div', 'wl-lines');
+  tempoLines.append(els.tempoLine);
   const textBlock = element('div', 'wl-block wl-text');
-  textBlock.append(textHead, textKeys, els.send, lines);
+  textBlock.append(textHead, textKeys, els.send, lines, els.tempo, tempoLines);
 
   els.blackout = button('bo wl-blackout', 'Wall blackout', () => blackout());
   els.blackout.setAttribute('aria-pressed', 'false');
@@ -530,6 +539,23 @@ export function mountVideoWall(root, { shell, ask, side: sideHost }) {
         last.action === 'show' ? 'Last call: text shown' : 'Last call: text taken away';
     els.shown.title = els.shown.textContent;
     els.last.title = els.last.textContent;
+    renderTempo();
+  }
+
+  /** The line about the tempo that goes to the wall: how long ago, and whether it was taken. */
+  function renderTempo() {
+    const { tempo } = shell.videowall;
+    const on = settings().syncTempo;
+    const bad = on && tempo !== null && !tempo.ok;
+    els.tempoLine.dataset.bad = String(bad);
+    if (!on) els.tempoLine.textContent = 'Tempo: not sent';
+    else if (!tempo) els.tempoLine.textContent = 'Tempo: goes at the next bar line';
+    else if (bad) els.tempoLine.textContent = `Tempo: ${tempo.error}`;
+    else {
+      const ago = Math.max(0, Math.round((Date.now() - tempo.at) / 1000));
+      els.tempoLine.textContent = `Tempo: ${tempo.bpm} bpm${tempo.downbeat ? ' on beat one' : ''} · ${ago} s ago`;
+    }
+    els.tempoLine.title = els.tempoLine.textContent;
   }
 
   /** The preview of what plays: the player's own picture of the item, when the library has one. */
@@ -705,6 +731,9 @@ export function mountVideoWall(root, { shell, ask, side: sideHost }) {
     els.enabled.classList.toggle('is-on', current.enabled);
     els.enabled.textContent = current.enabled ? 'Text on' : 'Text off';
     els.enabled.setAttribute('aria-pressed', String(current.enabled));
+    els.tempo.classList.toggle('is-on', current.syncTempo);
+    els.tempo.textContent = current.syncTempo ? 'Tempo on' : 'Tempo off';
+    els.tempo.setAttribute('aria-pressed', String(current.syncTempo));
     renderLines();
     els.send.disabled = !shell.videowall.track;
     drawOverlay(current);

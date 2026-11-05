@@ -252,6 +252,7 @@ try {
     tempoSource: tempoSourceText,
     ...(rkbxPort === undefined ? {} : { rkbxPort }),
     videoWallFile,
+    videoWallTempo: true,
     decorFile,
     log,
   });

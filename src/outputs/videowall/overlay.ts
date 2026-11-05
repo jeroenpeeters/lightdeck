@@ -47,6 +47,8 @@ export interface VideoWallSettings {
    * ` (Original Mix)`. Empty leaves the title as it is.
    */
   titleFilter: string;
+  /** Whether the bpm (and the first beat of a bar) goes to the wall, for its beat effects. */
+  syncTempo: boolean;
 }
 
 /** Brackets with Original, Extended or Radio (and Mix, Edit or Version), or the same after a dash at the end. */
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: VideoWallSettings = {
   color: '#ffffff',
   lines: 'one',
   titleFilter: DEFAULT_TITLE_FILTER,
+  syncTempo: true,
 };
 
 const KEYS = [
@@ -78,6 +81,7 @@ const KEYS = [
   'color',
   'lines',
   'titleFilter',
+  'syncTempo',
 ];
 
 function oneOf<T extends string>(value: unknown, list: readonly T[], what: string): T {
@@ -150,6 +154,12 @@ export function readSettings(change: unknown, current: VideoWallSettings): Video
     next.color = given.color.trim();
   }
   if (given.lines !== undefined) next.lines = oneOf(given.lines, LINES, 'lines');
+  if (given.syncTempo !== undefined) {
+    if (typeof given.syncTempo !== 'boolean') {
+      throw new PatchError('"syncTempo" must be true or false');
+    }
+    next.syncTempo = given.syncTempo;
+  }
   if (given.titleFilter !== undefined) {
     if (typeof given.titleFilter !== 'string' || given.titleFilter.length > MAX_FILTER) {
       throw new PatchError(`"titleFilter" must be text of at most ${MAX_FILTER} characters`);
@@ -340,6 +350,14 @@ export class VideoWallClient {
       horizontal: settings.horizontal,
       size: settings.size,
     });
+  }
+
+  /**
+   * The tempo, for the beat effects of the player. `downbeat` says that this moment is beat one: the
+   * player stamps it with the time the call arrives.
+   */
+  async bpm(settings: VideoWallSettings, bpm: number, downbeat: boolean): Promise<void> {
+    await this.send('POST', '/api/bpm', settings, { bpm, ...(downbeat ? { downbeat: true } : {}) });
   }
 
   /** Takes the text away. Nothing shown is fine. */

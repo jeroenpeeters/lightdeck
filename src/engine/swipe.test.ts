@@ -110,16 +110,15 @@ describe('the light effect Swipe', () => {
     }
   });
 
-  it('fades in at the start of a leg and out at its end, so a beam does not pop', () => {
+  it('is on for the whole of a leg and off the moment it is over, with nothing in between', () => {
     // Leg 0 is beats 0 to 2, and lens 0 is on the first bar.
-    expect(peak(light(0)[0])).toBe(0);
-    expect(peak(light(0.1)[0])).toBeGreaterThan(0);
-    expect(peak(light(0.1)[0])).toBeLessThan(0.7);
+    expect(peak(light(0)[0])).toBe(1);
+    expect(peak(light(0.1)[0])).toBe(1);
     expect(peak(light(1)[0])).toBe(1);
-    expect(peak(light(1.99)[0])).toBeLessThan(0.2);
-    // The next leg is the other bar's: the first is dark and the second has only begun.
+    expect(peak(light(1.99)[0])).toBe(1);
+    // The next leg is the other bar's: the first is dark and the second is on.
     expect(peak(light(2.001)[0])).toBe(0);
-    expect(peak(light(2.001)[5])).toBeLessThan(0.05);
+    expect(peak(light(2.001)[5])).toBe(1);
   });
 
   it('is always one bar, so there is always a fan', () => {

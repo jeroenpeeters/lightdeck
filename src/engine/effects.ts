@@ -21,6 +21,13 @@
  * Moving the bars is not in here: that is a motion effect (`motionEffects.ts`). The two are
  * apart, so any of one goes with any of the other.
  *
+ * Hard or soft (Jeroen, 2026-11-01: the spider cannot take many value changes): a lens that hits goes
+ * on and off, with nothing in between, and a lens that changes colour does it in one frame. A hit stays
+ * on for a share of the beat (`HOLD`) and is then gone; there is no fall. Only the slow effects that are
+ * made for a fade (`soft`: wave, spread, fade, seesaw, glow) are smooth, and only while they run slowly:
+ * from `SOFT_MAX_SPEED` up the context says `hard` and they move in steps of one beat. The backdrop of
+ * an effect stays as it is (`BACKDROP`).
+ *
  * Brightness lives in the levels. The fixture's master dimmer stays with the operator.
  *
  * At speed 1 an effect changes once per beat at most: a chase takes one step per beat, a
@@ -31,7 +38,7 @@
  */
 
 import { clamp01 } from '../model/fixture.js';
-import { frac, hit, mod, noise, TAU } from './beat.js';
+import { frac, gate, hit, mod, noise, TAU } from './beat.js';
 import { swipeLeg, swipesUp } from './swipe.js';
 
 export type { Rgbw } from './colour.js';
@@ -50,6 +57,11 @@ export interface EffectContext {
    * it is taken that every slot has one.
    */
   filled?: readonly boolean[];
+  /**
+   * Whether a soft effect must move in steps and not smoothly: it runs fast. The renderer says it
+   * from the speed (`SOFT_MAX_SPEED`); an effect that is hard anyway does not read it. Left out it is false.
+   */
+  hard?: boolean;
 }
 
 export interface EffectFrame {
@@ -70,8 +82,29 @@ export interface Effect {
    * the palette does not have is off.
    */
   slots: number;
+  /**
+   * Made for a fade: it moves smoothly while it runs slowly (up to `SOFT_MAX_SPEED`). Every other
+   * effect is hard at any speed: its lenses are on or off.
+   */
+  soft?: boolean;
   render(context: EffectContext): EffectFrame;
 }
+
+/** How long a hit stays on, as a share of a beat, before the lens goes out: no fall. */
+export const HOLD = 0.3;
+
+/** The first beat of a bar rings a little longer, as it did when it fell more slowly. */
+const HOLD_DOWNBEAT = 0.45;
+
+/** A beam of a techno effect is a stab: it is short. */
+const HOLD_STAB = 0.25;
+
+/**
+ * The speed (relative to the tempo, the master speed included) up to which a soft effect may fade.
+ * Above it the effect moves in steps of a beat, because it is fast and the spider cannot take that
+ * many changes.
+ */
+export const SOFT_MAX_SPEED = 0.5;
 
 /** Upper limit for full-brightness flashing, in flashes per second. */
 export const MAX_FLASH_HZ = 10;
@@ -109,6 +142,9 @@ function fill(cells: number, levels: (index: number) => number[]): number[][] {
   return Array.from({ length: cells }, (_, i) => levels(i));
 }
 
+/** The beat a soft effect is drawn at: as it is while it runs slowly, and on a whole beat once it is fast. */
+const smoothBeat = ({ beat, hard }: EffectContext): number => (hard ? Math.floor(beat) : beat);
+
 /** Bar number of a cell, or -1 when it is on none. */
 function barOf(bars: EffectContext['bars'], cell: number): number {
   return bars.findIndex((bar) => bar.includes(cell));
@@ -121,11 +157,11 @@ const kick: Effect = {
   id: 'kick',
   name: 'Kick',
   description:
-    'Every lens hits on the beat in the main colour and falls back to the second, like the kick drum. The first beat of each bar rings a little longer, and with a third colour it hits in that.',
+    'Every lens hits on the beat in the main colour and is back on the second at once, like the kick drum. The first beat of each bar stays on a little longer, and with a third colour it hits in that.',
   slots: 3,
   render({ beat, cells, slots }) {
     const downbeat = mod(Math.floor(beat), 4) === 0;
-    const level = hit(beat, downbeat ? 3.5 : 5);
+    const level = gate(beat, downbeat ? HOLD_DOWNBEAT : HOLD);
     const accent = downbeat && slots >= 3;
     return { levels: fill(cells, () => (accent ? [0, backdrop(level), level] : over(level))) };
   },
@@ -135,7 +171,7 @@ const chase: Effect = {
   id: 'chase',
   name: 'Chase',
   description:
-    'One bright lens of the main colour steps along all eight with a fading tail, one lens per beat, over the second colour. With a third colour the tail is in that.',
+    'One bright lens of the main colour steps along all eight with a short tail of dimmer lenses behind it, one lens per beat, over the second colour. With a third colour the tail is in that.',
   slots: 3,
   render({ beat, cells, slots }) {
     const head = mod(Math.floor(beat), cells);
@@ -173,12 +209,12 @@ const swap: Effect = {
   id: 'swap',
   name: 'Bar swap',
   description:
-    'The two bars answer each other: bar 1 hits in the main colour, bar 2 on the next beat, each falling back to the second.',
+    'The two bars answer each other: bar 1 hits in the main colour, bar 2 on the next beat, each going back to the second at once.',
   slots: 2,
   render({ beat, cells, bars }) {
     const count = Math.max(bars.length, 1);
     const lit = mod(Math.floor(beat), count);
-    const level = hit(beat, 3.5);
+    const level = gate(beat, HOLD);
     return { levels: fill(cells, (i) => (barOf(bars, i) === lit ? over(level) : over(0))) };
   },
 };
@@ -187,9 +223,12 @@ const wave: Effect = {
   id: 'wave',
   name: 'Wave',
   description:
-    'A smooth wave rolls along the lenses: its crest is the main colour and its troughs the second.',
+    'A smooth wave rolls along the lenses: its crest is the main colour and its troughs the second. Slow it is smooth, and from ×1 up it moves in steps of one beat.',
   slots: 2,
-  render({ beat, cells }) {
+  soft: true,
+  render(context) {
+    const { cells } = context;
+    const beat = smoothBeat(context);
     return {
       levels: fill(cells, (i) => {
         const swell = 0.5 + 0.5 * Math.sin(TAU * (beat / 4 - i / cells));
@@ -207,7 +246,7 @@ const sparkle: Effect = {
   slots: 3,
   render({ beat, cells, slots }) {
     const step = Math.floor(beat);
-    const level = hit(beat, 3);
+    const level = gate(beat, HOLD);
     return {
       levels: fill(cells, (i) => {
         if (noise(step, i) >= 0.22) return over(0);
@@ -226,9 +265,10 @@ const build: Effect = {
   render({ beat, cells }) {
     const position = mod(beat, BUILD_BEATS);
     const last = BUILD_BEATS - 1;
-    if (position >= last) return { levels: fill(cells, () => over(hit(position, 2.2))) };
+    if (position >= last) return { levels: fill(cells, () => over(gate(position, HOLD_DOWNBEAT))) };
 
-    const progress = position / last;
+    // Brighter by a step on every beat, not by a ramp: the spider cannot take that many value changes.
+    const progress = Math.floor(position) / last;
     // A flash every bar, then every two beats, then on every beat.
     const every = position < 16 ? 4 : position < 24 ? 2 : 1;
     const on = frac(position / every) < 0.5;
@@ -250,7 +290,7 @@ const burst: Effect = {
   slots: 2,
   render({ beat, cells }) {
     if (mod(beat, 16) < 12) {
-      const level = 0.05 + 0.6 * hit(beat, 5);
+      const level = 0.05 + 0.6 * gate(beat, HOLD);
       return { levels: fill(cells, () => over(level)) };
     }
     const on = frac(beat) < 0.4;
@@ -262,10 +302,10 @@ const pump: Effect = {
   id: 'pump',
   name: 'Pump',
   description:
-    'All lenses breathe on the beat: a soft pump in the main colour over the second. It is made to go with a motion effect.',
+    'All lenses pump on the beat: a step up in the main colour over the second, and a step back. It is made to go with a motion effect.',
   slots: 2,
   render({ beat, cells }) {
-    return { levels: fill(cells, () => over(0.7 + 0.3 * hit(beat, 3))) };
+    return { levels: fill(cells, () => over(0.7 + 0.3 * gate(beat, HOLD))) };
   },
 };
 
@@ -306,8 +346,9 @@ const spread: Effect = {
   description:
     'The colours of the palette spread over the eight lenses, in bands, pumping gently on the beat. With a palette that cycles they turn along the lenses, like a rainbow.',
   slots: 8,
-  render({ beat, cells, slots }) {
-    const pumped = 0.65 + 0.35 * hit(beat, 4);
+  soft: true,
+  render({ beat, cells, slots, hard }) {
+    const pumped = 0.65 + 0.35 * (hard ? gate(beat, HOLD) : hit(beat, 4));
     const bands = Math.max(1, Math.min(slots, cells));
     return {
       levels: fill(cells, (i) => {
@@ -317,9 +358,6 @@ const spread: Effect = {
     };
   },
 };
-
-/** How a hit of a techno effect falls: fast, so that a beam is a stab and not a glow. */
-const STAB = 5;
 
 /** The levels of a lens that is dark. */
 const DARK: number[] = [];
@@ -358,7 +396,7 @@ const cross: Effect = {
   render(context) {
     const { beat, cells } = context;
     const step = mod(Math.floor(beat), cells);
-    const level = hit(beat, STAB);
+    const level = gate(beat, HOLD_STAB);
     return {
       levels: only(cells, [
         [step, lit(level, false, context)],
@@ -381,7 +419,7 @@ const ticktock: Effect = {
     const place = mod(Math.floor(whole / 2), half);
     const right = mod(whole, 2) === 1;
     const lens = right ? cells - 1 - place : place;
-    return { levels: only(cells, [[lens, lit(hit(beat, STAB), right, context)]]) };
+    return { levels: only(cells, [[lens, lit(gate(beat, HOLD_STAB), right, context)]]) };
   },
 };
 
@@ -396,7 +434,7 @@ const scan: Effect = {
     const step = mod(Math.floor(beat), 2 * cells);
     const back = step >= cells;
     const lens = back ? 2 * cells - 1 - step : step;
-    return { levels: only(cells, [[lens, lit(hit(beat, STAB), back, context)]]) };
+    return { levels: only(cells, [[lens, lit(gate(beat, HOLD_STAB), back, context)]]) };
   },
 };
 
@@ -414,7 +452,7 @@ const pairs: Effect = {
     const inside = mod(whole, 2) === 1;
     // Outside to inside on the beats of the first colour, and inside to outside on the others.
     const pair = inside ? half - 1 - place : place;
-    const shown = lit(hit(beat, STAB), inside, context);
+    const shown = lit(gate(beat, HOLD_STAB), inside, context);
     return {
       levels: only(cells, [
         [pair, shown],
@@ -423,9 +461,6 @@ const pairs: Effect = {
     };
   },
 };
-
-/** How much of a swipe fades in at the start and out at the end, as a share of its leg. */
-const SWIPE_EDGE = 0.12;
 
 /** The lenses of a bar that a swipe lights: the two outer ones or the two inner ones (all of a short bar). */
 function swipePair(bar: readonly number[], outside: boolean): readonly number[] {
@@ -439,14 +474,13 @@ const swipe: Effect = {
   id: 'swipe',
   name: 'Swipe',
   description:
-    'Two beams of a bar light up while it swings up from the floor, then go dark while it swings back down, and the other bar takes over at once, so there is always a fan of beams going up. The first bar is the first colour and the second bar the second. The pair is the outer two lenses of a bar and then the inner two. It is made to go with the motion effect Swipe.',
+    'Two beams of a bar are on while it swings up from the floor, then go dark while it swings back down, and the other bar takes over at once, so there is always a fan of beams going up. The first bar is the first colour and the second bar the second. The pair is the outer two lenses of a bar and then the inner two. It is made to go with the motion effect Swipe.',
   slots: 2,
   render(context) {
     const { beat, cells, bars } = context;
-    const { leg, phase } = swipeLeg(beat);
-    // The bar that goes up on this leg, from its first lit moment to its last; edges fade so that a beam
-    // does not pop on at the floor or off at the top.
-    const level = clamp01(Math.min(1, phase / SWIPE_EDGE, (1 - phase) / SWIPE_EDGE));
+    const { leg } = swipeLeg(beat);
+    // The bar that goes up on this leg is on for the whole of it, and off the moment it is over: no fade
+    // (the spider cannot take that many value changes), and the swing hides the edges.
     // Each bar is up on every other leg, and takes the other pair on its next turn.
     const round = Math.floor(leg / 2);
     const beams: [number, number[]][] = [];
@@ -454,7 +488,7 @@ const swipe: Effect = {
       if (!swipesUp(number, leg + 1)) return;
       const outside = mod(round + number, 2) === 0;
       for (const cell of swipePair(bar, outside)) {
-        beams.push([cell, lit(level, number % 2 === 1, context)]);
+        beams.push([cell, lit(1, number % 2 === 1, context)]);
       }
     });
     return { levels: only(cells, beams) };
@@ -482,7 +516,9 @@ const stab: Effect = {
     const turn = Math.floor(whole / 2);
     // The jumps shift by one lens every time they have been round all the lenses once.
     const lens = mod(turn * jump(cells) + Math.floor(turn / cells), cells);
-    return { levels: only(cells, [[lens, lit(hit(beat, STAB), mod(whole, 2) === 1, context)]]) };
+    return {
+      levels: only(cells, [[lens, lit(gate(beat, HOLD_STAB), mod(whole, 2) === 1, context)]]),
+    };
   },
 };
 
@@ -495,8 +531,10 @@ const fade: Effect = {
   description:
     'All lenses fade slowly from the first colour to the second and back, one fade in two bars, with nothing hard in it. With a second colour that is off it is a slow breath of light. Calm: it is made to go with a motion effect that holds still.',
   slots: 2,
-  render({ beat, cells }) {
-    const toSecond = 0.5 - 0.5 * Math.cos(TAU * (beat / FADE_BEATS));
+  soft: true,
+  render(context) {
+    const { cells } = context;
+    const toSecond = 0.5 - 0.5 * Math.cos(TAU * (smoothBeat(context) / FADE_BEATS));
     return { levels: fill(cells, () => [1 - toSecond, toSecond]) };
   },
 };
@@ -507,8 +545,10 @@ const seesaw: Effect = {
   description:
     'The two bars fade against each other, slowly, one fade in two bars: while one bar glows in the first colour the other is in the second colour, and they swap. With a second colour that is off one bar is always glowing and the other is dark. Calm.',
   slots: 2,
-  render({ beat, cells, bars }) {
-    const toSecond = 0.5 - 0.5 * Math.cos(TAU * (beat / FADE_BEATS));
+  soft: true,
+  render(context) {
+    const { cells, bars } = context;
+    const toSecond = 0.5 - 0.5 * Math.cos(TAU * (smoothBeat(context) / FADE_BEATS));
     return {
       levels: fill(cells, (i) => {
         // A lens that is on no bar goes with the first bar.
@@ -530,8 +570,10 @@ const glow: Effect = {
   description:
     'A soft pool of light travels slowly along the lenses, one lens in two beats: three lenses at the most glow at once, and each fades into the next. The first colour is the heart of the pool and the second colour its edge. Calm.',
   slots: 2,
-  render({ beat, cells }) {
-    const centre = mod(beat / GLOW_BEATS_PER_LENS, cells);
+  soft: true,
+  render(context) {
+    const { cells } = context;
+    const centre = mod(smoothBeat(context) / GLOW_BEATS_PER_LENS, cells);
     return {
       levels: fill(cells, (i) => {
         const gap = Math.abs(i - centre);

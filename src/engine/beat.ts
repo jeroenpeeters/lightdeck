@@ -15,6 +15,14 @@ export function hit(position: number, sharpness: number): number {
   return Math.exp(-sharpness * frac(position));
 }
 
+/**
+ * A hard hit: 1 for the first `share` of each period and 0 for the rest, with nothing in between.
+ * The spider cannot take many value changes (Jeroen, 2026-11-01), so a lens is on or off.
+ */
+export function gate(position: number, share: number): number {
+  return frac(position) < share ? 1 : 0;
+}
+
 /** Repeatable pseudo-random number 0..1 from two integers. */
 export function noise(a: number, b: number): number {
   let h = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263)) | 0;

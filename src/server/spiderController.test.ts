@@ -675,7 +675,8 @@ describe('SpiderController effects', () => {
   });
 
   it('sends a frame at every point of the grid while an effect runs, and never more than 25 a second', () => {
-    controller.update({ levels: { dimmer: 1 }, effect: { id: 'wave' } });
+    // A slow effect made for a fade: a fast one is hard and sends only a few pictures.
+    controller.update({ levels: { dimmer: 1 }, effect: { id: 'wave', speed: 0.5 } });
     const before = output.frames.length;
     advance(1000);
     // 126 beats per minute and 25 per second at most: 11 points per beat, 23 a second.
@@ -1080,10 +1081,10 @@ describe('SpiderController effects', () => {
       expect(dimmed.map((f) => f.data[5])).toEqual(new Array(made).fill(128));
       expect(full.map((f) => f.data[5])).toEqual(new Array(made).fill(255));
       expect(dimmed.map((f) => butDimmer(f.data))).toEqual(full.map((f) => butDimmer(f.data)));
-      // A light effect makes a new picture most frames; a motion effect sends the bars to an end and
-      // holds it, so it has only the few that its legs make in a second.
+      // A hard light effect is on or off and has only the few pictures that its hits make; a motion effect
+      // sends the bars to an end and holds it, so it has only the few that its legs make in a second.
       const pictures = new Set(dimmed.map((f) => butDimmer(f.data).join())).size;
-      expect(pictures).toBeGreaterThan(kind === 'effect' ? 5 : 1);
+      expect(pictures).toBeGreaterThan(1);
     }
   });
 
@@ -1290,20 +1291,49 @@ describe('SpiderController effects', () => {
       expect(lens(1)).not.toEqual([0, 255, 0, 0]);
     });
 
-    it('fades from colour to colour when the palette says fade', () => {
+    it('fades from colour to colour when the palette says fade and the effect is a slow one made for a fade', () => {
       tempo.update({ bpm: 120, sync: true });
       controller.update({
         levels: { dimmer: 1 },
-        effect: { id: 'solid' },
-        colour: { palette: 'fader' },
+        effect: { id: 'fade', speed: 0.25 },
+        colour: { palette: 'fader', speed: 0.5 },
       });
       expect(lens(1)).toEqual([255, 0, 0, 0]);
-      advance(275); // half a beat
+      advance(500); // half a step of the palette, which steps every two beats
       const [red, , blue] = lens(1);
       expect(red).toBeGreaterThan(90);
       expect(red).toBeLessThan(170);
       expect(blue).toBeGreaterThan(90);
       expect(blue).toBeLessThan(170);
+    });
+
+    it('changes hard when the effect is not made for a fade, even if the palette says fade', () => {
+      tempo.update({ bpm: 120, sync: true });
+      controller.update({
+        levels: { dimmer: 1 },
+        effect: { id: 'solid', speed: 0.25 },
+        colour: { palette: 'fader', speed: 0.5 },
+      });
+      expect(lens(1)).toEqual([255, 0, 0, 0]);
+      advance(500);
+      expect(lens(1)).toEqual([255, 0, 0, 0]);
+      advance(600); // past the step
+      expect(lens(1)).toEqual([0, 0, 255, 0]);
+    });
+
+    it('changes in steps of a beat when the effect made for a fade runs fast', () => {
+      tempo.update({ bpm: 120, sync: true });
+      controller.update({
+        levels: { dimmer: 1 },
+        effect: { id: 'fade', speed: 1 },
+        colour: { palette: 'fader', speed: 0.5 },
+      });
+      advance(100);
+      const early = lens(1);
+      advance(300); // still inside the first beat
+      expect(lens(1)).toEqual(early);
+      advance(200); // the second beat: a step
+      expect(lens(1)).not.toEqual(early);
     });
 
     it('changes hard instead of fading when the cycle is fast', () => {

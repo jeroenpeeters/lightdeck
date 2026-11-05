@@ -125,6 +125,8 @@ export interface RigOptions {
   decorFile?: string;
   /** How the video wall is called. Tests pass their own. */
   videoWallFetch?: typeof fetch;
+  /** Send the tempo to the video wall (its settings say whether). Off in tests, so none of them calls a player. */
+  videoWallTempo?: boolean;
   /** For the one-line messages about rekordbox. */
   log?: (message: string) => void;
 }
@@ -289,6 +291,7 @@ export class Rig extends EventEmitter {
     this.rkbx.on('rkbx', (state: RkbxState) => this.emit('rkbx', state));
     this.videoWall = new VideoWall({
       source: this.rkbx,
+      ...(options.videoWallTempo ? { tempo: this.tempo } : {}),
       ...(options.videoWallFile ? { file: options.videoWallFile } : {}),
       ...(options.videoWallFetch ? { fetch: options.videoWallFetch } : {}),
       ...(options.log ? { log: options.log } : {}),

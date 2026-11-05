@@ -369,6 +369,15 @@ rekordbox ──▶ rkbx_link ──OSC──▶ lightdeck ──POST /api/overl
 - The player has one overlay at a time, it never expires by itself, and a 200 answer does not mean
   that anyone is watching. If the wall seems to ignore lightdeck, look at the player first.
 
+**The tempo.** The player has beat effects that follow a tempo, so lightdeck gives it the bpm with
+`POST /api/bpm`, on its own (key **Tempo** on the page; on at the start, and not tied to the track
+text). It sends the bpm whenever it changes (at most four times a second, the newest value wins),
+the bpm with `downbeat: true` right after a tap and on the first beat of a bar once a minute, so
+the video stays in step while rekordbox nudges the beat, and again at the first bar line after the
+music starts. It is fire and forget: nothing in lightdeck waits for the player, a call that fails
+is shown on the page and in the log (once) and the next change or the next minute is the next try,
+and while the music has stopped nothing is sent.
+
 **Playing the library.** `/videowall` and the tab Video wall of the tablet page list what the
 player has (playlists, videos, effects and texts) with a preview, play one with a press and the
 transition you chose (none, fade, zoom, slide, wipe), and have the blackout of the player (the
@@ -410,7 +419,9 @@ flows through the pipe. There are two ways to drive them, and the first is the d
   colour 1 is the foreground, colour 2 the background, colour 3 an accent. Choose the palette on the tab
   (the `water` palette, blue and dark blue, is made for them).
 - The effects are `flow` (slugs of liquid of different lengths and speeds), `slowflow` (the same, four
-  times slower, as a background), `shot`, `bubbles`, `transmute` (a glowing front turns one colour into
+  times slower, as a background), `flowbeat` (the flow with the pipe behind it pulsing on the beat, more on
+  the first beat of a bar), `fill` (the pipe fills up and runs empty again, sixteen beats a round), `beatshot` (a few pixels of light through the pipe on every beat, nothing around
+  them), `shot`, `bubbles`, `transmute` (a glowing front turns one colour into
   the other), `shadow`, `seal`, `lightning` (for the techno part), `pulse`, `chase` and `solid`. Each has a
   pace on top of the bpm, a brightness per pipe and a dimmer for all pipes (the UV lamps have none, since
   switches cannot dim). A look of the pipes (set in `rig.yaml` under `looks:`) is an effect, a

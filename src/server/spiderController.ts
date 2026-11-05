@@ -31,7 +31,7 @@
 
 import { EventEmitter } from 'node:events';
 import { EffectClock } from '../engine/effectClock.js';
-import { EFFECTS, findEffect, type Rgbw, SPEEDS } from '../engine/effects.js';
+import { EFFECTS, findEffect, type Rgbw, SOFT_MAX_SPEED, SPEEDS } from '../engine/effects.js';
 import { findMotionEffect, MOTION_EFFECTS } from '../engine/motionEffects.js';
 import {
   colourAt,
@@ -668,8 +668,11 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
         epoch,
         key: light.id,
       });
+      // The spider cannot take many value changes (Jeroen, 2026-11-01): only a slow effect that is made for
+      // a fade fades. A fast effect, or any effect that is not soft, changes hard, and so does the palette.
+      const soft = light.soft === true && read.speed <= SOFT_MAX_SPEED;
       let step = 0;
-      let fast = isFast(bpm, read.speed);
+      let fast = !soft || isFast(bpm, read.speed);
       if (palette.mode === 'cycle' && palette.colours.length > 1) {
         const cycle = this.paletteClock.read({
           beat,
@@ -679,7 +682,7 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
           key: palette.id,
         });
         step = cycle.beat;
-        fast ||= isFast(bpm, cycle.speed);
+        fast ||= isFast(bpm, cycle.speed) || cycle.speed > SOFT_MAX_SPEED;
       }
       const { levels } = light.render({
         beat: read.beat,
@@ -690,8 +693,9 @@ export class SpiderController extends EventEmitter implements DmxFixtureControll
           { length: shownSlots(palette) },
           (_, slot) => colourAt(palette, slot, Math.floor(step)) !== null,
         ),
+        hard: !soft,
       });
-      // A fast effect or a fast cycle changes hard: no fade between the colours.
+      // A hard effect or a fast cycle changes hard: no fade between the colours.
       frame.cells = paint(levels, fast ? { ...palette, change: 'step' } : palette, step);
     }
 

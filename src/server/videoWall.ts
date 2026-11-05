@@ -32,6 +32,8 @@ import {
   type WallStatus,
 } from '../outputs/videowall/overlay.js';
 import { PatchError } from './fixture.js';
+import type { Tempo } from './tempo.js';
+import { type BeatCall, VideoWallBeat } from './videoWallBeat.js';
 
 /** What a page is told: the settings without the PIN, and what is on the wall. */
 export interface VideoWallState {
@@ -44,6 +46,8 @@ export interface VideoWallState {
   shown: { text: string; since: number; hideAt: number | null } | null;
   /** The last call to the wall and how it went. */
   last: { action: 'show' | 'clear'; ok: boolean; at: number; error?: string } | null;
+  /** The last tempo call to the wall (`syncTempo`) and how it went. */
+  tempo: { bpm: number; downbeat: boolean; ok: boolean; at: number; error?: string } | null;
 }
 
 export interface VideoWallOptions {
@@ -52,6 +56,8 @@ export interface VideoWallOptions {
   /** The settings file. Without it the settings live in memory only. */
   file?: string;
   fetch?: typeof fetch;
+  /** The tempo of the console: its bpm and its bar lines go to the wall while `syncTempo` is on. */
+  tempo?: Tempo;
   now?: () => number;
   log?: (message: string) => void;
 }
@@ -65,6 +71,8 @@ export class VideoWall extends EventEmitter {
   private track: TrackInfo | null = null;
   private shown: VideoWallState['shown'] = null;
   private last: VideoWallState['last'] = null;
+  private tempoLast: VideoWallState['tempo'] = null;
+  private beat: VideoWallBeat | undefined;
   /** The track that was sent last, so that the same track is never sent twice. */
   private sentKey: string | undefined;
   private hideTimer: NodeJS.Timeout | undefined;
@@ -80,6 +88,14 @@ export class VideoWall extends EventEmitter {
     this.load();
     this.track = options.source.getTrack() ?? null;
     options.source.on('track', this.onTrack);
+    if (options.tempo) {
+      this.beat = new VideoWallBeat({
+        tempo: options.tempo,
+        enabled: () => this.settings.syncTempo,
+        send: (call) => this.client.bpm(this.settings, call.bpm, call.downbeat),
+        report: (call, error) => this.tempoReport(call, error),
+      });
+    }
   }
 
   getState(): VideoWallState {
@@ -90,6 +106,7 @@ export class VideoWall extends EventEmitter {
       preview: this.textOf(this.track ?? SAMPLE),
       shown: this.shown ? { ...this.shown } : null,
       last: this.last ? { ...this.last } : null,
+      tempo: this.tempoLast ? { ...this.tempoLast } : null,
     };
   }
 
@@ -139,8 +156,10 @@ export class VideoWall extends EventEmitter {
   update(change: unknown): void {
     const next = readSettings(change, this.settings);
     const wasEnabled = this.settings.enabled;
+    const wasSync = this.settings.syncTempo;
     this.settings = next;
     this.save();
+    if (next.syncTempo !== wasSync) this.beat?.refresh();
     if (wasEnabled && !next.enabled && this.shown) this.hide();
     this.announce();
   }
@@ -165,6 +184,7 @@ export class VideoWall extends EventEmitter {
 
   close(): void {
     clearTimeout(this.hideTimer);
+    this.beat?.close();
     this.options.source.off('track', this.onTrack);
     this.removeAllListeners();
   }
@@ -244,6 +264,28 @@ export class VideoWall extends EventEmitter {
     this.options.log?.(`video wall: ${message}`);
     this.announce();
     if (strict) throw new PatchError(message);
+  }
+
+  /** How a tempo call went. A failure is said once, and again when it works or fails differently. */
+  private tempoReport(call: BeatCall, error?: unknown): void {
+    const message =
+      error === undefined
+        ? undefined
+        : error instanceof OverlayError
+          ? error.message
+          : String(error);
+    const before = this.tempoLast;
+    this.tempoLast = {
+      bpm: call.bpm,
+      downbeat: call.downbeat,
+      ok: message === undefined,
+      at: this.now(),
+      ...(message === undefined ? {} : { error: message }),
+    };
+    if (message !== undefined && (before?.ok !== false || before.error !== message)) {
+      this.options.log?.(`video wall: tempo not sent: ${message}`);
+    }
+    this.announce();
   }
 
   private announce(): void {

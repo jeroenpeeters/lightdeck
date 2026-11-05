@@ -60,6 +60,16 @@ const brightest = (cells: Rgbw[]) =>
   cells.reduce((best, c, i) => (peak(c) > peak(cells[best]) ? i : best), 0);
 
 /** Effects that do not change over time. */
+/** Per effect, how many pictures it may have in 16 beats and still be moving (the others have more than 4). */
+const FEW_PICTURES: Record<string, number> = {
+  strobe: 2,
+  kick: 1,
+  swap: 1,
+  pump: 0,
+  burst: 1,
+  swipe: 3,
+};
+
 const STATIC = ['solid', 'bars', 'alternate'];
 
 describe('the set of effects', () => {
@@ -146,8 +156,9 @@ describe.each(EFFECTS.map((e) => [e.id, e] as const))('%s', (_id, effect) => {
       pictures.add(JSON.stringify(effect.render(context(beat, { slots: 8 }))));
     }
     if (STATIC.includes(effect.id)) expect(pictures.size).toBe(1);
-    // The strobe has only three pictures: a flash of each colour, and dark.
-    else expect(pictures.size).toBeGreaterThan(effect.id === 'strobe' ? 2 : 4);
+    // The strobe has only three pictures: a flash of each colour, and dark. The hard effects (a hit is on
+    // or off, and nothing between) have few: the pump has two, a step up and a step back.
+    else expect(pictures.size).toBeGreaterThan(FEW_PICTURES[effect.id] ?? 4);
   });
 
   it('copes with a different number of cells and bars', () => {
@@ -187,15 +198,19 @@ describe('the backdrop', () => {
 });
 
 describe('kick', () => {
-  it('is brightest on the beat and fades until the next one', () => {
+  it('is on for the first part of the beat and off for the rest, with nothing in between', () => {
     const all = (beat: number) => light(look('kick', beat)[0]);
     expect(all(1)).toBeGreaterThan(all(1.5));
-    expect(all(1.5)).toBeGreaterThan(all(1.95));
+    expect(all(1.25)).toBe(all(1));
+    expect(all(1.5)).toBe(all(1.95));
     expect(all(2)).toBeCloseTo(all(1));
+    const seen = new Set<number>();
+    for (let part = 0; part < 4; part += 0.02) seen.add(all(part + 0.005));
+    expect(seen.size).toBeLessThanOrEqual(3);
   });
 
-  it('rings a little longer on the first beat of the bar', () => {
-    expect(light(look('kick', 4.5)[0])).toBeGreaterThan(light(look('kick', 5.5)[0]));
+  it('stays on a little longer on the first beat of the bar', () => {
+    expect(light(look('kick', 4.4)[0])).toBeGreaterThan(light(look('kick', 5.4)[0]));
   });
 
   it('hits in the main colour on every beat and falls back to the second', () => {
@@ -366,9 +381,10 @@ describe('sparkle', () => {
     }
   });
 
-  it('flashes the same lenses for a whole beat, and others on the next', () => {
-    const lit = (beat: number) => look('sparkle', beat).map((cell) => cell.red > 0.011);
-    expect(lit(5.01)).toEqual(lit(5.6));
+  it('flashes the same lenses for the first part of a beat, then they are out, and others flash on the next', () => {
+    const lit = (beat: number) => look('sparkle', beat).map((cell) => cell.red > 0.5);
+    expect(lit(5.01)).toEqual(lit(5.2));
+    expect(lit(5.6).some(Boolean)).toBe(false);
     const sets = new Set([0, 1, 2, 3, 4, 5, 6, 7].map((beat) => lit(beat + 0.01).join()));
     expect(sets.size).toBeGreaterThan(4);
   });
@@ -447,7 +463,9 @@ describe('pump', () => {
     expect(cells[0]).toEqual(A);
     expect(cells[7]).toEqual(A);
     expect(look('pump', 0.99)[0]?.blue).toBeGreaterThan(0.005);
-    expect(look('pump', 0.99)[0]?.red).toBeGreaterThan(0.7);
+    // A step back to 70 percent, with nothing in between.
+    expect(look('pump', 0.99)[0]?.red).toBeCloseTo(0.7);
+    expect(look('pump', 0.2)[0]).toEqual(A);
   });
 });
 
@@ -839,7 +857,7 @@ describe('speed', () => {
   it.each(EFFECTS.map((effect) => effect.id))(
     'changes %s once per beat at most, unless it moves smoothly',
     (id) => {
-      const smooth = ['wave', 'spread', 'fade', 'seesaw', 'glow', 'swipe'];
+      const smooth = ['wave', 'spread', 'fade', 'seesaw', 'glow'];
       if (smooth.includes(id)) return;
       // Between two beats a lens may fade or go out, but no lens may come on. It holds with
       // one colour, with two and with three.
@@ -857,4 +875,59 @@ describe('speed', () => {
       }
     },
   );
+});
+
+describe('hard and soft (the spider cannot take many value changes)', () => {
+  const SOFT = ['wave', 'spread', 'fade', 'seesaw', 'glow'];
+
+  /** How often the picture changes inside one beat, not counting the change on the beat itself. */
+  function changesInside(id: string, beat: number, extra: Partial<EffectContext>): number {
+    let changes = 0;
+    let before = JSON.stringify(render(id, beat + 0.002, extra));
+    for (let part = 0.012; part < 1; part += 0.01) {
+      const now = JSON.stringify(render(id, beat + part, extra));
+      if (now !== before) changes++;
+      before = now;
+    }
+    return changes;
+  }
+
+  it('says which effects are soft: those made for a fade, and no other', () => {
+    expect(EFFECTS.filter((effect) => effect.soft).map((effect) => effect.id)).toEqual(
+      expect.arrayContaining(SOFT),
+    );
+    expect(EFFECTS.filter((effect) => effect.soft)).toHaveLength(SOFT.length);
+  });
+
+  it.each(EFFECTS.filter((effect) => !effect.soft).map((effect) => effect.id))(
+    'makes %s change at most once inside a beat: a lens is on or off, never fading',
+    (id) => {
+      for (const slots of [1, 2, 3]) {
+        for (let beat = 0; beat < 40; beat++) {
+          expect(changesInside(id, beat, { slots })).toBeLessThanOrEqual(1);
+        }
+      }
+    },
+  );
+
+  it.each(SOFT)('lets %s fade while it is slow', (id) => {
+    expect(changesInside(id, 3, { slots: 2 })).toBeGreaterThan(5);
+  });
+
+  it.each(SOFT)('makes %s move in steps of a beat when it is fast', (id) => {
+    for (let beat = 0; beat < 24; beat++) {
+      expect(changesInside(id, beat, { slots: 2, hard: true })).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('takes the levels of a hard hit from a few values only', () => {
+    // The hits of the techno effects are one level, or none.
+    for (const id of ['cross', 'ticktock', 'scan', 'pairs', 'stab']) {
+      const seen = new Set<number>();
+      for (let beat = 0; beat < 32; beat += 0.013) {
+        for (const cell of render(id, beat).levels) for (const level of cell) seen.add(level);
+      }
+      expect([...seen].every((level) => level === 0 || level === 1)).toBe(true);
+    }
+  });
 });

@@ -720,6 +720,34 @@ groups:
         fixtures:
           laser:
             raw: { size: 20, rotation: 210 }
+      # Laser op Discobal (Jeroen, 2026-11-04): pattern 2 small and turning slowly, aimed low in the
+      # corner of the field, set by hand on the real laser and read back from what was sent.
+      discobal:
+        label: Discobal
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 7, colour: 22 }
+      discobal-aim:
+        label: Discobal aim
+        type: motion
+        fixtures:
+          laser:
+            raw: { rotation: 180, moveH: 61, moveV: 1, size: 61 }
+      # Laser op grote Discobal (Jeroen, 2026-11-04): the second one, for the big ball. Pattern 1,
+      # turning a little slower, aimed higher and further across; read back from what was sent.
+      discobal-big:
+        label: Big discobal
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 2, colour: 22 }
+      discobal-big-aim:
+        label: Big discobal aim
+        type: motion
+        fixtures:
+          laser:
+            raw: { rotation: 178, moveH: 85, moveV: 66, size: 61 }
     moods:
       calm:
         label: Calm
@@ -731,8 +759,8 @@ groups:
         motion: [ breathe, big-still, small-still ]
       moving:
         label: Moving
-        lights: [ pattern-12, pattern-26, pattern-40, mixed-18 ]
-        motion: [ spin, spin-back, sweeping, twisting ]
+        lights: [ pattern-12, pattern-26, pattern-40, mixed-18, discobal, discobal-big ]
+        motion: [ spin, spin-back, sweeping, twisting, discobal-aim, discobal-big-aim ]
     looks:
       calm-12: { label: Calm 12, mood: calm, lights: pattern-12, motion: big-still }
       calm-26: { label: Calm 26, mood: calm, lights: pattern-26, motion: small-still }
@@ -743,6 +771,8 @@ groups:
       spinner: { label: Spinner, mood: moving, lights: pattern-26, motion: spin }
       sweeper: { label: Sweeper, mood: moving, lights: pattern-12, motion: sweeping }
       twister: { label: Twister, mood: moving, lights: pattern-40, motion: twisting }
+      discobal: { label: Laser op Discobal, mood: moving, lights: discobal, motion: discobal-aim }
+      discobal-big: { label: Laser op grote Discobal, mood: moving, lights: discobal-big, motion: discobal-big-aim }
   room:
     label: Room
     fixtures: [ room ]
