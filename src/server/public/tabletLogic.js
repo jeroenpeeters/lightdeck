@@ -21,37 +21,98 @@ export function partInfo(sequence) {
 }
 
 /**
- * The segments of the bar under a part: while it runs one per bar of the step that is on (`done`
- * for the bars gone, `now` for this one), else one per step, all empty. `state` is the sequence
- * the server says runs: `{ running, step, barsLeft }`, where `barsLeft` counts this bar.
+ * Several sequences run at once, one per group: the server's state is `{ runs: [{ id, step,
+ * barsLeft, held, ... }] }`. This is the run of the sequence with this id, or undefined.
  */
-export function partBars(sequence, state) {
-  if (state?.running !== sequence.id) return sequence.steps.map(() => '');
-  const total = sequence.steps[state.step]?.bars ?? 0;
-  const done = Math.min(total, Math.max(0, total - state.barsLeft));
+export function runOf(state, id) {
+  return state?.runs?.find((run) => run.id === id);
+}
+
+/**
+ * The run of the sequence that sets this group, or undefined: what Next and Hold act on while the
+ * tab of the group is on screen. `sequences` are those of the show.
+ */
+export function runForGroup(state, sequences, groupId) {
+  return state?.runs?.find((run) =>
+    sequences.some(
+      (sequence) =>
+        sequence.id === run.id && sequence.steps.some((step) => groupId in (step.looks ?? {})),
+    ),
+  );
+}
+
+/**
+ * The sequences by category, for the pages (Jeroen, 2026-11-05): `[{ id, label, sequences }]` in the
+ * order the categories first appear in the show. Sequences with no category come last as "Other"
+ * (id ''), and when no sequence has one there is a single category without a label. A category is
+ * only for looking: which sequences replace each other is decided by their groups.
+ */
+export function sequenceCategories(sequences) {
+  const made = [];
+  const byId = new Map();
+  let anyNamed = false;
+  for (const sequence of sequences) {
+    const id = sequence.category ?? '';
+    if (id !== '') anyNamed = true;
+    let category = byId.get(id);
+    if (!category) {
+      category = { id, label: id, sequences: [] };
+      byId.set(id, category);
+      made.push(category);
+    }
+    category.sequences.push(sequence);
+  }
+  const rest = byId.get('');
+  if (rest && anyNamed) {
+    rest.label = 'Other';
+    made.splice(made.indexOf(rest), 1);
+    made.push(rest);
+  }
+  return made;
+}
+
+/** The category with a sequence that sets this group, or undefined: the one to show with its tab. */
+export function categoryOfGroup(categories, groupId) {
+  return categories.find((category) =>
+    category.sequences.some((sequence) =>
+      sequence.steps.some((step) => groupId in (step.looks ?? {})),
+    ),
+  );
+}
+
+/**
+ * The segments of the bar under a part: while it runs one per bar of the step that is on (`done`
+ * for the bars gone, `now` for this one), else one per step, all empty. `run` is the run of the
+ * sequence the server tells, `{ id, step, barsLeft }`, where `barsLeft` counts this bar.
+ */
+export function partBars(sequence, run) {
+  if (run?.id !== sequence.id) return sequence.steps.map(() => '');
+  const total = sequence.steps[run.step]?.bars ?? 0;
+  const done = Math.min(total, Math.max(0, total - run.barsLeft));
   return Array.from({ length: total }, (_, index) =>
     index < done ? 'done' : index === done ? 'now' : '',
   );
 }
 
 /** "1/10 · bar 19/24" for the part that runs. */
-export function partPlace(sequence, state) {
-  const total = sequence.steps[state.step]?.bars ?? 0;
-  const bar = Math.min(total, Math.max(1, total - state.barsLeft + 1));
-  return `${state.step + 1}/${sequence.steps.length} · bar ${bar}/${total}`;
+export function partPlace(sequence, run) {
+  const total = sequence.steps[run.step]?.bars ?? 0;
+  const bar = Math.min(total, Math.max(1, total - run.barsLeft + 1));
+  return `${run.step + 1}/${sequence.steps.length} · bar ${bar}/${total}`;
 }
 
 /**
- * The look that the sequence that runs sets next in a group, and in how many bars. A step that does
+ * The look that a running sequence sets next in a group, and in how many bars. A step that does
  * not name the group, or names the look that is on, leaves it as it is, so the search goes on to
  * the step after. Nothing when the sequence does not run or never changes the group again.
+ * `run` is the run of that sequence.
  */
-export function nextLook(sequence, state, groupId, lookOn) {
-  if (!sequence || state?.running !== sequence.id) return null;
+export function nextLook(sequence, run, groupId, lookOn) {
+  if (!sequence || run?.id !== sequence.id) return null;
   const count = sequence.steps.length;
-  let bars = state.barsLeft;
+  let bars = run.barsLeft;
   for (let ahead = 1; ahead < count; ahead += 1) {
-    const step = sequence.steps[(state.step + ahead) % count];
+    const step = sequence.steps[(run.step + ahead) % count];
     const look = step?.looks?.[groupId];
     if (look !== undefined && look !== lookOn) return { look, bars };
     bars += step?.bars ?? 0;

@@ -741,13 +741,13 @@ groups:
         type: lights
         fixtures:
           laser:
-            raw: { mode: 95, program: 2, colour: 22 }
+            raw: { mode: 95, program: 82, colour: 22 }
       discobal-big-aim:
         label: Big discobal aim
         type: motion
         fixtures:
           laser:
-            raw: { rotation: 178, moveH: 85, moveV: 66, size: 61 }
+            raw: { rotation: 178, moveH: 94, moveV: 67, size: 59 }
     moods:
       calm:
         label: Calm
@@ -888,25 +888,15 @@ groups:
     fixtures: [ spider, laser ]
     scenes: {}
 sequences:
-  # About ten minutes at 126 bpm: the spider changes look every 32 bars (a minute), the room every
-  # 64, so the lamps hold still while the spider goes through its looks. Then it starts over.
-  night:
-    label: The night
-    steps:
-      - { bars: 32, looks: { spider: glow, room: welcome } }
-      - { bars: 32, looks: { spider: floor-glow } }
-      - { bars: 32, looks: { spider: doors-open, room: pumpkin-patch } }
-      - { bars: 32, looks: { spider: creeping-in } }
-      - { bars: 32, looks: { spider: candles-low, room: brew } }
-      - { bars: 32, looks: { spider: haunted } }
-      - { bars: 32, looks: { spider: crossfire, room: dusk-rails } }
-      - { bars: 32, looks: { spider: lightning } }
-      - { bars: 32, looks: { spider: storm, room: blood-moon } }
-      - { bars: 32, looks: { spider: the-void } }
-  # The three parts of the evening (Jeroen, 2026-10-20): each loops over its looks on the bars, so the
-  # spider needs no attention. The room and the laser are left to the hand.
+  # Several sequences run at once, one per group (Jeroen, 2026-11-05): the spider, the room, the laser
+  # and the strips each have their own. Starting a sequence stops only the ones that set a group it
+  # sets too, so Begin, Midden and Techno of one group take each other's place while the others go on.
+  # `category` is only for the pages: the sequences of a category are shown together.
+  # The three parts of the evening of the spider (Jeroen, 2026-10-20): each loops over its looks on the
+  # bars, so the spider needs no attention.
   begin:
     label: Begin
+    category: Spider
     steps:
       - { bars: 32, looks: { spider: glow } }
       - { bars: 32, looks: { spider: breathe } }
@@ -921,6 +911,7 @@ sequences:
       - { bars: 32, looks: { spider: wandering-pumpkin } }
   midden:
     label: Midden
+    category: Spider
     steps:
       - { bars: 24, looks: { spider: creeping-in } }
       - { bars: 24, looks: { spider: heartbeat } }
@@ -934,6 +925,7 @@ sequences:
       - { bars: 24, looks: { spider: bounce-witch } }
   techno:
     label: Techno
+    category: Spider
     steps:
       - { bars: 16, looks: { spider: crossfire } }
       - { bars: 16, looks: { spider: scan } }
@@ -946,6 +938,56 @@ sequences:
       - { bars: 16, looks: { spider: static } }
       - { bars: 8, looks: { spider: lightning } }
       - { bars: 16, looks: { spider: scan-red } }
+  room-begin:
+    label: Begin
+    category: Room
+    steps:
+      # The lamps hold still: a look for about a minute at 126 bpm.
+      - { bars: 64, looks: { room: welcome } }
+      - { bars: 64, looks: { room: pumpkin-patch } }
+      - { bars: 64, looks: { room: embers } }
+  room-midden:
+    label: Midden
+    category: Room
+    steps:
+      - { bars: 48, looks: { room: brew } }
+      - { bars: 48, looks: { room: dusk-rails } }
+      - { bars: 48, looks: { room: party } }
+  room-techno:
+    label: Techno
+    category: Room
+    steps:
+      - { bars: 32, looks: { room: blood-moon } }
+      - { bars: 32, looks: { room: storm } }
+      - { bars: 32, looks: { room: the-void } }
+  # The laser alternates the two looks on the discobal, one bar each.
+  discobal:
+    label: Discobal wissel
+    category: Laser
+    steps:
+      - { bars: 1, looks: { laser: discobal } }
+      - { bars: 1, looks: { laser: discobal-big } }
+  # The strips (pipes) go through their looks of rig.yaml.
+  strips-begin:
+    label: Begin
+    category: Strips
+    steps:
+      - { bars: 16, looks: { decor: slow } }
+      - { bars: 16, looks: { decor: brew } }
+      - { bars: 16, looks: { decor: bubbling } }
+  strips-midden:
+    label: Midden
+    category: Strips
+    steps:
+      - { bars: 16, looks: { decor: transmute } }
+      - { bars: 16, looks: { decor: shadow } }
+      - { bars: 16, looks: { decor: seal } }
+  strips-techno:
+    label: Techno
+    category: Strips
+    steps:
+      - { bars: 8, looks: { decor: shot } }
+      - { bars: 8, looks: { decor: storm } }
 limits:
   spider:
     tilt:

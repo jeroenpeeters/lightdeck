@@ -827,6 +827,45 @@ describe('the sequences of a show', () => {
     expect(sequence?.steps[0]?.looks).toEqual({ spider: 'drop', laser: 'off' });
   });
 
+  it('has a category for the pages when the file says so, and leaves it out when it does not', () => {
+    const [a, b] = read({
+      one: { category: ' The  spider ', steps: [{ bars: 4, looks: { spider: 'drop' } }] },
+      two: { steps: [{ bars: 4, looks: { spider: 'drop' } }] },
+    });
+    expect(a?.category).toBe('The spider');
+    expect(b).toEqual({ id: 'two', label: 'two', steps: [{ bars: 4, looks: { spider: 'drop' } }] });
+    expect('category' in (b ?? {})).toBe(false);
+    expect(() =>
+      read({ x: { category: '  ', steps: [{ bars: 4, looks: { spider: 'drop' } }] } }),
+    ).toThrow('sequence "x": a category needs a name');
+    expect(() =>
+      read({ x: { category: 3, steps: [{ bars: 4, looks: { spider: 'drop' } }] } }),
+    ).toThrow(/a category needs a name/);
+    expect(() =>
+      read({ x: { colour: 'red', steps: [{ bars: 4, looks: { spider: 'drop' } }] } }),
+    ).toThrow('cannot have "colour", only label, category and steps');
+  });
+
+  it('lets a step name a look that the fixtures of the group keep themselves, the pipes', () => {
+    const rig = {
+      ...RIG,
+      fixtures: [...RIG.fixtures, { id: 'decor', label: 'Decor', looks: ['slow', 'brew'] }],
+    };
+    const groups = { ...GROUPS, strips: { fixtures: ['decor'], scenes: {} } };
+    const readStrips = (steps: unknown) =>
+      readShow({ groups, sequences: { pipes: { steps } } }, rig).sequences;
+    expect(readStrips([{ bars: 8, looks: { strips: 'slow' } }])[0]?.steps).toEqual([
+      { bars: 8, looks: { strips: 'slow' } },
+    ]);
+    expect(() => readStrips([{ bars: 8, looks: { strips: 'nope' } }])).toThrow(
+      'there is no look called "nope" for the group "strips", only slow, brew',
+    );
+    // The pipes have no off in a sequence: it would do nothing.
+    expect(() => readStrips([{ bars: 8, looks: { strips: 'off' } }])).toThrow(
+      /no look called "off"/,
+    );
+  });
+
   it('refuses a sequence without steps, and a step that sets nothing', () => {
     expect(() => read({ a: { steps: [] } })).toThrow(/sequence "a" needs a list of steps/);
     expect(() => read({ a: {} })).toThrow(/needs a list of steps/);

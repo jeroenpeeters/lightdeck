@@ -812,6 +812,20 @@ export class DecorController extends EventEmitter implements FixtureController {
     return this.strips.find((each) => each.id === id);
   }
 
+  /** The ids of the looks of the pipes, from the rig file. */
+  lookIds(): string[] {
+    return this.looks.map((look) => look.id);
+  }
+
+  /** Sets a look on every pipe, as a key on the tablet does for "All". */
+  playLook(look: string, origin?: string): void {
+    if (!this.looks.some((each) => each.id === look)) {
+      throw new PatchError(`there is no look called "${look}" for the pipes`);
+    }
+    if (this.strips.length === 0) throw new PatchError('the decor has no pipes');
+    this.update({ look: Object.fromEntries(this.strips.map((strip) => [strip.id, look])) }, origin);
+  }
+
   /** The decor is part of no scene: there is nothing to keep. */
   snapshot(_type: SceneType): Record<string, unknown> {
     return {};

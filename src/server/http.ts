@@ -21,7 +21,7 @@
  *   GET  /api/state                   everything a browser needs to draw itself
  *   GET  /api/events                  server-sent events: `fixture`, `tempo`, `blackout`,
  *                                     `master`, `status`, `show`, `playback`, `sequence` (which
- *                                     sequence runs, and where), `rkbx` (what rekordbox says,
+ *                                     sequences run, and where), `rkbx` (what rekordbox says,
  *                                     see `RkbxFollower`), `output` (the settings of
  *                                     the output) and, while a
  *                                     fixture animates, `frame` with the bytes being sent
@@ -51,11 +51,16 @@
  *                                     which no tilt goes beyond. `{}` takes the limits away
  *   POST /api/fixtures/<id>/<action>  something the fixture can do, such as `reset`
  *   POST /api/sequence                `start`, the id of a sequence of the show, which sets its first
- *                                     step at once and goes on on the bars (it stops the one that
- *                                     runs), `next: true` (the next step now), `hold: true` (freeze
- *                                     it where it is: no bar is counted and nothing is set) or
- *                                     `hold: false` (let it go on with the bars the step has
- *                                     left), or `stop: true`. A stop leaves the fixtures as they are
+ *                                     step at once and goes on on the bars. It stops the sequences
+ *                                     that run and set one of the same groups, and leaves the
+ *                                     others: the spider, the room, the laser and the strips can
+ *                                     each have one. `next: true` (the next step now), `hold: true`
+ *                                     (freeze it where it is: no bar is counted and nothing is set)
+ *                                     or `hold: false` (let it go on with the bars the step has
+ *                                     left) and `stop: true` take `sequence`, the id of the one
+ *                                     they mean; it can be left out when only one runs, and a
+ *                                     `stop` without it stops them all. A stop leaves the fixtures
+ *                                     as they are
  *   POST /api/playback                `group` with one of: `scene`, the id of the scene of
  *                                     lights or motion to set the fixtures of the group to
  *                                     (only the properties of the type of the scene);
@@ -449,28 +454,34 @@ export function createHttpServer(options: HttpOptions): Server {
 
     if (req.method === 'POST' && path === '/api/sequence') {
       const { change } = split(await readJson(req));
-      const { start, stop, next, hold } = readObject(change, 'the sequence', [
+      const { start, stop, next, hold, sequence } = readObject(change, 'the sequence', [
         'start',
         'stop',
         'next',
         'hold',
+        'sequence',
       ]);
       if ([start, stop, next, hold].filter((given) => given !== undefined).length !== 1) {
         throw new PatchError(
           'say which sequence to start, or stop: true, or next: true, or hold: true or false',
         );
       }
+      if (sequence !== undefined && typeof sequence !== 'string') {
+        throw new PatchError('"sequence" must be the id of a sequence');
+      }
       if (start !== undefined) {
+        if (sequence !== undefined) throw new PatchError('"start" already says which sequence');
         rig.sequencer.start(start);
       } else if (hold !== undefined) {
         if (typeof hold !== 'boolean') throw new PatchError('"hold" can only be true or false');
-        rig.sequencer.hold(hold);
+        rig.sequencer.hold(hold, sequence);
       } else if (next !== undefined) {
         if (next !== true) throw new PatchError('"next" can only be true');
-        rig.sequencer.next();
+        rig.sequencer.next(sequence);
       } else {
         if (stop !== true) throw new PatchError('"stop" can only be true');
-        rig.sequencer.stop();
+        // Several sequences can run: with no sequence named they all stop.
+        rig.sequencer.stop(sequence);
       }
       sendJson(res, 200, { ok: true });
       return;

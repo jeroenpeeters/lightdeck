@@ -165,11 +165,11 @@ more than one type, and priorities.
   for the spider runs under laser scenes that are chosen by hand.
 - **Stopping a sequence leaves the fixtures as they are.**
 - **One sequence runs at a time, at first.** Two at once, which share no fixture, come
-  later. Until then, starting a sequence stops the one that runs.
+  later. Until then, starting a sequence stops the one that runs. (Built on 2026-11-05, see below.)
 
 ## What was built (2026-10-18)
 
-`src/server/sequencer.ts`, owned by the rig, with `POST /api/sequence` (`start` or `stop: true`),
+`src/server/sequencer.ts`, owned by the rig, with `POST /api/sequence` (`start` or `stop: true`, and since 2026-11-05 several sequences run at once, one per group, so `next`, `hold` and `stop` take `sequence`),
 the `sequence` event and a panel of sequences on the deck. As the design above says, with these
 choices where it left room:
 
@@ -183,8 +183,19 @@ choices where it left room:
   it is all or nothing per look. A look that fails is reported on the deck and skipped, and the
   other groups of the step are still set.
 - **On the tablet page** a key per sequence (name only, lit while it runs, a press starts or stops it).
+- **Several sequences run at once (Jeroen, 2026-11-05), one per group.** A sequence owns the groups its
+  steps name; starting one stops only the sequences that share a group with it. The spider has Begin,
+  Midden and Techno (they replace each other), and the room, the laser (two looks, a bar each) and the
+  strips (the pipes, with the looks of `rig.yaml`) have a sequence of their own that runs beside them.
+  Each run has its own step, count, hold and timer. On the tablet Next and Hold act on the sequence of
+  the group on screen. The earlier sequence `night` (spider and room in one) was dropped.
+- **Categories (Jeroen, 2026-11-05), only for the pages.** A sequence can say `category:`; the tablet foot
+  shows the sequences of one category side by side with a chip per category, and the deck lists them
+  under the name of the category. The groups, not the categories, decide what replaces what. Every group
+  has its own Begin, Midden and Techno (`begin`, `midden`, `techno` for the spider, `room-begin`, ...,
+  `strips-begin`, ...), and the laser has one so far. On the tablet a press on a sequence that runs stops it.
 - **Not built:** a deck editor for sequences, starting on the next
-  bar, two at once, crossfades, holds (steps 5 to 7).
+  bar, a step in beats, crossfades, holds (steps 5 to 7).
 
 ## Open
 

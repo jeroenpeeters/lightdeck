@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  categoryOfGroup,
   chipMarks,
   colourCss,
   commonValue,
@@ -16,8 +17,11 @@ import {
   partInfo,
   partPlace,
   roomRails,
+  runForGroup,
+  runOf,
   STRIP_COLOURS,
   sameColour,
+  sequenceCategories,
   spiderLenses,
   splitNumber,
   stripView,
@@ -63,11 +67,11 @@ describe('a part of the evening', () => {
 
   it('has a segment per step while it does not run', () => {
     expect(partBars(sequence, undefined)).toEqual(['', '', '', '']);
-    expect(partBars(sequence, { running: 'techno', step: 0, barsLeft: 3 })).toHaveLength(4);
+    expect(partBars(sequence, { id: 'techno', step: 0, barsLeft: 3 })).toHaveLength(4);
   });
 
   it('has a segment per bar of the step that runs, the bars gone and this one marked', () => {
-    const bars = partBars(sequence, { running: 'midden', step: 0, barsLeft: 6 });
+    const bars = partBars(sequence, { id: 'midden', step: 0, barsLeft: 6 });
     expect(bars).toHaveLength(24);
     expect(bars.filter((each) => each === 'done')).toHaveLength(18);
     expect(bars[18]).toBe('now');
@@ -75,22 +79,20 @@ describe('a part of the evening', () => {
   });
 
   it('starts with the first bar as this one and ends with the last', () => {
-    expect(partBars(sequence, { running: 'midden', step: 1, barsLeft: 24 })[0]).toBe('now');
-    const last = partBars(sequence, { running: 'midden', step: 2, barsLeft: 1 });
+    expect(partBars(sequence, { id: 'midden', step: 1, barsLeft: 24 })[0]).toBe('now');
+    const last = partBars(sequence, { id: 'midden', step: 2, barsLeft: 1 });
     expect(last).toHaveLength(8);
     expect(last[7]).toBe('now');
   });
 
   it('says where it is', () => {
-    expect(partPlace(sequence, { running: 'midden', step: 0, barsLeft: 6 })).toBe(
-      '1/4 · bar 19/24',
-    );
-    expect(partPlace(sequence, { running: 'midden', step: 2, barsLeft: 8 })).toBe('3/4 · bar 1/8');
+    expect(partPlace(sequence, { id: 'midden', step: 0, barsLeft: 6 })).toBe('1/4 · bar 19/24');
+    expect(partPlace(sequence, { id: 'midden', step: 2, barsLeft: 8 })).toBe('3/4 · bar 1/8');
   });
 });
 
 describe('nextLook', () => {
-  const state = { running: 'midden', step: 0, barsLeft: 6 };
+  const state = { id: 'midden', step: 0, barsLeft: 6 };
 
   it('is the look of the next step, in the bars that are left', () => {
     expect(nextLook(sequence, state, 'spider', 'creeping')).toEqual({ look: 'heartbeat', bars: 6 });
@@ -119,16 +121,14 @@ describe('nextLook', () => {
         { bars: 4, looks: { spider: 'b' } },
       ],
     };
-    expect(nextLook(same, { running: 'x', step: 0, barsLeft: 3 }, 'spider', 'a')).toEqual({
+    expect(nextLook(same, { id: 'x', step: 0, barsLeft: 3 }, 'spider', 'a')).toEqual({
       look: 'b',
       bars: 3 + 4,
     });
   });
 
   it('is nothing when the sequence does not run or never changes the group', () => {
-    expect(
-      nextLook(sequence, { running: null, step: 0, barsLeft: 0 }, 'spider', undefined),
-    ).toBeNull();
+    expect(nextLook(sequence, undefined, 'spider', undefined)).toBeNull();
     expect(nextLook(undefined, state, 'spider', undefined)).toBeNull();
     expect(nextLook(sequence, state, 'laser', undefined)).toBeNull();
   });
@@ -402,5 +402,76 @@ describe('the looks of the pipes', () => {
         { effect: null, palette: null, intensity: null, pace: 1, colour: hexColour('#ff0000') },
       ]),
     ).toBe(false);
+  });
+});
+
+describe('the runs of several sequences', () => {
+  const sequences = [
+    { id: 'midden', steps: [{ bars: 8, looks: { spider: 'a' } }] },
+    {
+      id: 'wissel',
+      steps: [
+        { bars: 1, looks: { laser: 'x' } },
+        { bars: 1, looks: { laser: 'y' } },
+      ],
+    },
+  ];
+  const state = {
+    runs: [
+      { id: 'midden', step: 0, barsLeft: 3 },
+      { id: 'wissel', step: 1, barsLeft: 1, held: true },
+    ],
+  };
+
+  it('finds the run of a sequence by its id', () => {
+    expect(runOf(state, 'wissel')).toMatchObject({ step: 1, held: true });
+    expect(runOf(state, 'begin')).toBeUndefined();
+    expect(runOf(undefined, 'wissel')).toBeUndefined();
+  });
+
+  it('finds the run that sets a group, for Next and Hold on the tab of that group', () => {
+    expect(runForGroup(state, sequences, 'laser')?.id).toBe('wissel');
+    expect(runForGroup(state, sequences, 'spider')?.id).toBe('midden');
+    expect(runForGroup(state, sequences, 'room')).toBeUndefined();
+    expect(runForGroup({ runs: [] }, sequences, 'laser')).toBeUndefined();
+  });
+});
+
+describe('the categories of the sequences', () => {
+  const at = (id: string, category: string | undefined, group: string) => ({
+    id,
+    ...(category === undefined ? {} : { category }),
+    steps: [{ bars: 4, looks: { [group]: 'x' } }],
+  });
+
+  it('puts the sequences of a category together, in the order the categories first appear', () => {
+    const categories = sequenceCategories([
+      at('begin', 'Spider', 'spider'),
+      at('room-begin', 'Room', 'room'),
+      at('midden', 'Spider', 'spider'),
+      at('room-midden', 'Room', 'room'),
+    ]);
+    expect(categories.map((c) => [c.label, c.sequences.map((s) => s.id)])).toEqual([
+      ['Spider', ['begin', 'midden']],
+      ['Room', ['room-begin', 'room-midden']],
+    ]);
+  });
+
+  it('puts sequences with no category last as Other, and has one plain category when none has one', () => {
+    const mixed = sequenceCategories([at('a', undefined, 'laser'), at('b', 'Spider', 'spider')]);
+    expect(mixed.map((c) => c.label)).toEqual(['Spider', 'Other']);
+    const none = sequenceCategories([at('a', undefined, 'laser'), at('b', undefined, 'spider')]);
+    expect(none).toHaveLength(1);
+    expect(none[0]?.label).toBe('');
+    expect(sequenceCategories([])).toEqual([]);
+  });
+
+  it('finds the category that sets the group of the tab on screen', () => {
+    const categories = sequenceCategories([
+      at('begin', 'Spider', 'spider'),
+      at('room-begin', 'Room', 'room'),
+    ]);
+    expect(categoryOfGroup(categories, 'room')?.label).toBe('Room');
+    expect(categoryOfGroup(categories, 'laser')).toBeUndefined();
   });
 });

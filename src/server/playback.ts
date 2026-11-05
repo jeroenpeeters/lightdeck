@@ -117,6 +117,8 @@ export interface PaletteSummary {
 export interface SequenceSummary {
   id: string;
   label: string;
+  /** What the pages show it with, or left out. */
+  category?: string;
   /** In the order they run: how many bars, and the look (or `off`) set in each group it names. */
   steps: { bars: number; looks: Record<string, string> }[];
 }
@@ -226,7 +228,10 @@ export class Playback {
     this.palettes = options.palettes ?? new PaletteBook();
     this.file = new ShowFile({
       ...(options.path === undefined ? {} : { path: options.path }),
-      fixtures: this.fixtures.map(({ id, label }) => ({ id, label })),
+      fixtures: this.fixtures.map(({ id, label, controller }) => {
+        const looks = controller.lookIds?.();
+        return looks ? { id, label, looks } : { id, label };
+      }),
       check: (id, type, part) => this.fixture(id).controller.check(type, part),
       readLimits: (id, limits) => {
         const { controller } = this.fixture(id);
@@ -302,9 +307,10 @@ export class Playback {
           zone: look.zone ?? null,
         })),
       })),
-      sequences: show.sequences.map(({ id, label, steps }) => ({
+      sequences: show.sequences.map(({ id, label, category, steps }) => ({
         id,
         label,
+        ...(category === undefined ? {} : { category }),
         steps: steps.map(({ bars, looks }) => ({ bars, looks: { ...looks } })),
       })),
     };
@@ -369,6 +375,13 @@ export class Playback {
    */
   playLook(group: unknown, look: unknown, origin?: string): void {
     const found = this.needGroup(group);
+    // The pipes keep their looks themselves (the rig file): a group of such fixtures sets those.
+    const own = found.fixtures.map((id) => this.fixture(id).controller);
+    if (own.length > 0 && own.every((controller) => controller.playLook)) {
+      if (typeof look !== 'string') throw new PatchError('say which look, by its id');
+      for (const controller of own) controller.playLook?.(look, origin);
+      return;
+    }
     const { id, lights, colour, motion, zone } = this.needLook(found, look);
     const lightsScene = lights === undefined ? undefined : this.needScene(found, lights);
     const motionScene = motion === undefined ? undefined : this.needScene(found, motion);

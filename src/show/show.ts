@@ -62,8 +62,9 @@
  *                                         # fixtures: { spider: { zone: { tilt: [{ min, max }, ...] } } }
  *
  *   sequences:                          # the looks of the groups, changing on the bars
- *     night:
- *       label: The night
+ *     begin:
+ *       label: Begin
+ *       category: Spider                # only for the pages: sequences of a category are shown together
  *       steps:
  *         - bars: 32                  # a step lasts a number of bars
  *           looks: { spider: doors-open, room: welcome }
@@ -190,6 +191,13 @@ export interface Sequence {
   id: string;
   /** What the operator calls it. */
   label: string;
+  /**
+   * The pages show the sequences of one category together (Jeroen, 2026-11-05: Begin, Midden and
+   * Techno of the spider, of the room, ...). It is only for looking: it has no say in which
+   * sequences replace each other, which the groups of the steps decide. Left out when the file
+   * does not say.
+   */
+  category?: string;
   /** At least one, in the order they run. */
   steps: SequenceStep[];
 }
@@ -218,6 +226,12 @@ export class ShowError extends Error {}
 export interface ShowFixture {
   id: string;
   label: string;
+  /**
+   * The ids of the looks the fixture keeps itself (the pipes of the decor have theirs in the rig
+   * file). A group made only of such fixtures has no looks in the show, and a step of a sequence
+   * names one of these for it.
+   */
+  looks?: readonly string[];
 }
 
 /** Throws when the fixture cannot take this part of a scene of this type. */
@@ -641,7 +655,11 @@ function readGroups(listed: unknown, known: KnownFixtures, palettes: readonly Pa
 }
 
 /** The sequences of the file. Every look a step names must be there, in the group it names. */
-function readSequences(listed: unknown, groups: readonly Group[]): Sequence[] {
+function readSequences(
+  listed: unknown,
+  groups: readonly Group[],
+  fixtures: readonly ShowFixture[],
+): Sequence[] {
   if (listed === null || listed === undefined) return [];
   if (!isObject(listed)) {
     throw new ShowError('"sequences" must be a list of sequences by their id');
@@ -652,13 +670,17 @@ function readSequences(listed: unknown, groups: readonly Group[]): Sequence[] {
     const where = `sequence "${id}"`;
     if (!ID.test(id)) throw new ShowError(`${where}: ${ID_RULE}`);
     if (!isObject(sequence)) throw new ShowError(`${where} must have a label and steps`);
-    const extra = Object.keys(sequence).find((key) => key !== 'label' && key !== 'steps');
+    const extra = Object.keys(sequence).find(
+      (key) => key !== 'label' && key !== 'category' && key !== 'steps',
+    );
     if (extra !== undefined) {
-      throw new ShowError(`${where} cannot have "${extra}", only label and steps`);
+      throw new ShowError(`${where} cannot have "${extra}", only label, category and steps`);
     }
     let label = id;
+    let category: string | undefined;
     try {
       if (sequence.label !== undefined) label = readLabel(sequence.label, 'sequence');
+      if (sequence.category !== undefined) category = readLabel(sequence.category, 'category');
     } catch (error) {
       throw new ShowError(`${where}: ${message(error)}`);
     }
@@ -666,14 +688,34 @@ function readSequences(listed: unknown, groups: readonly Group[]): Sequence[] {
       throw new ShowError(`${where} needs a list of steps, at least one`);
     }
     const steps = sequence.steps.map((step, index) =>
-      readStep(step, `${where}, step ${index + 1}`, groups),
+      readStep(step, `${where}, step ${index + 1}`, groups, fixtures),
     );
-    sequences.push({ id, label, steps });
+    sequences.push({ id, label, ...(category === undefined ? {} : { category }), steps });
   }
   return sequences;
 }
 
-function readStep(step: unknown, where: string, groups: readonly Group[]): SequenceStep {
+/**
+ * The ids of the looks the fixtures of a group keep themselves, when every fixture of the group
+ * keeps some; otherwise null, and the looks of the group are the ones the show has.
+ */
+function fixtureLooks(group: Group, fixtures: readonly ShowFixture[]): string[] | null {
+  if (group.fixtures.length === 0) return null;
+  const ids: string[] = [];
+  for (const id of group.fixtures) {
+    const own = fixtures.find((each) => each.id === id)?.looks;
+    if (!own) return null;
+    ids.push(...own);
+  }
+  return ids;
+}
+
+function readStep(
+  step: unknown,
+  where: string,
+  groups: readonly Group[],
+  fixtures: readonly ShowFixture[],
+): SequenceStep {
   if (!isObject(step)) throw new ShowError(`${where} must have bars and looks`);
   const extra = Object.keys(step).find((key) => key !== 'bars' && key !== 'looks');
   if (extra !== undefined)
@@ -692,7 +734,17 @@ function readStep(step: unknown, where: string, groups: readonly Group[]): Seque
     if (typeof lookId !== 'string') {
       throw new ShowError(`${where}: the look for "${groupId}" must be the id of a look, or off`);
     }
-    if (lookId !== OFF && !group.looks.some((look) => look.id === lookId)) {
+    const own = fixtureLooks(group, fixtures);
+    if (own) {
+      // The pipes: their looks are in the rig file, and they have no off in a sequence.
+      if (!own.includes(lookId)) {
+        throw new ShowError(
+          `${where}: there is no look called "${lookId}" for the group "${groupId}"${
+            own.length > 0 ? `, only ${own.join(', ')}` : ''
+          }`,
+        );
+      }
+    } else if (lookId !== OFF && !group.looks.some((look) => look.id === lookId)) {
       throw new ShowError(
         `${where}: there is no look called "${lookId}" in the group "${groupId}"`,
       );
@@ -736,7 +788,12 @@ export function readShow(data: unknown, known: KnownFixtures): Show {
       );
     }
     const groups = readGroups(data.groups, known, palettes);
-    return { limits, palettes, groups, sequences: readSequences(data.sequences, groups) };
+    return {
+      limits,
+      palettes,
+      groups,
+      sequences: readSequences(data.sequences, groups, known.fixtures),
+    };
   }
 
   // From before there were groups: the scenes are for every fixture.
@@ -748,5 +805,10 @@ export function readShow(data: unknown, known: KnownFixtures): Show {
     throw new ShowError('the show has scenes, and there is no fixture they can be for');
   }
   // A file from before there were groups has no looks, so no sequence can name one.
-  return { limits, palettes, groups, sequences: readSequences(data.sequences, groups) };
+  return {
+    limits,
+    palettes,
+    groups,
+    sequences: readSequences(data.sequences, groups, known.fixtures),
+  };
 }

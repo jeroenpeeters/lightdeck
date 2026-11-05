@@ -229,8 +229,24 @@
 .d-seq-tabs {
   flex-wrap: wrap;
 }
+.d-seq-tabs {
+  align-items: center;
+  row-gap: 4px;
+}
 .d-seq-tabs .tab {
   padding: 0 10px;
+}
+/* The name of a category, before its sequences: it starts a new line, so a category reads as a row. */
+.d-seq-cat {
+  flex-basis: 100%;
+  margin-top: 6px;
+  color: var(--t3);
+  font: 500 var(--fs-xs) / 1 var(--f-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.d-seq-cat:first-child {
+  margin-top: 0;
 }
 /* A sequence that runs is amber on its tab, whether or not it is the one listed. */
 .d-seq-tabs .tab.is-running {

@@ -8,14 +8,24 @@ export interface SequenceStep {
 }
 export interface Sequence {
   id: string;
+  category?: string;
   steps: SequenceStep[];
 }
-export interface SequenceState {
-  running: string | null;
+export interface SequenceCategory {
+  id: string;
+  label: string;
+  sequences: Sequence[];
+}
+/** One running sequence. */
+export interface SequenceRun {
+  id: string;
   /** True while the sequence is held. */
   held?: boolean;
   step: number;
   barsLeft: number;
+}
+export interface SequenceState {
+  runs: SequenceRun[];
 }
 export interface RailFixture {
   controls?: (SpiderControl & { ranges?: { from: number; to: number; key?: string }[] })[];
@@ -24,11 +34,22 @@ export interface RailFixture {
 
 export function splitNumber(label: string): { no: string; name: string };
 export function partInfo(sequence: Sequence): string;
-export function partBars(sequence: Sequence, state: SequenceState | undefined): string[];
-export function partPlace(sequence: Sequence, state: SequenceState): string;
+export function sequenceCategories(sequences: Sequence[]): SequenceCategory[];
+export function categoryOfGroup(
+  categories: SequenceCategory[],
+  groupId: string,
+): SequenceCategory | undefined;
+export function runOf(state: SequenceState | undefined, id: string): SequenceRun | undefined;
+export function runForGroup(
+  state: SequenceState | undefined,
+  sequences: Sequence[],
+  groupId: string,
+): SequenceRun | undefined;
+export function partBars(sequence: Sequence, run: SequenceRun | undefined): string[];
+export function partPlace(sequence: Sequence, run: SequenceRun): string;
 export function nextLook(
   sequence: Sequence | undefined,
-  state: SequenceState | undefined,
+  run: SequenceRun | undefined,
   groupId: string,
   lookOn: string | undefined,
 ): { look: string; bars: number } | null;

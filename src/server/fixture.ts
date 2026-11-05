@@ -69,6 +69,14 @@ export interface FixtureController {
    */
   readLimits?(limits: unknown): unknown;
   setLimits?(limits: unknown): void;
+  /**
+   * A fixture that keeps looks of its own, outside the scenes of the show (the pipes of the decor,
+   * whose looks are in the rig file), names their ids with `lookIds` and sets one with `playLook`,
+   * which throws a `PatchError` for an id it does not have. A step of a sequence can name them for
+   * a group of such fixtures.
+   */
+  lookIds?(): string[];
+  playLook?(look: string, origin?: string): void;
   /** The blackout of the console. While on, the fixture is dark and keeps its state. */
   setBlackout(blackout: boolean): void;
   /**

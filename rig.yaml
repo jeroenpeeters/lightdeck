@@ -29,14 +29,14 @@ fixtures:
     switches:
       - { id: uv1, label: UV 1, entity: switch.uv_lamp_1, blackout: true }
       - { id: uv2, label: UV 2, entity: switch.uv_lamp_2, blackout: true }
-    # Three strips of WLED in white dryer hoses. Lightdeck draws the effects itself (engine/pipeEffects.ts, in the
+    # Two strips of WLED in white dryer hoses (buis3 is left out: it is not part of the party, 2026-11-05).
+    # Lightdeck draws the effects itself (engine/pipeEffects.ts, in the
     # colours of a palette of the show) and sends the pixels over DDP. It finds each strip's address through Home
     # Assistant (sensor.wled_buisN_ip), so a strip is drawn as soon as it is online; `host:` gives it when needed,
     # and `draw: wled` leaves the effects to WLED itself (chosen through Home Assistant).
     strips:
       - { id: buis1, label: Buis 1, entity: light.wled_buis1, leds: 300 }
       - { id: buis2, label: Buis 2, entity: light.wled_buis2, leds: 300 }
-      - { id: buis3, label: Buis 3, entity: light.wled_buis3, leds: 300 }
     # Looks of the pipes that lightdeck draws: an effect, and the palette that colours it when it names one.
     looks:
       - { id: slow, label: Slow flow, effect: slowflow }

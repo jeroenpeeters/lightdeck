@@ -34,8 +34,8 @@
 //                                          the groups with their scenes
 //   shell.playback                         per group which scene is on, and whether its
 //                                          fixtures were changed by hand since
-//   shell.sequence                         which sequence runs and where: { running, step, steps,
-//                                          barsLeft, paused, problem }
+//   shell.sequence                         which sequences run and where: { runs: [{ id, step, steps,
+//                                          barsLeft, paused, held, problem }] }, one per group
 //   shell.ask(url, body)                   ask the server for something once; gives
 //                                          { ok, error } and what the server answered,
 //                                          with `lost` when the server was not reached

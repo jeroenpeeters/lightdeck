@@ -28,8 +28,13 @@
  *   `next()` is refused while it holds, so that what is frozen stays as it is.
  * - **Next skips ahead.** `next()` sets the following step at once, as the bar line does, for an
  *   operator who has had enough of a look: it counts its bars from here, and the sequence goes on.
- * - **One sequence runs at a time.** Starting one stops the one that runs. Stopping leaves the
- *   fixtures as they are. A sequence is never started by itself, not at startup either.
+ * - **Several sequences run at once, one per group** (Jeroen, 2026-11-05: the laser alternates two
+ *   looks while the spider goes through a part of the evening). A sequence owns the groups that its
+ *   steps name. Starting one stops the sequences that run and share a group with it, and leaves the
+ *   others alone, so Begin, Midden and Techno (spider) replace each other while the sequence of the
+ *   room, the laser or the strips goes on. Each has its own step, bars left, hold and problem.
+ *   Stopping leaves the fixtures as they are. A sequence is never started by itself, not at startup
+ *   either.
  *
  * It counts bar lines crossed and not moments: a tap, which restarts the count of the beat, or a
  * change of the bpm moves the next bar line, and the timer is armed again for it. The time on
@@ -52,12 +57,13 @@ export const BEATS_PER_BAR = 4;
  */
 const MAX_BARS_AT_ONCE = 2;
 
-export interface SequenceState {
-  /** Id of the sequence that runs, or null. */
-  running: string | null;
-  /** Index of the step that is on, from 0, or -1 when none runs. */
+/** Where one running sequence is. */
+export interface SequenceRunState {
+  /** Id of the sequence. */
+  id: string;
+  /** Index of the step that is on, from 0. */
   step: number;
-  /** How many steps the running sequence has, or 0. */
+  /** How many steps the sequence has. */
   steps: number;
   /** How many bar lines there are to go until the next step. */
   barsLeft: number;
@@ -69,6 +75,11 @@ export interface SequenceState {
   problem: string | null;
 }
 
+export interface SequenceState {
+  /** The sequences that run, in the order they were started. Empty when none does. */
+  runs: SequenceRunState[];
+}
+
 export interface SequencerOptions {
   tempo: Tempo;
   playback: Pick<Playback, 'getShow' | 'playLook' | 'off' | 'on'>;
@@ -76,22 +87,41 @@ export interface SequencerOptions {
   log?: (message: string) => void;
 }
 
+/** The groups a sequence sets: those its steps name. */
+export function groupsOf(sequence: Sequence): Set<string> {
+  return new Set(sequence.steps.flatMap((step) => Object.keys(step.looks)));
+}
+
+/** One running sequence: its own place, its own count of bars and its own timer. */
+class Run {
+  step = 0;
+  barsLeft = 0;
+  paused = false;
+  held = false;
+  problem: string | null = null;
+  /** The bar line that was last counted. */
+  lastBar = 0;
+  /** By group, the look this run set last. */
+  readonly lastSet = new Map<string, string>();
+  timer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(readonly id: string) {}
+
+  clearTimer(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = undefined;
+  }
+}
+
 export class Sequencer extends EventEmitter {
   private readonly tempo: Tempo;
   private readonly playback: SequencerOptions['playback'];
   private readonly log: ((message: string) => void) | undefined;
-  private runningId: string | null = null;
-  private step = -1;
-  private barsLeft = 0;
-  private paused = false;
-  private held = false;
-  private problem: string | null = null;
-  /** The bar line that was last counted. */
-  private lastBar = 0;
-  /** By group, the look the sequence set last. */
-  private readonly lastSet = new Map<string, string>();
-  private timer: ReturnType<typeof setTimeout> | undefined;
-  private readonly onTempo = () => this.tick();
+  /** By the id of the sequence, in the order they were started. */
+  private readonly runs = new Map<string, Run>();
+  private readonly onTempo = () => {
+    for (const run of [...this.runs.values()]) this.tick(run);
+  };
 
   constructor(options: SequencerOptions) {
     super();
@@ -103,93 +133,131 @@ export class Sequencer extends EventEmitter {
   }
 
   getState(): SequenceState {
+    return { runs: [...this.runs.values()].map((run) => this.stateOf(run)) };
+  }
+
+  private stateOf(run: Run): SequenceRunState {
     return {
-      running: this.runningId,
-      step: this.step,
-      steps: this.current()?.steps.length ?? 0,
-      barsLeft: this.barsLeft,
-      paused: this.paused,
-      held: this.held,
-      problem: this.problem,
+      id: run.id,
+      step: run.step,
+      steps: this.find(run.id)?.steps.length ?? 0,
+      barsLeft: run.barsLeft,
+      paused: run.paused,
+      held: run.held,
+      problem: run.problem,
     };
   }
 
+  private changed(): void {
+    this.emit('sequence', this.getState());
+  }
+
   /**
-   * Starts a sequence at its first step, which is set at once. Stops the one that runs. Throws a
-   * `PatchError` when there is no such sequence.
+   * Starts a sequence at its first step, which is set at once. Stops the sequences that run and
+   * set a group that this one sets too, and leaves the others. Starting one that runs starts it
+   * over. Throws a `PatchError` when there is no such sequence.
    */
   start(id: unknown): void {
     if (typeof id !== 'string') throw new PatchError('say which sequence, by its id');
     const sequence = this.find(id);
     if (!sequence) throw new PatchError(`there is no sequence called "${id}"`);
-    this.clearTimer();
-    this.runningId = id;
-    this.lastSet.clear();
-    this.step = 0;
-    this.barsLeft = sequence.steps[0]?.bars ?? 1;
-    this.held = false;
-    this.paused = !this.tempo.isRunning();
-    this.lastBar = this.barNow();
-    this.apply(sequence, 0);
-    this.emit('sequence', this.getState());
-    this.arm();
+    const groups = groupsOf(sequence);
+    for (const other of [...this.runs.values()]) {
+      const theirs = this.find(other.id);
+      if (other.id === id || !theirs || [...groupsOf(theirs)].some((group) => groups.has(group))) {
+        this.release(other);
+      }
+    }
+    const run = new Run(id);
+    this.runs.set(id, run);
+    run.barsLeft = sequence.steps[0]?.bars ?? 1;
+    run.paused = !this.tempo.isRunning();
+    run.lastBar = this.barNow();
+    this.apply(run, sequence, 0);
+    this.changed();
+    this.arm(run);
   }
 
   /**
-   * Sets the next step now, in place of waiting for the bar line, and counts its bars from here.
-   * Does nothing when no sequence runs. After the last step it is the first again.
+   * Sets the next step of a sequence now, in place of waiting for the bar line, and counts its
+   * bars from here. After the last step it is the first again. Without an id it is the sequence
+   * that runs when only one does. Throws a `PatchError` when it is held.
    */
-  next(): void {
-    const sequence = this.current();
+  next(id?: string): void {
+    const run = this.pick(id);
+    if (!run) return;
+    const sequence = this.find(run.id);
     if (!sequence) return;
-    if (this.held) throw new PatchError('the sequence is on hold: press Hold again to let it go');
-    this.step = (this.step + 1) % sequence.steps.length;
-    this.barsLeft = sequence.steps[this.step]?.bars ?? 1;
-    this.apply(sequence, this.step);
-    this.emit('sequence', this.getState());
+    if (run.held) throw new PatchError('the sequence is on hold: press Hold again to let it go');
+    run.step = (run.step + 1) % sequence.steps.length;
+    run.barsLeft = sequence.steps[run.step]?.bars ?? 1;
+    this.apply(run, sequence, run.step);
+    this.changed();
   }
 
   /**
-   * Holds the sequence that runs, or lets it go: a held sequence counts no bars and sets nothing, a
-   * released one goes on with the bars the step has left. Throws a `PatchError` when none runs.
+   * Holds a sequence that runs, or lets it go: a held sequence counts no bars and sets nothing, a
+   * released one goes on with the bars the step has left. Throws a `PatchError` when it does not
+   * run. Without an id it is the sequence that runs when only one does.
    */
-  hold(on: boolean): void {
-    if (this.runningId === null)
-      throw new PatchError('no sequence runs, so there is nothing to hold');
-    if (this.held === on) return;
-    this.held = on;
+  hold(on: boolean, id?: string): void {
+    const run = this.pick(id, 'there is nothing to hold');
+    if (!run || run.held === on) return;
+    run.held = on;
     if (on) {
-      this.clearTimer();
+      run.clearTimer();
     } else {
       // It counts again from here: the bar that is going on is not one of the bars of the step.
-      this.lastBar = this.barNow();
+      run.lastBar = this.barNow();
     }
-    this.emit('sequence', this.getState());
-    if (!on) this.arm();
+    this.changed();
+    if (!on) this.arm(run);
   }
 
-  /** Stops the sequence that runs. The fixtures stay as they are. */
-  stop(): void {
-    if (this.runningId === null) return;
-    this.clearTimer();
-    this.runningId = null;
-    this.step = -1;
-    this.barsLeft = 0;
-    this.paused = false;
-    this.held = false;
-    this.problem = null;
-    this.lastSet.clear();
-    this.emit('sequence', this.getState());
+  /**
+   * Stops a sequence, or all of them without an id. The fixtures stay as they are.
+   */
+  stop(id?: string): void {
+    const stopping = id === undefined ? [...this.runs.values()] : [this.runs.get(id)];
+    let any = false;
+    for (const run of stopping) {
+      if (!run) continue;
+      this.release(run);
+      any = true;
+    }
+    if (any) this.changed();
   }
 
   close(): void {
-    this.clearTimer();
-    this.runningId = null;
+    for (const run of this.runs.values()) run.clearTimer();
+    this.runs.clear();
     this.tempo.off('tempo', this.onTempo);
     this.removeAllListeners();
   }
 
   // --- counting ---------------------------------------------------------------------------
+
+  /** The run an operator means: the one named, or the only one that runs. */
+  private pick(id: string | undefined, nothing = 'there is nothing to do'): Run | undefined {
+    if (id !== undefined) {
+      const run = this.runs.get(id);
+      if (!run) throw new PatchError(`the sequence "${id}" does not run`);
+      return run;
+    }
+    if (this.runs.size === 0) {
+      if (nothing === 'there is nothing to do') return undefined;
+      throw new PatchError(`no sequence runs, so ${nothing}`);
+    }
+    if (this.runs.size > 1) {
+      throw new PatchError('several sequences run: say which one, by its id');
+    }
+    return [...this.runs.values()][0];
+  }
+
+  private release(run: Run): void {
+    run.clearTimer();
+    this.runs.delete(run.id);
+  }
 
   private find(id: string): Sequence | undefined {
     return this.playback.getShow().sequences.find((sequence) => sequence.id === id) as
@@ -197,99 +265,103 @@ export class Sequencer extends EventEmitter {
       | undefined;
   }
 
-  private current(): Sequence | undefined {
-    return this.runningId === null ? undefined : this.find(this.runningId);
-  }
-
   private barNow(): number {
     return Math.floor(this.tempo.beatAt(this.tempo.now()) / BEATS_PER_BAR);
   }
 
-  private clearTimer(): void {
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = undefined;
-  }
-
   /** Looks at the bar lines that went by, steps on when a step is done, and arms the next look. */
-  private tick(): void {
-    this.clearTimer();
-    if (this.runningId === null || this.held) return;
+  private tick(run: Run): void {
+    run.clearTimer();
+    if (this.runs.get(run.id) !== run || run.held) return;
     if (!this.tempo.isRunning()) {
-      if (!this.paused) {
-        this.paused = true;
-        this.emit('sequence', this.getState());
+      if (!run.paused) {
+        run.paused = true;
+        this.changed();
       }
       return;
     }
-    if (this.paused) {
+    if (run.paused) {
       // It counts again from here: the bar that is going on is not one of the bars of the step.
-      this.paused = false;
-      this.lastBar = this.barNow();
-      this.emit('sequence', this.getState());
+      run.paused = false;
+      run.lastBar = this.barNow();
+      this.changed();
     }
     const bar = this.barNow();
-    const crossed = bar - this.lastBar;
-    this.lastBar = bar;
-    if (crossed > 0) this.countBars(Math.min(crossed, MAX_BARS_AT_ONCE));
-    this.arm();
+    const crossed = bar - run.lastBar;
+    run.lastBar = bar;
+    if (crossed > 0) this.countBars(run, Math.min(crossed, MAX_BARS_AT_ONCE));
+    this.arm(run);
   }
 
-  private countBars(bars: number): void {
-    const sequence = this.current();
+  private countBars(run: Run, bars: number): void {
+    const sequence = this.find(run.id);
     if (!sequence) return;
     for (let n = 0; n < bars; n++) {
-      this.barsLeft--;
-      if (this.barsLeft > 0) continue;
-      this.step = (this.step + 1) % sequence.steps.length;
-      this.barsLeft = sequence.steps[this.step]?.bars ?? 1;
-      this.apply(sequence, this.step);
+      run.barsLeft--;
+      if (run.barsLeft > 0) continue;
+      run.step = (run.step + 1) % sequence.steps.length;
+      run.barsLeft = sequence.steps[run.step]?.bars ?? 1;
+      this.apply(run, sequence, run.step);
     }
-    this.emit('sequence', this.getState());
+    this.changed();
   }
 
   /** Arms the timer for the next bar line, as the tempo is now. */
-  private arm(): void {
-    this.clearTimer();
-    if (this.runningId === null || this.paused || this.held) return;
-    const at = this.tempo.timeOfBeat((this.lastBar + 1) * BEATS_PER_BAR);
+  private arm(run: Run): void {
+    run.clearTimer();
+    if (this.runs.get(run.id) !== run || run.paused || run.held) return;
+    const at = this.tempo.timeOfBeat((run.lastBar + 1) * BEATS_PER_BAR);
     // A millisecond late, so that the look lands past the bar line and not just before it.
-    this.timer = setTimeout(() => this.tick(), Math.max(0, at - this.tempo.now()) + 1);
+    run.timer = setTimeout(() => this.tick(run), Math.max(0, at - this.tempo.now()) + 1);
   }
 
   // --- setting ----------------------------------------------------------------------------
 
-  /** Sets the looks of a step where they differ from what the sequence set last. */
-  private apply(sequence: Sequence, index: number): void {
+  /** Sets the looks of a step where they differ from what the run set last. */
+  private apply(run: Run, sequence: Sequence, index: number): void {
     const step = sequence.steps[index];
     if (!step) return;
     const problems: string[] = [];
     for (const [group, look] of Object.entries(step.looks)) {
-      if (this.lastSet.get(group) === look) continue;
+      if (run.lastSet.get(group) === look) continue;
       try {
         if (look === 'off') this.playback.off(group, 'sequence');
         else this.playback.playLook(group, look, 'sequence');
-        this.lastSet.set(group, look);
+        run.lastSet.set(group, look);
       } catch (error) {
         const why = error instanceof Error ? error.message : String(error);
         problems.push(`${group}: ${why}`);
       }
     }
-    this.problem = problems.length === 0 ? null : problems.join('; ');
-    if (this.problem) {
-      this.log?.(`sequence "${sequence.id}", step ${index + 1}: ${this.problem}`);
+    run.problem = problems.length === 0 ? null : problems.join('; ');
+    if (run.problem) {
+      this.log?.(`sequence "${sequence.id}", step ${index + 1}: ${run.problem}`);
     }
   }
 
-  /** The show changed: a sequence that is gone stops, and one that got shorter stays on a step. */
+  /**
+   * The show changed: a sequence that is gone stops, one that got shorter stays on a step, and when
+   * the file made two runs set the same group the one started later stops.
+   */
   private reconcile(): void {
-    if (this.runningId === null) return;
-    const sequence = this.current();
-    if (!sequence) {
-      this.stop();
-      return;
+    if (this.runs.size === 0) return;
+    const taken = new Set<string>();
+    for (const run of [...this.runs.values()]) {
+      const sequence = this.find(run.id);
+      if (!sequence) {
+        this.release(run);
+        continue;
+      }
+      const groups = groupsOf(sequence);
+      if ([...groups].some((group) => taken.has(group))) {
+        this.log?.(`sequence "${sequence.id}" stopped: another sequence sets the same group now`);
+        this.release(run);
+        continue;
+      }
+      for (const group of groups) taken.add(group);
+      run.step = Math.min(run.step, sequence.steps.length - 1);
+      run.barsLeft = Math.min(run.barsLeft, sequence.steps[run.step]?.bars ?? 1);
     }
-    this.step = Math.min(this.step, sequence.steps.length - 1);
-    this.barsLeft = Math.min(this.barsLeft, sequence.steps[this.step]?.bars ?? 1);
-    this.emit('sequence', this.getState());
+    this.changed();
   }
 }

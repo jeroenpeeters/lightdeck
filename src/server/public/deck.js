@@ -18,7 +18,8 @@
 //   side    the sequences of the show (written in the file by hand): which one, Start or Stop, Next,
 //           where it is, and its steps as a list (the step that is on lit, the next one dashed).
 //           A sequence changes the looks of the groups by itself, a step after the other, on the
-//           bars of the tempo; starting one stops the one that runs; Stop leaves the fixtures as
+//           bars of the tempo; several run at once, one per group, and starting one stops only the ones that
+//           set a group it sets too; Stop leaves the fixtures as
 //           they are. A press by hand stands until the next step that changes that group. The list is
 //           not pressable: the server has no jump to a step, only Next. In Program the side also holds
 //           what stores and changes the show (see below).
@@ -26,7 +27,7 @@
 // One thing per lane is on, so several are on at once, each for its own fixtures and its own
 // properties: a palette is pressed under a chase and the chase goes on in the new colours. A look
 // that is on is lit, and it shows Varied when a lane it set is not what it set any more. The look
-// that the running sequence sets next in the group has a dashed edge and Next.
+// that the sequence that runs in the group sets next has a dashed edge and Next.
 //
 // The deck has two modes, and the address remembers which (#program), with the Show and Program
 // keys in the head of the page:
@@ -68,7 +69,14 @@ import {
   stateOf,
   syncKeys,
 } from './tabletKit.js';
-import { nextLook, partPlace, splitNumber } from './tabletLogic.js';
+import {
+  nextLook,
+  partPlace,
+  runForGroup,
+  runOf,
+  sequenceCategories,
+  splitNumber,
+} from './tabletLogic.js';
 import {
   $,
   button,
@@ -133,9 +141,10 @@ let sureTimer;
 let failure = '';
 /** True when the last press did not reach lightdeck. It is not sent again. */
 let lost = false;
-/** The sequence whose steps are listed, and the one that was running last (the list follows it). */
+/** The sequence whose steps are listed (the list follows a sequence that starts). */
 let viewedSequence = null;
-let lastRunning = null;
+/** The ids of the sequences that ran at the last look, to see which one started. */
+let lastRunning = [];
 /** What the field for the name was filled for, so that it follows a pick and not a keystroke. */
 let nameFor = null;
 /** Shows which of Show and Program is chosen. */
@@ -305,13 +314,20 @@ function pressOff() {
 }
 
 function pressSequence() {
-  const { running } = shell.sequence ?? {};
   if (!viewedSequence) return;
-  ask('/api/sequence', running === viewedSequence ? { stop: true } : { start: viewedSequence });
+  // Several sequences run at once: Stop stops this one, and Start stops only those that set its groups.
+  ask(
+    '/api/sequence',
+    runOf(shell.sequence, viewedSequence)
+      ? { stop: true, sequence: viewedSequence }
+      : { start: viewedSequence },
+  );
 }
 
 function pressNext() {
-  ask('/api/sequence', { next: true });
+  if (viewedSequence && runOf(shell.sequence, viewedSequence)) {
+    ask('/api/sequence', { next: true, sequence: viewedSequence });
+  }
 }
 
 /** Picks a scene or a look to rename, replace or delete (or nothing), and what is stored follows it. */
@@ -547,15 +563,17 @@ function setTag(tag, kind) {
   tag.textContent = kind === 'edit' ? 'Picked' : kind === 'var' ? 'Varied' : '';
 }
 
-/** The running sequence, as the show says it. */
-function runningSequence() {
-  const id = shell.sequence?.running;
-  return id ? (shell.show.sequences ?? []).find((sequence) => sequence.id === id) : undefined;
+/** The sequence that runs and sets this group, as the show says it, and where it is. */
+function runningSequence(groupId) {
+  const sequences = shell.show.sequences ?? [];
+  const run = runForGroup(shell.sequence, sequences, groupId);
+  return { sequence: sequences.find((sequence) => sequence.id === run?.id), run };
 }
 
 function lookItems(group) {
   const on = onLook(group);
-  const next = nextLook(runningSequence(), shell.sequence, group.id, on.item?.id);
+  const { sequence, run } = runningSequence(group.id);
+  const next = nextLook(sequence, run, group.id, on.item?.id);
   return group.looks.map((look) => ({
     id: `${group.id}:look:${look.id}`,
     make: () => {
@@ -883,43 +901,72 @@ function stepSets(step, plain) {
 }
 
 const sequenceTabs = new Map();
+/** The names of the categories in the strip of tabs, by the id of the category. */
+const sequenceCats = new Map();
 
 function renderSequence() {
   const list = shell.show.sequences ?? [];
-  const now = shell.sequence ?? { running: null };
+  const runs = shell.sequence?.runs ?? [];
   // The list follows a sequence that starts, here or elsewhere.
-  if (now.running !== lastRunning) {
-    lastRunning = now.running;
-    if (now.running) viewedSequence = now.running;
-  }
+  const started = runs.find((run) => !lastRunning.includes(run.id));
+  lastRunning = runs.map((run) => run.id);
+  if (started) viewedSequence = started.id;
   if (!list.some((sequence) => sequence.id === viewedSequence)) {
     viewedSequence =
-      list.find((sequence) => sequence.id === now.running)?.id ?? list[0]?.id ?? null;
+      list.find((sequence) => runOf(shell.sequence, sequence.id))?.id ?? list[0]?.id ?? null;
   }
   const sequence = list.find((each) => each.id === viewedSequence);
-  const running = Boolean(sequence) && now.running === sequence.id;
+  // The run of the sequence that is listed, or undefined while it does not run.
+  const now = sequence ? runOf(shell.sequence, sequence.id) : undefined;
+  const running = now !== undefined;
 
+  // The sequences of a category are together, with the name of the category before them (only when the
+  // show has more than one: the category is for looking and decides nothing).
+  const categories = sequenceCategories(list);
+  const several = categories.length > 1;
+  const nodes = [];
+  const wantedCats = new Set();
+  for (const category of categories) {
+    if (several) {
+      wantedCats.add(category.id);
+      let name = sequenceCats.get(category.id);
+      if (!name) {
+        name = element('span', 'd-seq-cat');
+        sequenceCats.set(category.id, name);
+      }
+      name.textContent = category.label;
+      nodes.push(name);
+    }
+    for (const each of category.sequences) {
+      let made = sequenceTabs.get(each.id);
+      if (!made) {
+        made = button('tab', '', () => {
+          viewedSequence = each.id;
+          renderSequence();
+        });
+        sequenceTabs.set(each.id, made);
+      }
+      made.textContent = each.label;
+      made.classList.toggle('is-sel', each.id === viewedSequence);
+      made.classList.toggle('is-running', Boolean(runOf(shell.sequence, each.id)));
+      made.setAttribute('aria-pressed', String(each.id === viewedSequence));
+      nodes.push(made);
+    }
+  }
   for (const [id, made] of sequenceTabs) {
     if (list.some((each) => each.id === id)) continue;
     made.remove();
     sequenceTabs.delete(id);
   }
-  list.forEach((each, index) => {
-    let made = sequenceTabs.get(each.id);
-    if (!made) {
-      made = button('tab', '', () => {
-        viewedSequence = each.id;
-        renderSequence();
-      });
-      sequenceTabs.set(each.id, made);
+  for (const [id, name] of sequenceCats) {
+    if (wantedCats.has(id)) continue;
+    name.remove();
+    sequenceCats.delete(id);
+  }
+  nodes.forEach((node, index) => {
+    if (page.sequenceTabs.children[index] !== node) {
+      page.sequenceTabs.insertBefore(node, page.sequenceTabs.children[index] ?? null);
     }
-    if (page.sequenceTabs.children[index] !== made) {
-      page.sequenceTabs.insertBefore(made, page.sequenceTabs.children[index] ?? null);
-    }
-    made.textContent = each.label;
-    made.classList.toggle('is-sel', each.id === viewedSequence);
-    made.classList.toggle('is-running', each.id === now.running);
-    made.setAttribute('aria-pressed', String(each.id === viewedSequence));
   });
 
   page.sequenceNone.hidden = list.length > 0;
@@ -934,8 +981,8 @@ function renderSequence() {
       `${running ? 'Stop' : 'Start'} ${sequence.label}`,
     );
   }
-  page.sequenceNext.disabled = !now.running;
-  page.sequenceNext.classList.toggle('is-disabled', !now.running);
+  page.sequenceNext.disabled = !running;
+  page.sequenceNext.classList.toggle('is-disabled', !running);
 
   let state = '';
   let status = '';
@@ -949,10 +996,17 @@ function renderSequence() {
           : `Step ${now.step + 1} of ${now.steps}, ${count(now.barsLeft, 'bar')} to go.`;
       if (now.problem) status += ` ${sentence(now.problem)}`;
     } else {
-      state = now.running ? 'another runs' : 'stopped';
-      status = now.running
-        ? 'Another sequence runs. Start this one to take its place.'
-        : `${sequence.label} is not running.`;
+      state = 'stopped';
+      // Starting it stops the sequences that set one of its groups, and no others.
+      const mine = groupsOfSequence(sequence);
+      const replaced = list
+        .filter((each) => runOf(shell.sequence, each.id) && each.id !== sequence.id)
+        .filter((each) => [...groupsOfSequence(each)].some((group) => mine.has(group)))
+        .map((each) => each.label);
+      status =
+        replaced.length > 0
+          ? `${sequence.label} is not running. Starting it stops ${replaced.join(' and ')}.`
+          : `${sequence.label} is not running.`;
     }
   }
   page.sequenceState.textContent = state;

@@ -693,6 +693,15 @@ describe('the strips of WLED in the decor', () => {
       expect(() => looked.update({ look: 3 })).toThrow(PatchError);
     });
 
+    it('keeps its looks as ids and sets one on every pipe, for a step of a sequence', () => {
+      expect(looked.lookIds()).toEqual(['flow', 'shot', 'plain']);
+      looked.playLook('shot');
+      const state = looked.getState();
+      expect(state.effect.buis1).toBe('Meteor');
+      expect(state.effect.buis2).toBe('Meteor');
+      expect(() => looked.playLook('nope')).toThrow(/no look called "nope"/);
+    });
+
     it('is one press for all the pipes, and nothing goes out while they are off', () => {
       looked.update({ look: { buis1: 'shot', buis2: 'shot' } });
       expect(hass.commands).toEqual([]);

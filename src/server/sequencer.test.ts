@@ -32,6 +32,33 @@ class FakePlayback {
   }
 }
 
+/** The state of the first sequence that runs, in the shape the tests of one sequence were written in. */
+interface OldState {
+  running: string | null;
+  step: number;
+  steps: number;
+  barsLeft: number;
+  paused: boolean;
+  held: boolean;
+  problem: string | null;
+}
+const flat = (state: SequenceState): OldState => {
+  const first = state.runs[0];
+  if (!first) {
+    return {
+      running: null,
+      step: -1,
+      steps: 0,
+      barsLeft: 0,
+      paused: false,
+      held: false,
+      problem: null,
+    };
+  }
+  const { id, ...rest } = first;
+  return { running: id, ...rest };
+};
+
 const step = (bars: number, looks: Record<string, string>) => ({ bars, looks });
 const seq = (id: string, steps: Sequence['steps']): Sequence => ({ id, label: id, steps });
 
@@ -40,7 +67,7 @@ describe('Sequencer', () => {
   let tempo: Tempo;
   let playback: FakePlayback;
   let sequencer: Sequencer;
-  let states: SequenceState[];
+  let states: OldState[];
   /** When the bar lines are: 0 is the origin of the beat count. */
   let origin: number;
 
@@ -64,7 +91,7 @@ describe('Sequencer', () => {
     playback = new FakePlayback();
     sequencer = new Sequencer({ tempo, playback: playback as never });
     states = [];
-    sequencer.on('sequence', (state: SequenceState) => states.push(state));
+    sequencer.on('sequence', (state: SequenceState) => states.push(flat(state)));
   });
 
   afterEach(() => {
@@ -75,7 +102,7 @@ describe('Sequencer', () => {
   it('is stopped until it is started, and never starts by itself', () => {
     playback.sequences = [seq('a', [step(1, { spider: 'drop' })])];
     run(60_000);
-    expect(sequencer.getState()).toEqual({
+    expect(flat(sequencer.getState())).toEqual({
       running: null,
       step: -1,
       steps: 0,
@@ -93,7 +120,7 @@ describe('Sequencer', () => {
     ];
     sequencer.start('night');
     expect(playback.calls).toEqual(['spider:drop@sequence', 'laser:off@sequence']);
-    expect(sequencer.getState()).toEqual({
+    expect(flat(sequencer.getState())).toEqual({
       running: 'night',
       step: 0,
       steps: 2,
@@ -112,13 +139,13 @@ describe('Sequencer', () => {
     sequencer.start('a');
     playback.calls = [];
     goTo(1);
-    expect(sequencer.getState().barsLeft).toBe(1);
+    expect(flat(sequencer.getState()).barsLeft).toBe(1);
     goBefore(2);
     expect(playback.calls).toEqual([]);
     goTo(2);
     // Two bar lines have gone by since the start: the first step is done, on the second one.
     expect(playback.calls).toEqual(['spider:calm@sequence']);
-    expect(sequencer.getState()).toMatchObject({ step: 1, barsLeft: 2 });
+    expect(flat(sequencer.getState())).toMatchObject({ step: 1, barsLeft: 2 });
   });
 
   it('does not set the next step before its bar line', () => {
@@ -153,7 +180,7 @@ describe('Sequencer', () => {
     // Back at step 1: the last step counts as the step before, and it named the same looks, so
     // nothing is set again.
     expect(playback.calls).toEqual([]);
-    expect(sequencer.getState().step).toBe(0);
+    expect(flat(sequencer.getState()).step).toBe(0);
     goTo(4);
     expect(playback.calls).toEqual(['spider:calm@sequence']);
   });
@@ -164,7 +191,7 @@ describe('Sequencer', () => {
     playback.calls = [];
     goTo(5);
     expect(playback.calls).toEqual([]);
-    expect(sequencer.getState().step).toBeGreaterThanOrEqual(0);
+    expect(flat(sequencer.getState()).step).toBeGreaterThanOrEqual(0);
   });
 
   it('takes a group back at the next step that changes it, and not before', () => {
@@ -191,9 +218,9 @@ describe('Sequencer', () => {
     run(BAR / 2);
     tempo.update({ bpm: 180 });
     run(340);
-    expect(sequencer.getState().barsLeft).toBe(2);
+    expect(flat(sequencer.getState()).barsLeft).toBe(2);
     run(340);
-    expect(sequencer.getState().barsLeft).toBe(1);
+    expect(flat(sequencer.getState()).barsLeft).toBe(1);
     // The next bar line is a bar of 1333 ms later, and the step lands on it.
     run(1333);
     expect(playback.calls).toEqual(['spider:calm@sequence']);
@@ -211,7 +238,7 @@ describe('Sequencer', () => {
     playback.calls = [];
     sequencer.next();
     expect(playback.calls).toEqual(['spider:calm@sequence']);
-    expect(sequencer.getState()).toMatchObject({ step: 1, barsLeft: 2 });
+    expect(flat(sequencer.getState())).toMatchObject({ step: 1, barsLeft: 2 });
     sequencer.next();
     sequencer.next();
     expect(playback.calls).toEqual([
@@ -219,10 +246,10 @@ describe('Sequencer', () => {
       'spider:low@sequence',
       'spider:drop@sequence',
     ]);
-    expect(sequencer.getState()).toMatchObject({ step: 0, barsLeft: 4 });
+    expect(flat(sequencer.getState())).toMatchObject({ step: 0, barsLeft: 4 });
     // The bars go on being counted from the bar lines.
     goTo(1);
-    expect(sequencer.getState().barsLeft).toBe(3);
+    expect(flat(sequencer.getState()).barsLeft).toBe(3);
   });
 
   it('does nothing for a next when no sequence runs', () => {
@@ -245,10 +272,10 @@ describe('Sequencer', () => {
       sequencer.start('a');
       goTo(1);
       goTo(2);
-      expect(sequencer.getState()).toMatchObject({ step: 0, barsLeft: 2, held: false });
+      expect(flat(sequencer.getState())).toMatchObject({ step: 0, barsLeft: 2, held: false });
       playback.calls = [];
       sequencer.hold(true);
-      expect(sequencer.getState()).toMatchObject({
+      expect(flat(sequencer.getState())).toMatchObject({
         running: 'a',
         step: 0,
         barsLeft: 2,
@@ -257,7 +284,7 @@ describe('Sequencer', () => {
       expect(vi.getTimerCount()).toBe(0);
       run(BAR * 20);
       expect(playback.calls).toEqual([]);
-      expect(sequencer.getState()).toMatchObject({
+      expect(flat(sequencer.getState())).toMatchObject({
         running: 'a',
         step: 0,
         barsLeft: 2,
@@ -275,16 +302,16 @@ describe('Sequencer', () => {
       run(BAR * 10 + BAR / 2);
       playback.calls = [];
       sequencer.hold(false);
-      expect(sequencer.getState()).toMatchObject({ step: 0, barsLeft: 2, held: false });
+      expect(flat(sequencer.getState())).toMatchObject({ step: 0, barsLeft: 2, held: false });
       // The bar that is going on is not counted: the next bar line is the first of the two.
       goBefore(13);
-      expect(sequencer.getState().barsLeft).toBe(2);
+      expect(flat(sequencer.getState()).barsLeft).toBe(2);
       goTo(13);
-      expect(sequencer.getState().barsLeft).toBe(1);
+      expect(flat(sequencer.getState()).barsLeft).toBe(1);
       expect(playback.calls).toEqual([]);
       goTo(14);
       expect(playback.calls).toEqual(['spider:calm@sequence']);
-      expect(sequencer.getState()).toMatchObject({ step: 1, barsLeft: 4 });
+      expect(flat(sequencer.getState())).toMatchObject({ step: 1, barsLeft: 4 });
     });
 
     it('tells of a hold and of a release, and a second hold of the same kind says nothing', () => {
@@ -316,12 +343,12 @@ describe('Sequencer', () => {
       sequencer.start('a');
       sequencer.hold(true);
       sequencer.start('b');
-      expect(sequencer.getState()).toMatchObject({ running: 'b', held: false });
+      expect(flat(sequencer.getState())).toMatchObject({ running: 'b', held: false });
       goTo(1);
-      expect(sequencer.getState().barsLeft).toBe(1);
+      expect(flat(sequencer.getState()).barsLeft).toBe(1);
       sequencer.hold(true);
       sequencer.stop();
-      expect(sequencer.getState()).toMatchObject({ running: null, held: false });
+      expect(flat(sequencer.getState())).toMatchObject({ running: null, held: false });
     });
 
     it('stays held while the music stops and starts, and counts nothing when it comes back', () => {
@@ -333,7 +360,7 @@ describe('Sequencer', () => {
       run(BAR * 3);
       startMusic();
       run(BAR * 5);
-      expect(sequencer.getState()).toMatchObject({ step: 0, barsLeft: 3, held: true });
+      expect(flat(sequencer.getState())).toMatchObject({ step: 0, barsLeft: 3, held: true });
     });
   });
 
@@ -342,7 +369,7 @@ describe('Sequencer', () => {
     sequencer.start('a');
     playback.calls = [];
     sequencer.stop();
-    expect(sequencer.getState()).toMatchObject({ running: null, step: -1, barsLeft: 0 });
+    expect(flat(sequencer.getState())).toMatchObject({ running: null, step: -1, barsLeft: 0 });
     run(BAR * 10);
     expect(playback.calls).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
@@ -356,7 +383,7 @@ describe('Sequencer', () => {
     sequencer.start('a');
     sequencer.start('b');
     playback.calls = [];
-    expect(sequencer.getState()).toMatchObject({ running: 'b', step: 0 });
+    expect(flat(sequencer.getState())).toMatchObject({ running: 'b', step: 0 });
     // The look the first one set is not remembered: b sets its first step for every group.
     sequencer.start('b');
     expect(playback.calls).toEqual(['spider:drop@sequence']);
@@ -370,7 +397,7 @@ describe('Sequencer', () => {
       new PatchError('there is no sequence called "nope"'),
     );
     expect(() => sequencer.start(3)).toThrow(/say which sequence/);
-    expect(sequencer.getState().running).toBeNull();
+    expect(flat(sequencer.getState()).running).toBeNull();
   });
 
   it('waits while the music is stopped, and counts again from the next bar line', () => {
@@ -378,15 +405,15 @@ describe('Sequencer', () => {
     sequencer.start('a');
     playback.calls = [];
     goTo(1);
-    expect(sequencer.getState().barsLeft).toBe(1);
+    expect(flat(sequencer.getState()).barsLeft).toBe(1);
     stopMusic();
-    expect(sequencer.getState().paused).toBe(true);
+    expect(flat(sequencer.getState()).paused).toBe(true);
     goTo(10);
     expect(playback.calls).toEqual([]);
-    expect(sequencer.getState()).toMatchObject({ step: 0, barsLeft: 1, paused: true });
+    expect(flat(sequencer.getState())).toMatchObject({ step: 0, barsLeft: 1, paused: true });
     expect(vi.getTimerCount()).toBe(0);
     startMusic();
-    expect(sequencer.getState().paused).toBe(false);
+    expect(flat(sequencer.getState()).paused).toBe(false);
     // The bar that is going on is not counted: the next bar line is.
     run(BAR + 5);
     expect(playback.calls).toEqual(['spider:calm@sequence']);
@@ -397,7 +424,7 @@ describe('Sequencer', () => {
     stopMusic();
     sequencer.start('a');
     expect(playback.calls).toEqual(['spider:drop@sequence']);
-    expect(sequencer.getState().paused).toBe(true);
+    expect(flat(sequencer.getState()).paused).toBe(true);
     run(BAR * 5);
     expect(playback.calls).toEqual(['spider:drop@sequence']);
   });
@@ -406,13 +433,13 @@ describe('Sequencer', () => {
     playback.sequences = [seq('a', [step(3, { spider: 'drop' }), step(1, { spider: 'calm' })])];
     sequencer.start('a');
     run(BAR + 5);
-    expect(sequencer.getState().barsLeft).toBe(2);
+    expect(flat(sequencer.getState()).barsLeft).toBe(2);
     run(BAR / 2);
     tempo.update({ sync: true });
-    expect(sequencer.getState().barsLeft).toBe(2);
+    expect(flat(sequencer.getState()).barsLeft).toBe(2);
     // The next bar line is a bar after the tap.
     run(BAR + 5);
-    expect(sequencer.getState().barsLeft).toBe(1);
+    expect(flat(sequencer.getState()).barsLeft).toBe(1);
   });
 
   it('counts a stall as two bars at most, and does not run through the steps', () => {
@@ -443,23 +470,28 @@ describe('Sequencer', () => {
     playback.refuse.add('laser:bad');
     sequencer.start('a');
     expect(playback.calls).toEqual(['spider:drop@sequence']);
-    expect(sequencer.getState().problem).toBe('laser: cannot set bad');
+    expect(flat(sequencer.getState()).problem).toBe('laser: cannot set bad');
     expect(lines).toEqual(['sequence "a", step 1: laser: cannot set bad']);
     playback.calls = [];
     goTo(1);
     expect(playback.calls).toEqual(['laser:good@sequence']);
-    expect(sequencer.getState().problem).toBeNull();
+    expect(flat(sequencer.getState()).problem).toBeNull();
   });
 
   it('stops when the sequence goes out of the show, and clamps when it gets shorter', () => {
     playback.sequences = [seq('a', [step(4, { spider: 'drop' }), step(4, { spider: 'calm' })])];
     sequencer.start('a');
     goTo(4);
-    expect(sequencer.getState().step).toBe(1);
+    expect(flat(sequencer.getState()).step).toBe(1);
     playback.changed([seq('a', [step(2, { spider: 'drop' })])]);
-    expect(sequencer.getState()).toMatchObject({ running: 'a', step: 0, steps: 1, barsLeft: 2 });
+    expect(flat(sequencer.getState())).toMatchObject({
+      running: 'a',
+      step: 0,
+      steps: 1,
+      barsLeft: 2,
+    });
     playback.changed([]);
-    expect(sequencer.getState().running).toBeNull();
+    expect(flat(sequencer.getState()).running).toBeNull();
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -468,5 +500,103 @@ describe('Sequencer', () => {
     sequencer.start('a');
     sequencer.close();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  describe('several at once', () => {
+    const runIds = () => sequencer.getState().runs.map((run) => run.id);
+
+    beforeEach(() => {
+      playback.sequences = [
+        seq('begin', [step(4, { spider: 'glow' }), step(4, { spider: 'aurora' })]),
+        seq('midden', [step(2, { spider: 'bounce' })]),
+        seq('alternate', [step(1, { laser: 'discobal' }), step(1, { laser: 'discobal-big' })]),
+        seq('both', [step(1, { spider: 'glow', laser: 'off' })]),
+      ];
+    });
+
+    it('runs sequences of different groups side by side, each with its own count', () => {
+      sequencer.start('begin');
+      sequencer.start('alternate');
+      expect(runIds()).toEqual(['begin', 'alternate']);
+      playback.calls = [];
+      goTo(1);
+      // The laser steps every bar; the spider holds for four.
+      expect(playback.calls).toEqual(['laser:discobal-big@sequence']);
+      goTo(2);
+      expect(playback.calls).toEqual(['laser:discobal-big@sequence', 'laser:discobal@sequence']);
+      const [spider, laser] = sequencer.getState().runs;
+      expect(spider).toMatchObject({ id: 'begin', step: 0, barsLeft: 2 });
+      expect(laser).toMatchObject({ id: 'alternate', step: 0, barsLeft: 1 });
+    });
+
+    it('stops only the sequences that set a group the new one sets too', () => {
+      sequencer.start('begin');
+      sequencer.start('alternate');
+      sequencer.start('midden');
+      expect(runIds()).toEqual(['alternate', 'midden']);
+      // A sequence that names both groups takes both places.
+      sequencer.start('both');
+      expect(runIds()).toEqual(['both']);
+    });
+
+    it('starts a sequence that runs over again, and no more than once', () => {
+      sequencer.start('alternate');
+      goTo(1);
+      sequencer.start('alternate');
+      expect(runIds()).toEqual(['alternate']);
+      expect(flat(sequencer.getState())).toMatchObject({ step: 0, barsLeft: 1 });
+      expect(vi.getTimerCount()).toBe(1);
+    });
+
+    it('holds, skips and stops the one that is named and leaves the others', () => {
+      sequencer.start('begin');
+      sequencer.start('alternate');
+      sequencer.hold(true, 'begin');
+      expect(sequencer.getState().runs.map((run) => run.held)).toEqual([true, false]);
+      goTo(1);
+      expect(sequencer.getState().runs[0]?.barsLeft).toBe(4);
+      expect(sequencer.getState().runs[1]?.step).toBe(1);
+      expect(() => sequencer.next('begin')).toThrow(/on hold/);
+      sequencer.hold(false, 'begin');
+      sequencer.next('begin');
+      expect(sequencer.getState().runs[0]).toMatchObject({ step: 1, held: false });
+      sequencer.stop('alternate');
+      expect(runIds()).toEqual(['begin']);
+    });
+
+    it('needs a name for hold, next and stop-one when more than one runs, and not when one does', () => {
+      sequencer.start('begin');
+      sequencer.hold(true);
+      expect(sequencer.getState().runs[0]?.held).toBe(true);
+      sequencer.hold(false);
+      sequencer.start('alternate');
+      expect(() => sequencer.hold(true)).toThrow(/say which one/);
+      expect(() => sequencer.next()).toThrow(/say which one/);
+      expect(() => sequencer.hold(true, 'midden')).toThrow(/does not run/);
+      // A stop without a name stops them all.
+      sequencer.stop();
+      expect(runIds()).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('waits for the music in every sequence, and goes on in all of them', () => {
+      sequencer.start('begin');
+      sequencer.start('alternate');
+      stopMusic();
+      expect(sequencer.getState().runs.every((run) => run.paused)).toBe(true);
+      startMusic();
+      expect(sequencer.getState().runs.some((run) => run.paused)).toBe(false);
+    });
+
+    it('stops the later one when the file makes two sequences set the same group', () => {
+      sequencer.start('begin');
+      sequencer.start('alternate');
+      playback.changed([
+        seq('begin', [step(4, { spider: 'glow' })]),
+        seq('alternate', [step(1, { laser: 'discobal', spider: 'glow' })]),
+      ]);
+      expect(runIds()).toEqual(['begin']);
+      expect(vi.getTimerCount()).toBe(1);
+    });
   });
 });

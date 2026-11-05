@@ -96,7 +96,7 @@ describe('a sequence on a rig', () => {
       { id: 'other', label: 'other', steps: [{ bars: 1, looks: { spider: 'off' } }] },
     ]);
     vi.advanceTimersByTime(BAR * 10);
-    expect(rig.sequencer.getState().running).toBeNull();
+    expect(rig.sequencer.getState().runs).toEqual([]);
     expect(dimmer()).toBe(0);
   });
 
@@ -120,7 +120,7 @@ describe('a sequence on a rig', () => {
     // The laser is in no step after the first and is never set again.
     expect(laserChanges).toBe(changes);
     expect(seen.length).toBeGreaterThan(3);
-    expect(seen.at(-1)).toMatchObject({ running: 'night', step: 0 });
+    expect(seen.at(-1)?.runs[0]).toMatchObject({ id: 'night', step: 0 });
   });
 
   it('lets a press by hand stand until the next step that changes that group', () => {
@@ -144,7 +144,7 @@ describe('a sequence on a rig', () => {
     rig.sequencer.stop();
     goTo(10);
     expect(dimmer()).toBe(0.5);
-    expect(rig.sequencer.getState().running).toBeNull();
+    expect(rig.sequencer.getState().runs).toEqual([]);
   });
 
   it('can set the lights of a group off', () => {
@@ -213,32 +213,21 @@ describe('the sequence API', () => {
       'night',
       'other',
     ]);
-    expect(body.sequence).toEqual({
-      running: null,
-      step: -1,
-      steps: 0,
-      barsLeft: 0,
-      paused: false,
-      held: false,
-      problem: null,
-    });
+    expect(body.sequence).toEqual({ runs: [] });
   });
 
   it('starts a sequence and stops it', async () => {
     const started = await post('/api/sequence', { start: 'night' });
     expect(started.status).toBe(200);
     expect(await started.json()).toEqual({ ok: true });
-    expect((await state()).sequence).toMatchObject({
-      running: 'night',
-      step: 0,
-      steps: 2,
-      barsLeft: 2,
-    });
+    expect((await state()).sequence.runs).toMatchObject([
+      { id: 'night', step: 0, steps: 2, barsLeft: 2 },
+    ]);
     expect((await state()).playback.groups.spider.look).toEqual({ look: 'bright', changed: false });
 
     const stopped = await post('/api/sequence', { stop: true });
     expect(stopped.status).toBe(200);
-    expect((await state()).sequence.running).toBeNull();
+    expect((await state()).sequence.runs).toEqual([]);
     // The fixtures stay as they are.
     expect((await state()).playback.groups.spider.look.look).toBe('bright');
   });
@@ -247,27 +236,27 @@ describe('the sequence API', () => {
     await post('/api/sequence', { start: 'night' });
     const skipped = await post('/api/sequence', { next: true });
     expect(skipped.status).toBe(200);
-    expect((await state()).sequence).toMatchObject({ running: 'night', step: 1 });
+    expect((await state()).sequence.runs).toMatchObject([{ id: 'night', step: 1 }]);
     expect((await state()).playback.groups.spider.look.look).not.toBe('bright');
     // Without a sequence that runs it does nothing, and is not a mistake.
     await post('/api/sequence', { stop: true });
     expect((await post('/api/sequence', { next: true })).status).toBe(200);
-    expect((await state()).sequence.running).toBeNull();
+    expect((await state()).sequence.runs).toEqual([]);
   });
 
   it('holds the sequence and lets it go, as a toggle that keeps the step', async () => {
     await post('/api/sequence', { start: 'night' });
     const held = await post('/api/sequence', { hold: true });
     expect(held.status).toBe(200);
-    expect((await state()).sequence).toMatchObject({ running: 'night', step: 0, held: true });
+    expect((await state()).sequence.runs).toMatchObject([{ id: 'night', step: 0, held: true }]);
     // What is held is not moved by a next, and it says why.
     const skipped = await post('/api/sequence', { next: true });
     expect(skipped.status).toBe(400);
     expect(((await skipped.json()) as { error: string }).error).toMatch(/on hold/);
-    expect((await state()).sequence).toMatchObject({ running: 'night', step: 0, held: true });
+    expect((await state()).sequence.runs).toMatchObject([{ id: 'night', step: 0, held: true }]);
     const released = await post('/api/sequence', { hold: false });
     expect(released.status).toBe(200);
-    expect((await state()).sequence).toMatchObject({ running: 'night', step: 0, held: false });
+    expect((await state()).sequence.runs).toMatchObject([{ id: 'night', step: 0, held: false }]);
     // Without a sequence there is nothing to hold, and a hold must be true or false.
     await post('/api/sequence', { stop: true });
     expect((await post('/api/sequence', { hold: true })).status).toBe(400);
@@ -278,7 +267,7 @@ describe('the sequence API', () => {
   it('stops the sequence that runs when another is started', async () => {
     await post('/api/sequence', { start: 'night' });
     await post('/api/sequence', { start: 'other' });
-    expect((await state()).sequence).toMatchObject({ running: 'other', steps: 1 });
+    expect((await state()).sequence.runs).toMatchObject([{ id: 'other', steps: 1 }]);
   });
 
   it('answers a bad request with 400 and changes nothing', async () => {
@@ -303,7 +292,7 @@ describe('the sequence API', () => {
           : message,
       );
     }
-    expect((await state()).sequence.running).toBe('night');
+    expect((await state()).sequence.runs.map((run: { id: string }) => run.id)).toEqual(['night']);
   });
 
   it('refuses to delete a look or a group a sequence uses, with the reason', async () => {
@@ -329,10 +318,10 @@ describe('the sequence API', () => {
       }
     };
     await readUntil('event: sequence');
-    expect(text).toContain('event: sequence\ndata: {"running":null');
+    expect(text).toContain('event: sequence\ndata: {"runs":[]}');
     await post('/api/sequence', { start: 'night' });
-    await readUntil('"running":"night"');
-    expect(text).toContain('"running":"night","step":0');
+    await readUntil('"runs":[{"id":"night"');
+    expect(text).toContain('"runs":[{"id":"night","step":0');
     await reader.cancel();
   });
 });

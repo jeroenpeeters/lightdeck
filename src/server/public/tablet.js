@@ -61,6 +61,7 @@ import { start } from './shell.js';
 import { mountDecor } from './tabletDecor.js';
 import { syncKeys } from './tabletKit.js';
 import {
+  categoryOfGroup,
   decorOf,
   isDecorGroup,
   laserOpen,
@@ -69,6 +70,9 @@ import {
   partInfo,
   partPlace,
   roomRails,
+  runForGroup,
+  runOf,
+  sequenceCategories,
   spiderLenses,
   splitNumber,
   switchView,
@@ -250,11 +254,20 @@ function lookColumns(group) {
   return made;
 }
 
-/** The sequence that runs, and where it is. */
-function runningSequence() {
-  const state = shell.sequence;
-  const sequence = (shell.show.sequences ?? []).find((each) => each.id === state?.running);
-  return { sequence, state };
+/**
+ * The sequence that sets this group while it runs, and where it is. Several sequences run at once,
+ * one per group (the spider, the room, the laser, the strips), so it depends on the group.
+ */
+function runningSequence(groupId) {
+  const sequences = shell.show.sequences ?? [];
+  const run = runForGroup(shell.sequence, sequences, groupId);
+  return { sequence: sequences.find((each) => each.id === run?.id), run };
+}
+
+/** The run that Next and Hold act on: the sequence that sets the group of the tab on screen. */
+function focusedRun() {
+  const group = wallOpen ? undefined : currentGroup();
+  return group ? runningSequence(group.id).run : undefined;
 }
 
 // ---- the rail ----
@@ -447,10 +460,10 @@ function renderMoodbar(group) {
 
 function renderLooks(group) {
   const lookOn = onLook(group).item;
-  const { sequence, state } = runningSequence();
-  const found = nextLook(sequence, state, group.id, lookOn?.id);
+  const { sequence, run } = runningSequence(group.id);
+  const found = nextLook(sequence, run, group.id, lookOn?.id);
   // While the sequence is held no bar is counted, so a number of bars to go would be wrong.
-  const next = found && state?.held ? { ...found, bars: null } : found;
+  const next = found && run?.held ? { ...found, bars: null } : found;
   const items = [];
   for (const column of lookColumns(group)) {
     if (column.label) {
@@ -607,13 +620,22 @@ function renderWall() {
 // ---- the parts of the evening ----
 
 const phases = { grid: null, none: null, keys: new Map() };
+/** The categories of the sequences, as chips at the left of the foot (only when the show has more than one). */
+const phaseCats = { grid: null, none: null, keys: new Map() };
+/** The id of the category on screen, or undefined until one is chosen. It is only for looking. */
+let catChosen;
 
 /** The label of the look that a step sets in a group, or what the step says when it is not one. */
 function stepWords(step) {
   const parts = [];
   for (const [groupId, lookId] of Object.entries(step?.looks ?? {})) {
     const group = shell.show.groups.find((each) => each.id === groupId);
-    const look = group?.looks.find((each) => each.id === lookId);
+    // The pipes keep their looks in the rig file, so those are read from the decor fixture.
+    const look =
+      group?.looks.find((each) => each.id === lookId) ??
+      decorOf(shell.fixtures, group)
+        .flatMap((fixture) => fixture.details?.looks ?? [])
+        .find((each) => each.id === lookId);
     // The group is named only when the step sets several.
     const name = look ? splitNumber(look.label).name : lookId === 'off' ? 'Off' : lookId;
     parts.push(Object.keys(step.looks).length > 1 ? `${group?.label ?? groupId} ${name}` : name);
@@ -636,6 +658,7 @@ function showPart(sequence) {
     remember(group.id);
   }
   render();
+  followCategory();
 }
 
 /** The key of a part: its name and where it is, what is on and what comes, and a bar per bar. */
@@ -652,15 +675,20 @@ function makePart(sequence) {
   key.append(head, info, bars);
   key.parts = { place, info, bars };
   key.addEventListener('click', () => {
-    // A press on the part that runs does nothing: freezing it is what Hold is for.
-    if (shell.sequence?.running !== sequence.id) ask('/api/sequence', { start: sequence.id });
+    // A press on the part that runs stops it (the fixtures stay as they are); freezing it is what Hold is for.
+    if (runOf(shell.sequence, sequence.id)) {
+      ask('/api/sequence', { stop: true, sequence: sequence.id });
+      return;
+    }
+    ask('/api/sequence', { start: sequence.id });
     showPart(sequence);
   });
   return key;
 }
 
 function drawPart(key, sequence, state) {
-  const on = state.running === sequence.id;
+  // `state` is the run of this sequence, or undefined while it does not run.
+  const on = state !== undefined;
   const held = on && Boolean(state.held);
   const { place, info, bars } = key.parts;
   key.classList.toggle('is-on', on);
@@ -709,30 +737,101 @@ function drawPart(key, sequence, state) {
   });
 }
 
-/** A key per sequence, what is on and what comes, and Next and Hold. */
-function renderPhases() {
-  phases.grid ??= $('m-phase-keys');
-  const list = shell.show.sequences ?? [];
-  $('m-phases').hidden = list.length === 0;
-  const state = shell.sequence ?? { running: null };
-  const running = list.find((sequence) => sequence.id === state.running);
-  syncKeys(
-    phases,
-    list.map((sequence) => ({
-      id: sequence.id,
-      make: () => makePart(sequence),
-      draw: (key) => drawPart(key, sequence, state),
-    })),
-  );
-  // Hold is a toggle: lit while the sequence is held, and pressed again it lets the sequence go on.
-  // Next is for a sequence that runs freely: what is held stays as it is.
-  const held = Boolean(running && state.held);
+/**
+ * Next and Hold are for the sequence of the group on screen: the laser's on the tab of the laser.
+ * Hold is a toggle: lit while the sequence is held, and pressed again it lets the sequence go on.
+ * Next is for a sequence that runs freely: what is held stays as it is.
+ */
+function renderTransport() {
+  const running = focusedRun();
+  const held = Boolean(running?.held);
   $('m-hold').disabled = !running;
   $('m-hold').classList.toggle('is-disabled', !running);
   $('m-hold').classList.toggle('is-on', held);
   $('m-hold').setAttribute('aria-pressed', String(held));
   $('m-next').disabled = !running || held;
   $('m-next').classList.toggle('is-disabled', !running || held);
+}
+
+/** The category on screen: the one chosen, else the one of the tab on screen, else one that runs, else the first. */
+function shownCategory(categories) {
+  const here = wallOpen ? undefined : currentGroup();
+  return (
+    categories.find((each) => each.id === catChosen) ??
+    (here ? categoryOfGroup(categories, here.id) : undefined) ??
+    categories.find((each) =>
+      each.sequences.some((sequence) => runOf(shell.sequence, sequence.id)),
+    ) ??
+    categories[0]
+  );
+}
+
+/** A tab was chosen: the foot shows the category that sets its group, when there is one. */
+function followCategory() {
+  const here = wallOpen ? undefined : currentGroup();
+  const found = here
+    ? categoryOfGroup(sequenceCategories(shell.show.sequences ?? []), here.id)
+    : undefined;
+  if (found) catChosen = found.id;
+  renderParts();
+}
+
+function makeCategory(id) {
+  const key = element('button', 't-cat');
+  key.type = 'button';
+  key.setAttribute('role', 'tab');
+  key.addEventListener('click', () => {
+    catChosen = id;
+    renderParts();
+  });
+  return key;
+}
+
+/** The foot: the categories, the keys of the one on screen, and Next and Hold. */
+function renderParts() {
+  phases.grid ??= $('m-phase-keys');
+  phaseCats.grid ??= $('m-phase-cats');
+  const list = shell.show.sequences ?? [];
+  $('m-phases').hidden = list.length === 0;
+  const categories = sequenceCategories(list);
+  const category = shownCategory(categories);
+  catChosen = category?.id;
+  // With one category (or none named) there is nothing to choose between, and no chips.
+  const several = categories.length > 1;
+  phaseCats.grid.hidden = !several;
+  syncKeys(
+    phaseCats,
+    several
+      ? categories.map((each) => ({
+          id: `cat:${each.id}`,
+          make: () => makeCategory(each.id),
+          draw: (key) => {
+            key.textContent = each.label;
+            const on = each.id === category?.id;
+            key.classList.toggle('is-sel', on);
+            key.setAttribute('aria-selected', String(on));
+            key.classList.toggle(
+              'is-run',
+              each.sequences.some((sequence) => runOf(shell.sequence, sequence.id)),
+            );
+          },
+        }))
+      : [],
+  );
+  syncKeys(
+    phases,
+    (category?.sequences ?? []).map((sequence) => ({
+      id: sequence.id,
+      make: () => makePart(sequence),
+      draw: (key) => drawPart(key, sequence, runOf(shell.sequence, sequence.id)),
+    })),
+  );
+  renderTransport();
+}
+
+/** A key per sequence of the category, what is on and what comes, and Next and Hold. */
+function renderPhases() {
+  renderParts();
   // What a look says is Next follows the sequence, so the looks are drawn again.
   const group = currentGroup();
   if (group && !wallOpen) renderLooks(group);
@@ -746,6 +845,7 @@ function choose(id) {
   wallOpen = false;
   remember(id);
   render();
+  followCategory();
 }
 
 function chooseWall() {
@@ -753,6 +853,7 @@ function chooseWall() {
   wallOpen = true;
   remember(WALL);
   render();
+  followCategory();
 }
 
 function build() {
@@ -766,9 +867,13 @@ function build() {
     rememberAll();
     render();
   });
-  $('m-next').addEventListener('click', () => ask('/api/sequence', { next: true }));
+  $('m-next').addEventListener('click', () => {
+    const run = focusedRun();
+    if (run) ask('/api/sequence', { next: true, sequence: run.id });
+  });
   $('m-hold').addEventListener('click', () => {
-    if (shell.sequence?.running) ask('/api/sequence', { hold: !shell.sequence.held });
+    const run = focusedRun();
+    if (run) ask('/api/sequence', { hold: !run.held, sequence: run.id });
   });
 }
 
