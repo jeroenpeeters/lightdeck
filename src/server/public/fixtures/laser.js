@@ -200,18 +200,17 @@ function setByte(control, byte) {
 
 // ---- building the page ----
 
-/** What a fader stands on, to the byte for it. */
-const byteFor = (range, number) =>
-  range.steps
-    ? byteForStep(range, number)
-    : range.from + Math.round(((range.to - range.from) * number) / 100);
+/**
+ * What a fader stands on, to the byte for it. A fader over a range with steps counts the steps (the
+ * patterns); any other fader runs over the real bytes of its range, from its first to its last, so
+ * what it shows is what is sent (Jeroen, 2026-11-05: no 0 to 100 squeezed over 0 to 127).
+ */
+const byteFor = (range, number) => (range.steps ? byteForStep(range, number) : number);
 
-/** The number a range's fader shows for the byte that is sent. */
+/** The number a range's fader shows for the byte that is sent: the step, or the byte itself. */
 function numberOf(control, range) {
   const byte = byteOf(control);
-  return range.steps
-    ? stepOfByte(range, byte)
-    : Math.round(((byte - range.from) / (range.to - range.from)) * 100);
+  return range.steps ? stepOfByte(range, byte) : byte;
 }
 
 /**
@@ -252,8 +251,8 @@ function block(control, lead = false) {
     const row = slider({
       id: `l-${control.name}-${range.key ?? index}`,
       label: range.scale ?? title(control),
-      min: range.steps ? 1 : 0,
-      max: range.steps ?? 100,
+      min: range.steps ? 1 : range.from,
+      max: range.steps ?? range.to,
       read: () => numberOf(control, range),
       write: (number) => {
         if (currentRange(control) === range) setByte(control, byteFor(range, number));
