@@ -681,18 +681,19 @@ groups:
         type: motion
         fixtures:
           laser:
-            raw: { size: 10 }
+            raw: { size: 10, moveV: 117 }
       small-still:
         label: Small, still
         type: motion
         fixtures:
           laser:
-            raw: { size: 40 }
+            raw: { size: 40, moveV: 117 }
       breathe:
         label: Breathe
         type: motion
         fixtures:
           laser:
+            raw: { moveV: 117 }
             motion: { id: pulse, speed: 0.5 }
       sweeping:
         label: Sweep
@@ -706,20 +707,20 @@ groups:
         type: motion
         fixtures:
           laser:
-            raw: { size: 20 }
+            raw: { size: 20, moveV: 117 }
             motion: { id: twist, speed: 0.5 }
       spin:
         label: Spin
         type: motion
         fixtures:
           laser:
-            raw: { size: 20, rotation: 140 }
+            raw: { size: 20, rotation: 140, moveV: 117 }
       spin-back:
         label: Spin back
         type: motion
         fixtures:
           laser:
-            raw: { size: 20, rotation: 210 }
+            raw: { size: 20, rotation: 210, moveV: 117 }
       # Laser op Discobal (Jeroen, 2026-11-04): pattern 2 small and turning slowly, aimed low in the
       # corner of the field, set by hand on the real laser and read back from what was sent.
       discobal:
@@ -747,24 +748,29 @@ groups:
         type: motion
         fixtures:
           laser:
-            raw: { rotation: 178, moveH: 94, moveV: 67, size: 59 }
+            raw: { rotation: 178, moveH: 94, moveV: 66, size: 58 }
+      disco-sparkle:
+        label: Disco sparkle
+        type: lights
+        fixtures:
+          laser:
+            raw: { mode: 95, program: 127, colour: 22 }
+      disco-sparkle-aim:
+        label: Disco sparkle aim
+        type: motion
+        fixtures:
+          laser:
+            raw: { rotation: 180, moveH: 61, moveV: 1, size: 61 }
     moods:
-      calm:
-        label: Calm
-        lights: [ pattern-12, pattern-26, pattern-40, changing-22 ]
-        motion: [ big-still, small-still, spin ]
       beat:
         label: On the beat
         lights: [ pattern-chase, colour-chase, dots-26, mixed-18 ]
         motion: [ breathe, big-still, small-still ]
       moving:
         label: Moving
-        lights: [ pattern-12, pattern-26, pattern-40, mixed-18, discobal, discobal-big ]
-        motion: [ spin, spin-back, sweeping, twisting, discobal-aim, discobal-big-aim ]
+        lights: [ pattern-12, pattern-26, pattern-40, mixed-18, discobal, discobal-big, disco-sparkle ]
+        motion: [ spin, spin-back, sweeping, twisting, discobal-aim, discobal-big-aim, disco-sparkle-aim ]
     looks:
-      calm-12: { label: Calm 12, mood: calm, lights: pattern-12, motion: big-still }
-      calm-26: { label: Calm 26, mood: calm, lights: pattern-26, motion: small-still }
-      calm-40: { label: Calm 40, mood: calm, lights: pattern-40, motion: big-still }
       pattern-beat: { label: Pattern beat, mood: beat, lights: pattern-chase, motion: breathe }
       colour-beat: { label: Colour beat, mood: beat, lights: colour-chase, motion: big-still }
       dots-beat: { label: Dots beat, mood: beat, lights: dots-26, motion: breathe }
@@ -773,6 +779,7 @@ groups:
       twister: { label: Twister, mood: moving, lights: pattern-40, motion: twisting }
       discobal: { label: Laser op Discobal, mood: moving, lights: discobal, motion: discobal-aim }
       discobal-big: { label: Laser op grote Discobal, mood: moving, lights: discobal-big, motion: discobal-big-aim }
+      disco-sparkle: { label: Disco sparkle, mood: moving, lights: disco-sparkle, motion: disco-sparkle-aim }
   room:
     label: Room
     fixtures: [ room ]
@@ -965,8 +972,8 @@ sequences:
     label: Discobal wissel
     category: Laser
     steps:
-      - { bars: 1, looks: { laser: discobal } }
-      - { bars: 1, looks: { laser: discobal-big } }
+      - { bars: 2, looks: { laser: discobal } }
+      - { bars: 2, looks: { laser: discobal-big } }
   # The strips (pipes) go through their looks of rig.yaml.
   strips-begin:
     label: Begin
